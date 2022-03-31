@@ -127,11 +127,12 @@ class BinsearchIndex:
             h.update(term)
         return h.intdigest() & self._key_truncate
 
-    def _template_key(self, sentence, k):
-        try:
-            return self._instance_key(sentence[k+i][feat] for (feat, i) in self.template)
-        except IndexError:
-            return None
+    def _yield_instances(self, sentence):
+        for k in range(len(sentence)):
+            try:
+                yield [sentence[k+i][feat] for (feat, i) in self.template]
+            except IndexError:
+                pass
 
     def _binary_search(self, key):
         start = 0
@@ -172,11 +173,10 @@ class BinsearchIndex:
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for n, sentence in enumerate(corpus, 1):   # number sentences from 1
-                for k in range(len(sentence)):
-                    key = self._template_key(sentence, k)
-                    if key is not None:
-                        print(f"{key}\t{n}", file=TMP)
-                        ctr_tmp += 1
+                for instance in self._yield_instances(sentence):
+                    key = self._instance_key(instance)
+                    print(f"{key}\t{n}", file=TMP)
+                    ctr_tmp += 1
         subprocess.run(['sort', '--numeric-sort', '--key=1', '--key=2', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
         sets_size = int(wc_output.split()[0])
@@ -246,11 +246,12 @@ class HashIndex:
             h.update(term)
         return h.intdigest() % self._index_size
 
-    def _template_key(self, sentence, k):
-        try:
-            return self._instance_key(sentence[k+i][feat] for (feat, i) in self.template)
-        except IndexError:
-            return None
+    def _yield_instances(self, sentence):
+        for k in range(len(sentence)):
+            try:
+                yield [sentence[k+i][feat] for (feat, i) in self.template]
+            except IndexError:
+                pass
 
     def _hashtable_lookup(self, n):
         bytepos = n * self._index_bytesize
@@ -282,14 +283,13 @@ class HashIndex:
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for n, sentence in enumerate(corpus, 1):   # number sentences from 1
-                for k in range(len(sentence)):
-                    key = self._template_key(sentence, k)
-                    if key is not None:
-                        print(f"{key}\t{n}", file=TMP)
-                        ctr_tmp += 1
+                for instance in self._yield_instances(sentence):
+                    key = self._instance_key(instance)
+                    print(f"{key}\t{n}", file=TMP)
+                    ctr_tmp += 1
         subprocess.run(['sort', '--numeric-sort', '--key=1', '--key=2', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
-        sets_size = int(wc_output.split()[0]) + 1
+        sets_size = int(wc_output.split()[0]) + 1   # +1 to account for null pointers
         index_bytesize = math.ceil(math.log(sets_size, 2) / 8)
         null_ptr = (0).to_bytes(index_bytesize, byteorder=ENDIANNESS)
         with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
