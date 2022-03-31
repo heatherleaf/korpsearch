@@ -271,15 +271,20 @@ class HashIndex:
         start, end = self._hashtable_lookup(key)
         return IndexSet(self._sets, self._elem_bytesize, start, end)
 
-    def build_index(self, corpus, index_size=None, keep_tmpfiles=False):
-        if index_size is None:
-            index_size = 1 + len(corpus) # // 10
-        self._index_size = index_size
+    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
         t0 = time.time()
         max_sentence_number = len(corpus) + 1   # number sentences from 1
         elem_bytesize = math.ceil(math.log(max_sentence_number, 2) / 8)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
+        with open(unsorted_tmpfile, 'w') as TMP:
+            for sentence in corpus:
+                for instance in self._yield_instances(sentence):
+                    print(" ".join(instance), file=TMP)
+        subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
+        wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
+        nr_instances = int(wc_output.split()[0])
+        self._index_size = math.ceil(nr_instances * load_factor)
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for n, sentence in enumerate(corpus, 1):   # number sentences from 1
