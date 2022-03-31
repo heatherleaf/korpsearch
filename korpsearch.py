@@ -1,12 +1,12 @@
 
 import os
-import sys
 import time
 import math
 import re
 import shutil
 import argparse
 import shelve
+import xxhash
 import subprocess
 import itertools
 from pathlib import Path
@@ -16,7 +16,7 @@ from pathlib import Path
 ## Shelf index
 
 class ShelfIndex:
-    dir_suffix = '.shelves'
+    dir_suffix = '.indexes.shelve'
 
     # class variable to keep track of open shelves
     # (the shelve module doesn't allow several open instances of the same file)
@@ -66,8 +66,9 @@ class ShelfIndex:
         return IndexSet.from_set(result)
 
     def build_index(self, corpus):
+        t0 = time.time()
         index = {}
-        for n, sentence in enumerate(corpus):
+        for n, sentence in enumerate(corpus, 1):   # number sentences from 1
             for i in range(len(sentence)):
                 key = self._template_key(sentence, i)
                 if key:
@@ -77,19 +78,17 @@ class ShelfIndex:
         self._index.clear()
         for m in index:
             self._index[m] = index[m]
-        print(f"{self} --> {len(self._index)}")
+        print(f"{self} --> {len(self._index)}     # {time.time()-t0:.3f} s")
         self.close()
 
 
 ################################################################################
-## Optimised index
-
-# TODO: hash to pointer indexes - then we don't need binary search for looking up a key (and we save space)
+## Optimised index, using binary search
 
 ENDIANNESS = 'little'
 
 class BinsearchIndex:
-    dir_suffix = '.indexes'
+    dir_suffix = '.indexes.binsearch'
 
     def __init__(self, corpus_name, template, mode='r'):
         assert mode in "rw"
@@ -123,13 +122,10 @@ class BinsearchIndex:
         return self.basedir / self.__str__()
 
     def _instance_key(self, instance):
-        # Better, use this: https://github.com/flier/pyfasthash
-        # (We cannot use Python's hash(), because they use randomness)
-        h = 5381  # 5381 is from djb2
+        h = xxhash.xxh64()
         for term in instance:
-            for c in term:
-                h = h * 65587 + ord(c)  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
-        return self._key_truncate & h
+            h.update(term)
+        return h.intdigest() & self._key_truncate
 
     def _template_key(self, sentence, k):
         try:
@@ -175,10 +171,10 @@ class BinsearchIndex:
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
-            for n, sentence in enumerate(corpus):
+            for n, sentence in enumerate(corpus, 1):   # number sentences from 1
                 for k in range(len(sentence)):
                     key = self._template_key(sentence, k)
-                    if key:
+                    if key is not None:
                         print(f"{key}\t{n}", file=TMP)
                         ctr_tmp += 1
         subprocess.run(['sort', '--numeric-sort', '--key=1', '--key=2', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
@@ -288,6 +284,14 @@ class IndexSet:
 ################################################################################
 ## Queries
 
+ALGORITHMS = {
+    'binsearch': BinsearchIndex,
+    'shelve': ShelfIndex,
+}
+
+################################################################################
+## Queries
+
 QUEREGEX = re.compile(rf'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 
 class Query:
@@ -313,7 +317,6 @@ class Query:
         for i, tok in enumerate(self.query):
             for feat, value in tok:
                 for dist in range(1, len(self.query)-i):
-                    #if i+dist < len(self.query):
                         for feat1, value1 in self.query[i+dist]:
                             templ = [(feat,0), (feat1,dist)]
                             yield (templ, [value, value1])
@@ -331,7 +334,7 @@ class Query:
 
 
 def query_corpus(args):
-    index_class = ShelfIndex if args.use_shelf else BinsearchIndex
+    index_class = ALGORITHMS[args.algorithm]
     query = Query(args.query)
     print("Query:", args.query, "-->", query)
     starttime = time.time()
@@ -375,7 +378,7 @@ def query_corpus(args):
 ## Main
 
 def build_indexes(args):
-    index_class = ShelfIndex if args.use_shelf else BinsearchIndex
+    index_class = ALGORITHMS[args.algorithm]
     basedir = args.corpus.with_suffix(index_class.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
@@ -412,7 +415,8 @@ def yield_templates(features, max_dist):
 
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--use-shelf', '-s', action='store_true', help='use the `shelve` library')
+parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='binsearch', 
+                    help='which lookup algorithm/data structure to use')
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 pgroup = parser.add_mutually_exclusive_group(required=True)
 pgroup.add_argument('query', nargs='?', help='the query')
