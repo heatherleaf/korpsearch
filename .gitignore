@@ -130,5 +130,4 @@ dmypy.json
 
 # More files to ignore
 private
-*.indexes/
-*.shelves/
+*.indexes.*/
