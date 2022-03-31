@@ -68,7 +68,7 @@ class ShelfIndex:
     def build_index(self, corpus):
         t0 = time.time()
         index = {}
-        for n, sentence in enumerate(corpus, 1):   # number sentences from 1
+        for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
             for i in range(len(sentence)):
                 key = self._template_key(sentence, i)
                 if key:
@@ -167,16 +167,18 @@ class BinsearchIndex:
     def build_index(self, corpus, key_bytesize=2, keep_tmpfiles=False):
         t0 = time.time()
         self._key_truncate = (1 << 8 * key_bytesize) - 1
-        elem_bytesize = math.ceil(math.log(len(corpus),2)/8)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
-            for n, sentence in enumerate(corpus, 1):   # number sentences from 1
+            nr_sentences = 0
+            for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
+                nr_sentences += 1
                 for instance in self._yield_instances(sentence):
                     key = self._instance_key(instance)
                     print(f"{key}\t{n}", file=TMP)
                     ctr_tmp += 1
+        elem_bytesize = math.ceil(math.log(nr_sentences + 1, 2) / 8)   # +1 because we number sentences from 1
         subprocess.run(['sort', '--numeric-sort', '--key=1', '--key=2', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
         sets_size = int(wc_output.split()[0])
@@ -273,21 +275,22 @@ class HashIndex:
 
     def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
         t0 = time.time()
-        max_sentence_number = len(corpus) + 1   # number sentences from 1
-        elem_bytesize = math.ceil(math.log(max_sentence_number, 2) / 8)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
         with open(unsorted_tmpfile, 'w') as TMP:
-            for sentence in corpus:
+            nr_sentences = 0
+            for sentence in corpus.sentences():
+                nr_sentences += 1
                 for instance in self._yield_instances(sentence):
                     print(" ".join(instance), file=TMP)
+        elem_bytesize = math.ceil(math.log(nr_sentences + 1, 2) / 8)   # +1 because we number sentences from 1
         subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
         nr_instances = int(wc_output.split()[0])
         self._index_size = math.ceil(nr_instances * load_factor)
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
-            for n, sentence in enumerate(corpus, 1):   # number sentences from 1
+            for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
                 for instance in self._yield_instances(sentence):
                     key = self._instance_key(instance)
                     print(f"{key}\t{n}", file=TMP)
@@ -505,26 +508,37 @@ def build_indexes(args):
     basedir = args.corpus.with_suffix(index_class.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
-    t0 = time.time()
-    corpus = read_corpus(args.corpus, args.features)
-    print(f"Corpus: {len(corpus)} sentences, {sum(map(len, corpus))} tokens   # {time.time()-t0:.3f} s")
+    corpus = Corpus(args.corpus, args.features)
     for template in yield_templates(args.features, args.max_dist):
         index_class(args.corpus, template, mode='w').build_index(corpus)
 
 
-def read_corpus(corpus_file, features):
-    sentences = []
-    with open(corpus_file) as IN:
-        corpus_features = {feat : n for n, feat in enumerate(IN.readline().split())}
-        for k, line in enumerate(IN):
+class Corpus:
+    def __init__(self, corpus_file, features):
+        self.corpus_file = open(corpus_file)
+        self.features = features
+        self.reset()
+
+    def reset(self):
+        self.corpus_file.seek(0)
+        self.corpus_features = {feat : n for n, feat in enumerate(self.corpus_file.readline().split())}
+
+    def sentences(self):
+        self.reset()
+        sentence = None
+        for line in self.corpus_file:
             line = line.strip()
             if line.startswith("# sentence"):
-                sentences.append([])
-            elif line and sentences:
+                if sentence:
+                    yield sentence
+                sentence = []
+            elif line:
                 values = line.split('\t')
-                token = {f : values[corpus_features[f]] for f in features}
-                sentences[-1].append(token)
-    return sentences
+                token = {f : values[self.corpus_features[f]] for f in self.features}
+                sentence.append(token)
+            elif sentence:
+                yield sentence
+                sentence = []
 
 
 def yield_templates(features, max_dist):
