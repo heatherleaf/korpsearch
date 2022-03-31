@@ -204,6 +204,123 @@ class BinsearchIndex:
 
 
 ################################################################################
+## Disk-based hash table
+
+ENDIANNESS = 'little'
+
+class HashIndex:
+    dir_suffix = '.indexes.hashtable'
+
+    def __init__(self, corpus_name, template, mode='r'):
+        assert mode in "rw"
+        self.basedir = corpus_name.with_suffix(self.dir_suffix)
+        self.template = template
+        basefile = self._basefile()
+        self._index = open(basefile.with_suffix('.index'), mode + 'b')
+        self._sets = open(basefile.with_suffix('.sets'), mode + 'b')
+        if mode == 'r':
+            with open(basefile.with_suffix('.dim')) as DIM:
+                self._index_bytesize, self._elem_bytesize = map(int, DIM.read().split())
+            self._index.seek(0, os.SEEK_END)
+            self._index_size = self._index.tell() // self._index_bytesize
+            self._sets.seek(0, os.SEEK_END)
+            self._sets_size = self._sets.tell() // self._elem_bytesize
+
+    def close(self):
+        self._index.close()
+        self._sets.close()
+        self._index = self._sets = None
+
+    def __len__(self):
+        return self._index_size
+
+    def __str__(self):
+        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
+
+    def _basefile(self):
+        return self.basedir / self.__str__()
+
+    def _instance_key(self, instance):
+        h = xxhash.xxh64()
+        for term in instance:
+            h.update(term)
+        return h.intdigest() % self._index_size
+
+    def _template_key(self, sentence, k):
+        try:
+            return self._instance_key(sentence[k+i][feat] for (feat, i) in self.template)
+        except IndexError:
+            return None
+
+    def _hashtable_lookup(self, n):
+        bytepos = n * self._index_bytesize
+        self._index.seek(bytepos)
+        start = int.from_bytes(self._index.read(self._index_bytesize), byteorder=ENDIANNESS)
+        end = None
+        while not end:
+            n += 1
+            if n < self._index_size:
+                end = int.from_bytes(self._index.read(self._index_bytesize), byteorder=ENDIANNESS)
+            else:
+                end = self._sets_size
+        return start, end
+
+    def search(self, instance):
+        key = self._instance_key(instance)
+        start, end = self._hashtable_lookup(key)
+        return IndexSet(self._sets, self._elem_bytesize, start, end)
+
+    def build_index(self, corpus, index_size=None, keep_tmpfiles=False):
+        if index_size is None:
+            index_size = 1 + len(corpus) # // 10
+        self._index_size = index_size
+        t0 = time.time()
+        max_sentence_number = len(corpus) + 1   # number sentences from 1
+        elem_bytesize = math.ceil(math.log(max_sentence_number, 2) / 8)
+        unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
+        sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
+        ctr_tmp = 0
+        with open(unsorted_tmpfile, 'w') as TMP:
+            for n, sentence in enumerate(corpus, 1):   # number sentences from 1
+                for k in range(len(sentence)):
+                    key = self._template_key(sentence, k)
+                    if key is not None:
+                        print(f"{key}\t{n}", file=TMP)
+                        ctr_tmp += 1
+        subprocess.run(['sort', '--numeric-sort', '--key=1', '--key=2', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
+        wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
+        sets_size = int(wc_output.split()[0]) + 1
+        index_bytesize = math.ceil(math.log(sets_size, 2) / 8)
+        null_ptr = (0).to_bytes(index_bytesize, byteorder=ENDIANNESS)
+        with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
+            print(index_bytesize, elem_bytesize, file=DIM)
+        ctr_sets = ctr_index = 0
+        with open(sorted_tmpfile) as TMP:
+            current = -1
+            # dummy sentence to account for null pointers:
+            self._sets.write((0).to_bytes(elem_bytesize, byteorder=ENDIANNESS))
+            ctr_sets += 1
+            for ptr, line in enumerate(TMP, 1):
+                key, n = map(int, line.rsplit('\t', maxsplit=1))
+                self._sets.write(n.to_bytes(elem_bytesize, byteorder=ENDIANNESS))
+                ctr_sets += 1
+                if current < key:
+                    for _ in range(current + 1, key):
+                        self._index.write(null_ptr)
+                    self._index.write(ptr.to_bytes(index_bytesize, byteorder=ENDIANNESS))
+                    current = key
+                    ctr_index += 1
+            for _ in range(current + 1, self._index_size):
+                self._index.write(null_ptr)
+        assert sets_size == ctr_sets, (sets_size, ctr_sets)
+        print(f"{self} --> {ctr_tmp} --> {ctr_sets} --> {ctr_index} / {self._index_size}    # {time.time()-t0:.3f} s")
+        if not keep_tmpfiles:
+            unsorted_tmpfile.unlink()
+            sorted_tmpfile.unlink()
+        self.close()
+
+
+################################################################################
 ## Index set
 
 class IndexSet:
@@ -285,6 +402,7 @@ class IndexSet:
 ## Queries
 
 ALGORITHMS = {
+    'hashtable': HashIndex,
     'binsearch': BinsearchIndex,
     'shelve': ShelfIndex,
 }
@@ -317,9 +435,9 @@ class Query:
         for i, tok in enumerate(self.query):
             for feat, value in tok:
                 for dist in range(1, len(self.query)-i):
-                        for feat1, value1 in self.query[i+dist]:
-                            templ = [(feat,0), (feat1,dist)]
-                            yield (templ, [value, value1])
+                    for feat1, value1 in self.query[i+dist]:
+                        templ = [(feat,0), (feat1,dist)]
+                        yield (templ, [value, value1])
         # Single tokens: yield subqueries after more complex queries!
         for tok in self.query:
             for feat, value in tok:
@@ -415,7 +533,7 @@ def yield_templates(features, max_dist):
 
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='binsearch', 
+parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='hashtable', 
                     help='which lookup algorithm/data structure to use')
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 pgroup = parser.add_mutually_exclusive_group(required=True)
