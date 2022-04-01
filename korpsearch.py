@@ -449,7 +449,6 @@ def query_corpus(args):
     print("Query:", args.query, "-->", query)
     starttime = time.time()
     print("Searching:")
-    t0 = time.time()
     search_results = []
     for template, instance in query.subqueries():
         if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
@@ -459,10 +458,10 @@ def query_corpus(args):
             index = index_class(args.corpus, template)
         except FileNotFoundError:
             continue
+        t0 = time.time()
         sentences = index.search(instance)
-        print(f"   {index} = {'-'.join(instance)} --> {len(sentences)}")
+        print(f"   {index} = {'-'.join(instance)} --> {len(sentences)}   # {time.time()-t0:.3f} s")
         search_results.append((index, instance, sentences))
-    print(f"   # {time.time()-t0:.3f} s")
     print("Sorting:")
     t0 = time.time()
     search_results.sort(key=lambda r: len(r[-1]))
