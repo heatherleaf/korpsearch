@@ -178,8 +178,26 @@ class SplitIndex:
         sets_size = self._count_lines_in_file(sorted_tmpfile)
         return sets_size
 
-    def _build_indexfile_and_setfile(self, sorted_tmpfile):
+    def _write_key_to_indexfile(self, current, key):
         raise NotImplementedError()
+
+    def _build_indexfile_and_setfile(self, sorted_tmpfile):
+        size_of_indexfile = size_of_setsfile = 0
+        with open(sorted_tmpfile) as TMP:
+            current = -1
+            # dummy sentence to account for null pointers:
+            self._sets.write((0).to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+            size_of_setsfile += 1
+            for ptr, line in enumerate(TMP):
+                key, n = map(int, line.rsplit(maxsplit=1))
+                self._sets.write(n.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+                size_of_setsfile += 1
+                if current < key:
+                    self._write_key_to_indexfile(current, key)
+                    self._index.write(ptr.to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS))
+                    current = key
+                    size_of_indexfile += 1
+        return size_of_indexfile, size_of_setsfile
 
     def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
         t0 = time.time()
@@ -242,23 +260,8 @@ class BinsearchIndex(SplitIndex):
                 end = mid - 1
         raise ValueError("Key not found")
 
-    def _build_indexfile_and_setfile(self, sorted_tmpfile):
-        size_of_indexfile = size_of_setsfile = 0
-        with open(sorted_tmpfile) as TMP:
-            current = None
-            # dummy sentence to account for null pointers:
-            self._sets.write((0).to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
-            size_of_setsfile += 1
-            for ptr, line in enumerate(TMP):
-                key, n = map(int, line.rsplit(maxsplit=1))
-                self._sets.write(n.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
-                size_of_setsfile += 1
-                if key != current:
-                    self._index.write(key.to_bytes(self._dimensions['key_bytesize'], byteorder=ENDIANNESS))
-                    self._index.write(ptr.to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS))
-                    current = key
-                    size_of_indexfile += 1
-        return size_of_indexfile, size_of_setsfile
+    def _write_key_to_indexfile(self, current, key):
+        self._index.write(key.to_bytes(self._dimensions['key_bytesize'], byteorder=ENDIANNESS))
 
 
 ################################################################################
@@ -288,28 +291,10 @@ class HashIndex(SplitIndex):
                 end = self._dimensions['sets_size']
         return start, end
 
-    def _build_indexfile_and_setfile(self, sorted_tmpfile):
+    def _write_key_to_indexfile(self, current, key):
         null_ptr = (0).to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS)
-        size_of_indexfile = size_of_setsfile = 0
-        with open(sorted_tmpfile) as TMP:
-            current = -1
-            # dummy sentence to account for null pointers:
-            self._sets.write((0).to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
-            size_of_setsfile += 1
-            for ptr, line in enumerate(TMP, 1):
-                key, n = map(int, line.rsplit('\t', maxsplit=1))
-                self._sets.write(n.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
-                size_of_setsfile += 1
-                if current < key:
-                    for _ in range(current + 1, key):
-                        self._index.write(null_ptr)
-                        size_of_indexfile += 1
-                    self._index.write(ptr.to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS))
-                    current = key
-                    size_of_indexfile += 1
-            for _ in range(current + 1, self._dimensions['max_key_size']):
-                self._index.write(null_ptr)
-        return size_of_indexfile, size_of_setsfile
+        for _ in range(current + 1, key):
+            self._index.write(null_ptr)
 
 
 ################################################################################
