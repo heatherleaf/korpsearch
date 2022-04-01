@@ -535,7 +535,7 @@ def yield_templates(features, max_dist):
 
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='hashtable', 
+parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='binsearch', 
                     help='which lookup algorithm/data structure to use')
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 pgroup = parser.add_mutually_exclusive_group(required=True)
