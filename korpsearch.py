@@ -6,7 +6,6 @@ import re
 import shutil
 import argparse
 import shelve
-import xxhash
 import subprocess
 import itertools
 from pathlib import Path
@@ -122,10 +121,11 @@ class BinsearchIndex:
         return self.basedir / self.__str__()
 
     def _instance_key(self, instance):
-        h = xxhash.xxh64()
+        h = 5381  # 5381 is from djb2:https://stackoverflow.com/questions/10696223/reason-for-the-number-5381-in-the-djb-hash-function
         for term in instance:
-            h.update(term)
-        return h.intdigest() & self._key_truncate
+            for c in term:
+                h = h * 65587 + ord(c)  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
+        return h & self._key_truncate
 
     def _yield_instances(self, sentence):
         for k in range(len(sentence)):
@@ -243,10 +243,11 @@ class HashIndex:
         return self.basedir / self.__str__()
 
     def _instance_key(self, instance):
-        h = xxhash.xxh64()
+        h = 5381  # 5381 is from djb2:https://stackoverflow.com/questions/10696223/reason-for-the-number-5381-in-the-djb-hash-function
         for term in instance:
-            h.update(term)
-        return h.intdigest() % self._index_size
+            for c in term:
+                h = h * 65587 + ord(c)  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
+        return h % self._index_size
 
     def _yield_instances(self, sentence):
         for k in range(len(sentence)):
