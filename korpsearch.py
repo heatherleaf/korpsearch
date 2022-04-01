@@ -287,7 +287,7 @@ class HashIndex:
         subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         wc_output = subprocess.run(['wc', '-l', sorted_tmpfile], capture_output=True).stdout
         nr_instances = int(wc_output.split()[0])
-        self._index_size = math.ceil(nr_instances * load_factor)
+        self._index_size = math.ceil(nr_instances / load_factor)
         ctr_tmp = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
