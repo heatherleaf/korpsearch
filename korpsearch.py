@@ -12,6 +12,13 @@ import itertools
 from pathlib import Path
 
 
+def log(output, verbose, start=None):
+    if verbose:
+        if start:
+            print(output.ljust(100), f"{time.time()-start:8.3f} s")
+        else:
+            print(output)
+
 ################################################################################
 ## Shelf index
 
@@ -22,9 +29,10 @@ class ShelfIndex:
     # (the shelve module doesn't allow several open instances of the same file)
     _open_shelves = {}
 
-    def __init__(self, corpus_name, template, mode='r'):
+    def __init__(self, corpus_name, template, mode='r', verbose=False):
         self.basedir = corpus_name.with_suffix(self.dir_suffix)
         self.template = template
+        self._verbose = verbose
         ifile = str(self._indexfile())
         if mode == 'r' and not self._indexfile().is_file():
             raise FileNotFoundError(f"No such database file: '{ifile}'")
@@ -78,7 +86,7 @@ class ShelfIndex:
         self._index.clear()
         for m in index:
             self._index[m] = index[m]
-        print(f"{self} --> {len(self._index)}     # {time.time()-t0:.3f} s")
+        log(f"{self} --> n:o keys = {len(self._index)}", self._verbose, start=t0)
         self.close()
 
 
@@ -89,10 +97,11 @@ class ShelfIndex:
 ENDIANNESS = 'little'
 
 class SplitIndex:
-    def __init__(self, corpus_name, template, mode='r'):
+    def __init__(self, corpus_name, template, mode='r', verbose=False):
         assert mode in "rw"
         self.basedir = corpus_name.with_suffix(self.dir_suffix)
         self.template = template
+        self._verbose = verbose
         basefile = self._basefile()
         self._index = open(basefile.with_suffix('.index'), mode + 'b')
         self._sets = open(basefile.with_suffix('.sets'), mode + 'b')
@@ -155,6 +164,7 @@ class SplitIndex:
         return int(wc_output.split()[0])
 
     def _count_sentences_and_instances(self, corpus, unsorted_tmpfile, sorted_tmpfile):
+        t0 = time.time()
         nr_sentences = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for sentence in corpus.sentences():
@@ -164,43 +174,46 @@ class SplitIndex:
         subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile)
         nr_instances = self._count_lines_in_file(sorted_tmpfile)
+        log(f" -> counted {nr_sentences} sentences, {nr_instances} instances", self._verbose, start=t0)
         return nr_sentences, nr_instances
 
     def _build_file_of_key_sentence_pairs(self, corpus, unsorted_tmpfile, sorted_tmpfile):
+        t0 = time.time()
         with open(unsorted_tmpfile, 'w') as TMP:
-            nr_sentences = 0
             for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
-                nr_sentences += 1
                 for instance in self._yield_instances(sentence):
                     key = self._instance_key(instance)
                     print(f"{key}\t{n}", file=TMP)
         self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile, '--numeric-sort', '--key=1', '--key=2')
         sets_size = self._count_lines_in_file(sorted_tmpfile)
+        log(f" -> created key-sentence file with {sets_size} pairs", self._verbose, start=t0)
         return sets_size
 
     def _write_key_to_indexfile(self, current, key):
         raise NotImplementedError()
 
     def _build_indexfile_and_setfile(self, sorted_tmpfile):
-        size_of_indexfile = size_of_setsfile = 0
+        t0 = time.time()
+        nr_keys = nr_elements = 0
         with open(sorted_tmpfile) as TMP:
             current = -1
             # dummy sentence to account for null pointers:
             self._sets.write((0).to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
-            size_of_setsfile += 1
+            nr_elements += 1
             for ptr, line in enumerate(TMP):
                 key, n = map(int, line.rsplit(maxsplit=1))
                 self._sets.write(n.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
-                size_of_setsfile += 1
+                nr_elements += 1
                 if current < key:
                     self._write_key_to_indexfile(current, key)
                     self._index.write(ptr.to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS))
                     current = key
-                    size_of_indexfile += 1
-        return size_of_indexfile, size_of_setsfile
+                    nr_keys += 1
+        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
+        return nr_keys, nr_elements
 
     def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
-        t0 = time.time()
+        log(f"Building index for {self}", self._verbose)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
         nr_sentences, nr_instances = self._count_sentences_and_instances(corpus, unsorted_tmpfile, sorted_tmpfile)
@@ -213,11 +226,10 @@ class SplitIndex:
         self._dimensions['ptr_bytesize'] = self._min_bytes_to_store_values(size_of_setsfile)
         with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
             json.dump(self._dimensions, DIM)
-        size_of_indexfile, size_of_setsfile2 = self._build_indexfile_and_setfile(sorted_tmpfile)
-        assert size_of_setsfile == size_of_setsfile2, (size_of_setsfile, size_of_setsfile2)
-        print(", ".join(f"{k}={v}" for k, v in self._dimensions.items()))
-        print(f"{self} --> indexfile = {size_of_indexfile} --> setsfile = {size_of_setsfile}     # {time.time()-t0:.3f} s")
-        print()
+        nr_keys, nr_elements = self._build_indexfile_and_setfile(sorted_tmpfile)
+        assert size_of_setsfile == nr_elements, (size_of_setsfile, nr_elements)
+        log(" -> dimensions: " + ", ".join(f"{k}={v}" for k, v in self._dimensions.items()), self._verbose)
+        log("", self._verbose)
         if not keep_tmpfiles:
             unsorted_tmpfile.unlink()
             sorted_tmpfile.unlink()
@@ -431,9 +443,9 @@ class Query:
 def query_corpus(args):
     index_class = ALGORITHMS[args.algorithm]
     query = Query(args.query)
-    print("Query:", args.query, "-->", query)
     starttime = time.time()
-    print("Searching:")
+    log(f"Query: {args.query} --> {query}", args.verbose)
+    log("Searching:", args.verbose)
     search_results = []
     for template, instance in query.subqueries():
         if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
@@ -445,14 +457,14 @@ def query_corpus(args):
             continue
         t0 = time.time()
         sentences = index.search(instance)
-        print(f"   {index} = {'-'.join(instance)} --> {len(sentences)}   # {time.time()-t0:.3f} s")
+        log(f"   {index} = {'-'.join(instance)} --> {len(sentences)}", args.verbose, start=t0)
         search_results.append((index, instance, sentences))
-    print("Sorting:")
+    log("Sorting:", args.verbose)
     t0 = time.time()
     search_results.sort(key=lambda r: len(r[-1]))
     # search_results.sort(key=lambda r: -len(r[-1]))
-    print("   ", " ".join(str(index) for index, _, _ in search_results), f"  # {time.time()-t0:.3f} s")
-    print("Intersecting:")
+    log("   " + " ".join(str(index) for index, _, _ in search_results), args.verbose, start=t0)
+    log("Intersecting:", args.verbose)
     result = None
     for index, instance, sentences in search_results:
         t0 = time.time()
@@ -460,10 +472,10 @@ def query_corpus(args):
             result = sentences
         else:
             result.intersection_update(sentences)
-        print(f"   {index} = {'-'.join(instance)} : {len(sentences)} --> {result}   # {time.time()-t0:.3f} s")
-    print()
-    print(f"Time: {time.time()-starttime:.3f} s")
-    print("Result:", result)
+        log(f"   {index} = {'-'.join(instance)} : {len(sentences)} --> {result}", args.verbose, start=t0)
+    log("", args.verbose)
+    log(f"Result: {result}", args.verbose, start=starttime)
+    print(result)
     for index, _, _ in search_results:
         index.close()
 
@@ -478,7 +490,7 @@ def build_indexes(args):
     os.mkdir(basedir)
     corpus = Corpus(args.corpus, args.features)
     for template in yield_templates(args.features, args.max_dist):
-        index_class(args.corpus, template, mode='w').build_index(corpus)
+        index_class(args.corpus, template, mode='w', verbose=args.verbose).build_index(corpus)
 
 
 class Corpus:
@@ -528,6 +540,7 @@ pgroup.add_argument('query', nargs='?', help='the query')
 pgroup.add_argument('--build-index', action='store_true', help='build the indexes')
 parser.add_argument('--features', '-f', nargs='*', help='features')
 parser.add_argument('--max-dist', default=2, help='max distance between token pairs')
+parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
 
 if __name__ == '__main__':
     args = parser.parse_args()
