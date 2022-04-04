@@ -15,7 +15,8 @@ from pathlib import Path
 def log(output, verbose, start=None):
     if verbose:
         if start:
-            print(output.ljust(100), f"{time.time()-start:8.3f} s")
+            duration = time.time()-start
+            print(output.ljust(100), f"{duration//60:4.0f}:{duration%60:05.2f}")
         else:
             print(output)
 
@@ -166,27 +167,35 @@ class SplitIndex:
     def _count_sentences_and_instances(self, corpus, unsorted_tmpfile, sorted_tmpfile):
         t0 = time.time()
         nr_sentences = 0
+        nr_lines = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for sentence in corpus.sentences():
                 nr_sentences += 1
                 for instance in self._yield_instances(sentence):
                     print(" ".join(instance), file=TMP)
+                    nr_lines += 1
+        log(f" -> created unsorted instances file, {nr_lines} lines, {nr_sentences} sentences", self._verbose, start=t0)
+        t0 = time.time()
         subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
         self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile)
         nr_instances = self._count_lines_in_file(sorted_tmpfile)
-        log(f" -> counted {nr_sentences} sentences, {nr_instances} instances", self._verbose, start=t0)
+        log(f" -> sorted {nr_instances} unique instances", self._verbose, start=t0)
         return nr_sentences, nr_instances
 
     def _build_file_of_key_sentence_pairs(self, corpus, unsorted_tmpfile, sorted_tmpfile):
         t0 = time.time()
+        nr_lines = 0
         with open(unsorted_tmpfile, 'w') as TMP:
             for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
                 for instance in self._yield_instances(sentence):
                     key = self._instance_key(instance)
                     print(f"{key}\t{n}", file=TMP)
+                    nr_lines += 1
+        log(f" -> created unsorted key-sentence file, {nr_lines} lines", self._verbose, start=t0)
+        t0 = time.time()
         self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile, '--numeric-sort', '--key=1', '--key=2')
         sets_size = self._count_lines_in_file(sorted_tmpfile)
-        log(f" -> created key-sentence file with {sets_size} pairs", self._verbose, start=t0)
+        log(f" -> sorted {sets_size} unique key-sentence pairs", self._verbose, start=t0)
         return sets_size
 
     def _write_key_to_indexfile(self, current, key):
@@ -489,8 +498,12 @@ def build_indexes(args):
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
     corpus = Corpus(args.corpus, args.features)
+    t0 = time.time()
+    ctr = 0
     for template in yield_templates(args.features, args.max_dist):
         index_class(args.corpus, template, mode='w', verbose=args.verbose).build_index(corpus)
+        ctr += 1
+    log(f"Created {ctr} indexes", args.verbose, start=t0)
 
 
 class Corpus:
