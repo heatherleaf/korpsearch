@@ -52,7 +52,7 @@ class ShelfIndex:
             self._index.close()
 
     def __len__(self):
-        return self._index_size
+        return len(self._index)
 
     def __str__(self):
         return "-".join(f"{feat}{k}" for (feat, k) in self.template)
@@ -121,7 +121,7 @@ class SplitIndex:
         self._index = self._sets = None
 
     def __len__(self):
-        return self._index_size
+        return self._dimensions['index_size']
 
     def __str__(self):
         return "-".join(f"{feat}{k}" for (feat, k) in self.template)
@@ -397,7 +397,7 @@ class IndexSet:
 
 
 ################################################################################
-## Queries
+## Algorithms
 
 ALGORITHMS = {
     'hashtable': HashIndex,
