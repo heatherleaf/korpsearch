@@ -110,11 +110,11 @@ class SplitIndex:
         if mode == 'r':
             with open(basefile.with_suffix('.dim')) as DIM:
                 self._dimensions = json.load(DIM)
-            self._dimensions['index_bytesize'] = self._dimensions['key_bytesize'] + self._dimensions['ptr_bytesize']
+            self._dimensions['index_bytes'] = self._dimensions['key_bytes'] + self._dimensions['ptr_bytes']
             self._index.seek(0, os.SEEK_END)
-            self._dimensions['index_size'] = self._index.tell() // self._dimensions['index_bytesize']
+            self._dimensions['index_size'] = self._index.tell() // self._dimensions['index_bytes']
             self._sets.seek(0, os.SEEK_END)
-            self._dimensions['sets_size'] = self._sets.tell() // self._dimensions['elem_bytesize']
+            self._dimensions['sets_size'] = self._sets.tell() // self._dimensions['elem_bytes']
 
     def close(self):
         self._index.close()
@@ -147,7 +147,7 @@ class SplitIndex:
     def search(self, instance):
         key = self._instance_key(instance)
         set_start = self._lookup_key(key)
-        return IndexSet(self._sets, self._dimensions['elem_bytesize'], set_start)
+        return IndexSet(self._sets, self._dimensions['elem_bytes'], set_start)
 
     def _lookup_key(self, key):
         raise NotImplementedError()
@@ -192,8 +192,8 @@ class SplitIndex:
 
         # Calculate dimensions
         self._dimensions = {}
-        self._dimensions['elem_bytesize'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
-        self._dimensions['key_bytesize'] = self._min_bytes_to_store_values(nr_instances)
+        self._dimensions['elem_bytes'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
+        self._dimensions['key_bytes'] = self._min_bytes_to_store_values(nr_instances)
         self._dimensions['max_key_size'] = self._get_max_key_size(nr_instances, load_factor)
 
         # Build file of key-sentence pairs
@@ -213,7 +213,7 @@ class SplitIndex:
         size_of_setsfile += 1 + nr_instances  # +1 because pointer 0 has a special meaning, +nr_instances because every set has a size
 
         # More dimensions to calculate
-        self._dimensions['ptr_bytesize'] = self._min_bytes_to_store_values(size_of_setsfile)
+        self._dimensions['ptr_bytes'] = self._min_bytes_to_store_values(size_of_setsfile)
         with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
             json.dump(self._dimensions, DIM)
         log(" -> dimensions: " + ", ".join(f"{k}={v}" for k, v in self._dimensions.items()), self._verbose)
@@ -224,7 +224,7 @@ class SplitIndex:
         with open(sorted_tmpfile) as TMP:
             current = set_start = set_size = -1
             # Dummy sentence to account for null pointers:
-            self._sets.write((0).to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+            self._sets.write((0).to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
             nr_elements += 1
             for line in TMP:
                 key, sent = map(int, line.rsplit(maxsplit=1))
@@ -233,22 +233,22 @@ class SplitIndex:
                         assert current >= 0 and set_size > 0
                         # Now the set is full, and we can write the size of the set at its beginning
                         self._sets.seek(set_start)
-                        self._sets.write(set_size.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+                        self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
                         self._sets.seek(0, os.SEEK_END)
                     self._write_key_to_indexfile(current, key)
-                    self._index.write(nr_elements.to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS))
+                    self._index.write(nr_elements.to_bytes(self._dimensions['ptr_bytes'], byteorder=ENDIANNESS))
                     # Add a placeholder for the size of the set
                     set_start, set_size = self._sets.tell(), 0
-                    self._sets.write(set_size.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+                    self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
                     nr_elements += 1
                     current = key
                     nr_keys += 1
-                self._sets.write(sent.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+                self._sets.write(sent.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
                 set_size += 1
                 nr_elements += 1
             # Write the size of the final set at its beginning
             self._sets.seek(set_start)
-            self._sets.write(set_size.to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
+            self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
             self._sets.seek(0, os.SEEK_END)
         log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
 
@@ -267,23 +267,23 @@ class BinsearchIndex(SplitIndex):
     dir_suffix = '.indexes.binsearch'
 
     def _get_max_key_size(self, nr_keys, load_factor):
-        return 2 ** (8 * self._dimensions['key_bytesize'])
+        return 2 ** (8 * self._dimensions['key_bytes'])
 
     def _lookup_key(self, key):
         # store in local variables for faster access
         index_size = self._dimensions['index_size']
-        index_bytesize = self._dimensions['index_bytesize']
-        key_bytesize = self._dimensions['key_bytesize']
-        ptr_bytesize = self._dimensions['ptr_bytesize']
+        index_bytes = self._dimensions['index_bytes']
+        key_bytes = self._dimensions['key_bytes']
+        ptr_bytes = self._dimensions['ptr_bytes']
         # binary search
         start, end = 0, index_size - 1
         while start <= end:
             mid = (start + end) // 2
-            bytepos = mid * index_bytesize
+            bytepos = mid * index_bytes
             self._index.seek(bytepos)
-            key0 = int.from_bytes(self._index.read(key_bytesize), byteorder=ENDIANNESS)
+            key0 = int.from_bytes(self._index.read(key_bytes), byteorder=ENDIANNESS)
             if key0 == key:
-                return int.from_bytes(self._index.read(ptr_bytesize), byteorder=ENDIANNESS)
+                return int.from_bytes(self._index.read(ptr_bytes), byteorder=ENDIANNESS)
             elif key0 < key:
                 start = mid + 1
             else:
@@ -291,7 +291,7 @@ class BinsearchIndex(SplitIndex):
         raise ValueError("Key not found")
 
     def _write_key_to_indexfile(self, current, key):
-        self._index.write(key.to_bytes(self._dimensions['key_bytesize'], byteorder=ENDIANNESS))
+        self._index.write(key.to_bytes(self._dimensions['key_bytes'], byteorder=ENDIANNESS))
 
 
 ################################################################################
@@ -306,14 +306,14 @@ class HashIndex(SplitIndex):
     def _lookup_key(self, key):
         # store in local variables for faster access
         index_size = self._dimensions['index_size']
-        ptr_bytesize = self._dimensions['ptr_bytesize']
+        ptr_bytes = self._dimensions['ptr_bytes']
         # find the start position in the table
-        bytepos = key * ptr_bytesize
+        bytepos = key * ptr_bytes
         self._index.seek(bytepos)
-        return int.from_bytes(self._index.read(ptr_bytesize), byteorder=ENDIANNESS)
+        return int.from_bytes(self._index.read(ptr_bytes), byteorder=ENDIANNESS)
 
     def _write_key_to_indexfile(self, current, key):
-        null_ptr = (0).to_bytes(self._dimensions['ptr_bytesize'], byteorder=ENDIANNESS)
+        null_ptr = (0).to_bytes(self._dimensions['ptr_bytes'], byteorder=ENDIANNESS)
         for _ in range(current + 1, key):
             self._index.write(null_ptr)
 
