@@ -20,6 +20,7 @@ def log(output, verbose, start=None):
         else:
             print(output)
 
+
 ################################################################################
 ## Shelf index
 
@@ -164,7 +165,15 @@ class SplitIndex:
         wc_output = subprocess.run(['wc', '-l', file], capture_output=True).stdout
         return int(wc_output.split()[0])
 
-    def _count_sentences_and_instances(self, corpus, unsorted_tmpfile, sorted_tmpfile):
+    def _write_key_to_indexfile(self, current, key):
+        raise NotImplementedError()
+
+    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
+        log(f"Building index for {self}", self._verbose)
+        unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
+        sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
+
+        # Count sentences and instances
         t0 = time.time()
         nr_sentences = 0
         nr_lines = 0
@@ -180,9 +189,14 @@ class SplitIndex:
         self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile)
         nr_instances = self._count_lines_in_file(sorted_tmpfile)
         log(f" -> sorted {nr_instances} unique instances", self._verbose, start=t0)
-        return nr_sentences, nr_instances
 
-    def _build_file_of_key_sentence_pairs(self, corpus, unsorted_tmpfile, sorted_tmpfile):
+        # Calculate dimensions
+        self._dimensions = {}
+        self._dimensions['elem_bytesize'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
+        self._dimensions['key_bytesize'] = self._min_bytes_to_store_values(nr_instances)
+        self._dimensions['max_key_size'] = self._get_max_key_size(nr_instances, load_factor)
+
+        # Build file of key-sentence pairs
         t0 = time.time()
         nr_lines = 0
         with open(unsorted_tmpfile, 'w') as TMP:
@@ -194,19 +208,22 @@ class SplitIndex:
         log(f" -> created unsorted key-sentence file, {nr_lines} lines", self._verbose, start=t0)
         t0 = time.time()
         self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile, '--numeric-sort', '--key=1', '--key=2')
-        sets_size = self._count_lines_in_file(sorted_tmpfile)
-        log(f" -> sorted {sets_size} unique key-sentence pairs", self._verbose, start=t0)
-        return sets_size
+        size_of_setsfile = self._count_lines_in_file(sorted_tmpfile)
+        log(f" -> sorted {size_of_setsfile} unique key-sentence pairs", self._verbose, start=t0)
+        size_of_setsfile += 1 + nr_instances  # +1 because pointer 0 has a special meaning, +nr_instances because every set has a size
 
-    def _write_key_to_indexfile(self, current, key):
-        raise NotImplementedError()
+        # More dimensions to calculate
+        self._dimensions['ptr_bytesize'] = self._min_bytes_to_store_values(size_of_setsfile)
+        with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
+            json.dump(self._dimensions, DIM)
+        log(" -> dimensions: " + ", ".join(f"{k}={v}" for k, v in self._dimensions.items()), self._verbose)
 
-    def _build_indexfile_and_setfile(self, sorted_tmpfile):
+        # Build index file and sets file
         t0 = time.time()
         nr_keys = nr_elements = 0
         with open(sorted_tmpfile) as TMP:
             current = set_start = set_size = -1
-            # dummy sentence to account for null pointers:
+            # Dummy sentence to account for null pointers:
             self._sets.write((0).to_bytes(self._dimensions['elem_bytesize'], byteorder=ENDIANNESS))
             nr_elements += 1
             for line in TMP:
@@ -235,27 +252,12 @@ class SplitIndex:
             self._sets.seek(0, os.SEEK_END)
         log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
 
-    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
-        log(f"Building index for {self}", self._verbose)
-        unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
-        sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
-        nr_sentences, nr_instances = self._count_sentences_and_instances(corpus, unsorted_tmpfile, sorted_tmpfile)
-        self._dimensions = {}
-        self._dimensions['elem_bytesize'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
-        self._dimensions['key_bytesize'] = self._min_bytes_to_store_values(nr_instances)
-        self._dimensions['max_key_size'] = self._get_max_key_size(nr_instances, load_factor)
-        size_of_setsfile = self._build_file_of_key_sentence_pairs(corpus, unsorted_tmpfile, sorted_tmpfile)
-        size_of_setsfile += 1 + nr_instances  # +1 because pointer 0 has a special meaning, +nr_instances because every set has a size
-        self._dimensions['ptr_bytesize'] = self._min_bytes_to_store_values(size_of_setsfile)
-        with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
-            json.dump(self._dimensions, DIM)
-        self._build_indexfile_and_setfile(sorted_tmpfile)
-        log(" -> dimensions: " + ", ".join(f"{k}={v}" for k, v in self._dimensions.items()), self._verbose)
-        log("", self._verbose)
+        # Cleanup
         if not keep_tmpfiles:
             unsorted_tmpfile.unlink()
             sorted_tmpfile.unlink()
         self.close()
+        log("", self._verbose)
 
 
 ################################################################################
