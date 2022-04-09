@@ -325,6 +325,185 @@ class HashIndex(SplitIndex):
 
 
 ################################################################################
+## Binary search index, using instances as keys
+
+class InstanceIndex:
+    dir_suffix = '.indexes.instances'
+
+    def __init__(self, corpus, template, mode='r', verbose=False):
+        assert mode in "rw"
+        self.corpus = Path(corpus)
+        self.template = template
+        self._verbose = verbose
+        basefile = self._basefile()
+        self._keys = open(basefile.with_suffix('.keys'), mode + 'b')
+        self._index = open(basefile.with_suffix('.index'), mode + 'b')
+        self._sets = open(basefile.with_suffix('.sets'), mode + 'b')
+        if mode == 'r':
+            with open(basefile.with_suffix('.dim')) as DIM:
+                self._dimensions = json.load(DIM)
+
+    def close(self):
+        self._keys.close()
+        self._index.close()
+        self._sets.close()
+        self._keys = self._index = self._sets = None
+
+    def __len__(self):
+        self._keys.seek(0, os.SEEK_END)
+        return self._keys.tell() // self._dimensions['keyptr']
+
+    def __str__(self):
+        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
+
+    def _basefile(self):
+        return self.corpus.with_suffix(self.dir_suffix) / self.__str__()
+
+    def _instance_str(self, instance):
+        return instance if isinstance(instance, str) else ' '.join(instance)
+
+    def _yield_instances(self, sentence):
+        for k in range(len(sentence)):
+            try:
+                yield self._instance_str(sentence[k+i][feat] for (feat, i) in self.template)
+            except IndexError:
+                pass
+
+    def search(self, instance):
+        set_start = self._lookup_instance(instance)
+        return IndexSet(self._sets, self._dimensions['elemptr'], set_start)
+
+    def _lookup_instance(self, instance):
+        instance = self._instance_str(instance)
+        # store in local variables for faster access
+        keyptr_size = self._dimensions['keyptr']
+        setptr_size = self._dimensions['setptr']
+        # binary search
+        start, end = 0, len(self)-1
+        while start <= end:
+            mid = (start + end) // 2
+            self._keys.seek(mid * keyptr_size)
+            keyptr = int.from_bytes(self._keys.read(keyptr_size), byteorder=ENDIANNESS)
+            self._index.seek(keyptr)
+            keylen = int.from_bytes(self._index.read(1), byteorder=ENDIANNESS)
+            instance0 = self._index.read(keylen).decode('utf-8')
+            if instance0 == instance:
+                set_start = int.from_bytes(self._index.read(setptr_size), byteorder=ENDIANNESS)
+                return set_start
+            elif instance0 < instance:
+                start = mid + 1
+            else:
+                end = mid - 1
+        raise ValueError("Key not found")
+
+    def _min_bytes_to_store_values(self, nr_values):
+        return math.ceil(math.log(nr_values, 2) / 8)
+
+    def _sort_file_unique(self, unsorted_file, sorted_file, *extra_args):
+        subprocess.run(['sort'] + list(extra_args) + ['--unique', '--output', sorted_file, unsorted_file])
+
+    def _count_lines_in_file(self, file):
+        wc_output = subprocess.run(['wc', '-l', file], capture_output=True).stdout
+        return int(wc_output.split()[0])
+
+    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
+        log(f"Building index for {self}", self._verbose)
+        unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
+        sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
+
+        # Count sentences and instances
+        t0 = time.time()
+        nr_sentences = 0
+        nr_lines = 0
+        with open(unsorted_tmpfile, 'w') as TMP:
+            for sentence in corpus.sentences():
+                nr_sentences += 1
+                for instance in self._yield_instances(sentence):
+                    print(instance, file=TMP)
+                    nr_lines += 1
+        log(f" -> created unsorted instances file, {nr_lines} lines, {nr_sentences} sentences", self._verbose, start=t0)
+        t0 = time.time()
+        subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
+        self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile)
+        nr_instances = self._count_lines_in_file(sorted_tmpfile)
+        size_of_all_instances = sorted_tmpfile.stat().st_size
+        log(f" -> sorted {nr_instances} unique instances", self._verbose, start=t0)
+
+        # Build file of key-sentence pairs
+        t0 = time.time()
+        nr_lines = 0
+        with open(unsorted_tmpfile, 'w') as TMP:
+            width = math.ceil(math.log(nr_sentences + 1, 10)) + 1
+            for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
+                for instance in self._yield_instances(sentence):
+                    print(f"{instance}\t{n:0{width}d}", file=TMP)
+                    nr_lines += 1
+        log(f" -> created unsorted key-sentence file, {nr_lines} lines", self._verbose, start=t0)
+        t0 = time.time()
+        self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile)
+        nr_inst_sent_pairs = self._count_lines_in_file(sorted_tmpfile)
+        log(f" -> sorted {nr_inst_sent_pairs} unique instance-sentence pairs", self._verbose, start=t0)
+
+        # Calculate dimensions
+        self._dimensions = {}
+        self._dimensions['elemptr'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
+        self._dimensions['setptr'] = self._min_bytes_to_store_values(nr_inst_sent_pairs)
+        indexfile_size = size_of_all_instances + nr_instances * (1 + self._dimensions['setptr'])
+        self._dimensions['keyptr'] = self._min_bytes_to_store_values(indexfile_size)
+        with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
+            json.dump(self._dimensions, DIM)
+        log(" -> dimensions: " + ", ".join(f"{k}={v}" for k, v in self._dimensions.items()), self._verbose)
+
+        # Build keys file, index file and sets file
+        t0 = time.time()
+        nr_keys = nr_elements = 0
+        with open(sorted_tmpfile) as IN:
+            current = set_start = set_size = None
+            # Dummy sentence to account for null pointers:
+            self._sets.write((0).to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
+            nr_elements += 1
+            for line in IN:
+                instance, sent = line.split('\t')
+                sent = int(sent)
+                if current != instance:
+                    if set_start is not None:
+                        assert set_size
+                        # Now the set is full, and we can write the size of the set at its beginning
+                        self._sets.seek(set_start)
+                        self._sets.write(set_size.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
+                        self._sets.seek(0, os.SEEK_END)
+                    key = instance.encode('utf-8')
+                    assert len(key) <= 255, f"Too long instance: {instance}"
+                    keyptr = self._index.tell()
+                    self._keys.write(keyptr.to_bytes(self._dimensions['keyptr'], byteorder=ENDIANNESS))
+                    self._index.write(len(key).to_bytes(1, byteorder=ENDIANNESS))
+                    self._index.write(key)
+                    self._index.write(nr_elements.to_bytes(self._dimensions['setptr'], byteorder=ENDIANNESS))
+                    # Add a placeholder for the size of the set
+                    set_start, set_size = self._sets.tell(), 0
+                    self._sets.write(set_size.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
+                    nr_elements += 1
+                    current = instance
+                    nr_keys += 1
+                self._sets.write(sent.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
+                set_size += 1
+                nr_elements += 1
+            # Write the size of the final set at its beginning
+            self._sets.seek(set_start)
+            self._sets.write(set_size.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
+            self._sets.seek(0, os.SEEK_END)
+        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose)
+        sizes = [f.tell()/1024/1024 for f in (self._keys, self._index, self._sets)]
+        log(f" -> created .keys ({sizes[0]:.1f} mb), .index ({sizes[1]:.1f} mb), .sets ({sizes[2]:.1f} mb)", self._verbose, start=t0)
+
+        if not keep_tmpfiles:
+            unsorted_tmpfile.unlink()
+            sorted_tmpfile.unlink()
+        self.close()
+        log("", self._verbose)
+
+
+################################################################################
 ## Index set
 
 class IndexSet:
@@ -410,6 +589,7 @@ class IndexSet:
 ALGORITHMS = {
     'hashtable': HashIndex,
     'binsearch': BinsearchIndex,
+    'instance': InstanceIndex,
     'shelve': ShelfIndex,
 }
 
