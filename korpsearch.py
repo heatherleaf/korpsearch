@@ -76,6 +76,7 @@ class ShelfIndex:
         return IndexSet.from_set(result)
 
     def build_index(self, corpus):
+        log(f"Building index for {self}", self._verbose)
         t0 = time.time()
         index = {}
         for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
@@ -85,11 +86,14 @@ class ShelfIndex:
                     if key not in index:
                         index[key] = set()
                     index[key].add(n)
+        log(f" -> created {len(index)} keys in internal dict", self._verbose, start=t0)
         self._index.clear()
         for m in index:
             self._index[m] = index[m]
-        log(f"{self} --> n:o keys = {len(self._index)}", self._verbose, start=t0)
         self.close()
+        size = self._indexfile().stat().st_size / 1024 / 1024
+        log(f" -> created shelve db ({size:.1f} mb)", self._verbose, start=t0)
+        log("", self._verbose)
 
 
 ################################################################################
