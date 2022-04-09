@@ -254,7 +254,9 @@ class SplitIndex:
             self._sets.seek(set_start)
             self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
             self._sets.seek(0, os.SEEK_END)
-        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
+        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose)
+        sizes = [f.tell()/1024/1024 for f in (self._index, self._sets)]
+        log(f" -> created .index ({sizes[0]:.1f} mb), .sets ({sizes[1]:.1f} mb)", self._verbose, start=t0)
 
         # Cleanup
         if not keep_tmpfiles:
