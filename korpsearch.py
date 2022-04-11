@@ -563,6 +563,10 @@ class IndexSet:
             raise ValueError("Empty intersection")
         self.start = self.size = self._setsfile = None
 
+    def filter(self, check):
+        self.values = {elem for elem in self if check(elem)}
+        self.start = self.size = self._setsfile = None
+
     def __contains__(self, elem):
         if self.values:
             return elem in self.values
@@ -630,6 +634,18 @@ class Query:
             for feat, value in tok:
                 yield ([(feat,0)], [value])
 
+    def features(self):
+        return {feat for tok in self.query for feat, _val in tok}
+
+    def check_sentence(self, sentence):
+        for k in range(len(sentence) - len(self.query) + 1):
+            if all(sentence[k+i][feat] == value 
+                   for i, token_query in enumerate(self.query)
+                   for feat, value in token_query
+                   ):
+                return True
+        return False
+
     @staticmethod
     def is_subquery(subtemplate, subinstance, template, instance):
         subquery = [(feat, val) for ((feat, _), val) in zip(subtemplate, subinstance)]
@@ -643,6 +659,7 @@ def query_corpus(args):
     query = Query(args.query)
     starttime = time.time()
     log(f"Query: {args.query} --> {query}", args.verbose)
+   
     log("Searching:", args.verbose)
     search_results = []
     for template, instance in query.subqueries():
@@ -657,11 +674,13 @@ def query_corpus(args):
         sentences = index.search(instance)
         log(f"   {index} = {'-'.join(instance)} --> {len(sentences)}", args.verbose, start=t0)
         search_results.append((index, instance, sentences))
+
     log("Sorting:", args.verbose)
     t0 = time.time()
     search_results.sort(key=lambda r: len(r[-1]))
     # search_results.sort(key=lambda r: -len(r[-1]))
     log("   " + " ".join(str(index) for index, _, _ in search_results), args.verbose, start=t0)
+
     log("Intersecting:", args.verbose)
     result = None
     for index, instance, sentences in search_results:
@@ -671,6 +690,18 @@ def query_corpus(args):
         else:
             result.intersection_update(sentences)
         log(f"   {index} = {'-'.join(instance)} : {len(sentences)} --> {result}", args.verbose, start=t0)
+
+    log("Final filter:", args.verbose)
+    t0 = time.time()
+    features = query.features()
+    corpus = Corpus(args.corpus, features)
+    all_sentences = list(corpus.sentences())
+    log(f"   read corpus, {len(all_sentences)} sentences", args.verbose, start=t0)
+
+    t0 = time.time()
+    result.filter(lambda sent: query.check_sentence(all_sentences[sent-1]))
+    log(f"   {query} --> {result}", args.verbose, start=t0)
+
     log("", args.verbose)
     log(f"Result: {result}", args.verbose, start=starttime)
     print(result)
