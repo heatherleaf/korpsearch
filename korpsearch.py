@@ -87,6 +87,7 @@ class ShelfIndex:
                         index[key] = set()
                     index[key].add(n)
         log(f" -> created {len(index)} keys in internal dict", self._verbose, start=t0)
+        t0 = time.time()
         self._index.clear()
         for m in index:
             self._index[m] = index[m]
@@ -178,7 +179,7 @@ class SplitIndex:
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
 
         # Count sentences and instances
-        t0 = time.time()
+        start_time = t0 = time.time()
         nr_sentences = 0
         nr_lines = 0
         with open(unsorted_tmpfile, 'w') as TMP:
@@ -254,9 +255,9 @@ class SplitIndex:
             self._sets.seek(set_start)
             self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
             self._sets.seek(0, os.SEEK_END)
-        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose)
+        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
         sizes = [f.tell()/1024/1024 for f in (self._index, self._sets)]
-        log(f" -> created .index ({sizes[0]:.1f} mb), .sets ({sizes[1]:.1f} mb)", self._verbose, start=t0)
+        log(f" -> created .index ({sizes[0]:.1f} mb), .sets ({sizes[1]:.1f} mb)", self._verbose, start=start_time)
 
         # Cleanup
         if not keep_tmpfiles:
@@ -412,7 +413,7 @@ class InstanceIndex:
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
 
         # Count sentences and instances
-        t0 = time.time()
+        start_time = t0 = time.time()
         nr_sentences = 0
         nr_lines = 0
         with open(unsorted_tmpfile, 'w') as TMP:
@@ -492,9 +493,9 @@ class InstanceIndex:
             self._sets.seek(set_start)
             self._sets.write(set_size.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
             self._sets.seek(0, os.SEEK_END)
-        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose)
+        log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
         sizes = [f.tell()/1024/1024 for f in (self._keys, self._index, self._sets)]
-        log(f" -> created .keys ({sizes[0]:.1f} mb), .index ({sizes[1]:.1f} mb), .sets ({sizes[2]:.1f} mb)", self._verbose, start=t0)
+        log(f" -> created .keys ({sizes[0]:.1f} mb), .index ({sizes[1]:.1f} mb), .sets ({sizes[2]:.1f} mb)", self._verbose, start=start_time)
 
         if not keep_tmpfiles:
             unsorted_tmpfile.unlink()
