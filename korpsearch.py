@@ -527,7 +527,7 @@ class IndexSet:
         return iset
 
     def __len__(self):
-        if self.values:
+        if self.values is not None:
             return len(self.values)
         return self.size
 
@@ -538,7 +538,7 @@ class IndexSet:
         return f"{{{', '.join(str(n) for n in itertools.islice(self, MAX))}, ... (N={len(self)})}}"
 
     def __iter__(self):
-        if self.values:
+        if self.values is not None:
             yield from self.values
         else:
             self._setsfile.seek(self.start * self._elemsize)
@@ -553,12 +553,12 @@ class IndexSet:
         if len(other) > len(self) * self._min_size_difference:
             # O(self * log(other))
             self.values = {elem for elem in self if elem in other}
-        elif self.values:
-            # O(self + other)
-            self.values.intersection_update(set(other))
         else:
             # O(self + other)
-            self.values = set(self) & set(other)
+            try:
+                self.values.intersection_update(set(other))
+            except AttributeError:
+                self.values = set(self) & set(other)
         if not self.values:
             raise ValueError("Empty intersection")
         self.start = self.size = self._setsfile = None
