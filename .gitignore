@@ -130,4 +130,5 @@ dmypy.json
 
 # More files to ignore
 private
+*.csv.index
 *.indexes.*/
