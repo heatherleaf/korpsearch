@@ -810,7 +810,8 @@ pgroup = parser.add_mutually_exclusive_group(required=True)
 pgroup.add_argument('query', nargs='?', help='the query')
 pgroup.add_argument('--build-index', action='store_true', help='build the indexes')
 parser.add_argument('--features', '-f', nargs='*', help='features')
-parser.add_argument('--max-dist', default=2, help='max distance between token pairs')
+parser.add_argument('--max-dist', type=int, default=2, 
+                    help='max distance between token pairs (default: 2)')
 parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
 
 if __name__ == '__main__':
