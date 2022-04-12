@@ -693,13 +693,8 @@ def query_corpus(args):
 
     log("Final filter:", args.verbose)
     t0 = time.time()
-    features = query.features()
-    corpus = Corpus(args.corpus, features)
-    all_sentences = list(corpus.sentences())
-    log(f"   read corpus, {len(all_sentences)} sentences", args.verbose, start=t0)
-
-    t0 = time.time()
-    result.filter(lambda sent: query.check_sentence(all_sentences[sent-1]))
+    corpus = Corpus(args.corpus)
+    result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
     log(f"   {query} --> {result}", args.verbose, start=t0)
 
     log("", args.verbose)
