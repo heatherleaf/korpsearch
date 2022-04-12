@@ -717,9 +717,10 @@ def build_indexes(args):
     basedir = args.corpus.with_suffix(index_class.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
-    corpus = Corpus(args.corpus, args.features)
+    corpus = Corpus(args.corpus, mode='w', verbose=args.verbose)
     t0 = time.time()
-    ctr = 0
+    corpus.build_index()
+    ctr = 1
     for template in yield_templates(args.features, args.max_dist):
         index_class(args.corpus, template, mode='w', verbose=args.verbose).build_index(corpus)
         ctr += 1
