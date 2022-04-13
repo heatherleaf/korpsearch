@@ -589,6 +589,79 @@ class IndexSet:
 
 
 ################################################################################
+## Corpus
+
+class Corpus:
+    def __init__(self, corpus, mode='r', verbose=False):
+        basefile = Path(corpus)
+        self._corpus = open(basefile.with_suffix('.csv'))
+        self._index = open(basefile.with_suffix('.csv.index'), mode + 'b')
+        self._verbose = verbose
+        self.reset()
+
+    def close(self):
+        self._corpus.close()
+        self._index.close()
+        self._corpus = self._index = None
+
+    def __str__(self):
+        return f"[Corpus: {self._corpus.stem}]"
+
+    def reset(self):
+        self._corpus.seek(0)
+        # the first line in the CSV should be a header with the names of each column (=features)
+        self._features = self._corpus.readline().split()
+
+    def sentences(self):
+        self.reset()
+        while True:
+            _pos, sentence = self._get_next_sentence()
+            if sentence is None:
+                return
+            yield sentence
+
+    def _get_next_sentence(self):
+        features = self._features
+        corpus = self._corpus
+        line = None
+        while not line or line.startswith("# sentence"):
+            startpos = corpus.tell()
+            line = corpus.readline()
+            if not line:
+                return None, None
+            line = line.strip()
+        sentence = []
+        while line and not line.startswith("# sentence"):
+            token = dict(zip(features, line.split('\t')))
+            sentence.append(token)
+            line = corpus.readline().strip()
+        return startpos, sentence
+
+    _pointer_size = 4  # bytes per integer used in the index
+
+    def lookup_sentence(self, n):
+        self._index.seek(n * self._pointer_size)
+        csv_pos = int.from_bytes(self._index.read(self._pointer_size), byteorder=ENDIANNESS)
+        self._corpus.seek(csv_pos)
+        _pos, sentence = self._get_next_sentence()
+        return sentence
+
+    def build_index(self):
+        t0 = time.time()
+        self.reset()
+        self._index.write((0).to_bytes(self._pointer_size, byteorder=ENDIANNESS))  # number sentences from 1
+        ctr = 0
+        while True:
+            pos, sentence = self._get_next_sentence()
+            if sentence is None:
+                break
+            self._index.write(pos.to_bytes(self._pointer_size, byteorder=ENDIANNESS))
+            ctr += 1
+        log(f"Built corpus index, {ctr} sentences", self._verbose, start=t0)
+        log("", self._verbose)
+
+
+################################################################################
 ## Algorithms
 
 ALGORITHMS = {
@@ -705,7 +778,7 @@ def query_corpus(args):
 
 
 ################################################################################
-## Main
+## Building indexes
 
 def build_indexes(args):
     index_class = ALGORITHMS[args.algorithm]
@@ -722,76 +795,6 @@ def build_indexes(args):
     log(f"Created {ctr} indexes", args.verbose, start=t0)
 
 
-class Corpus:
-    def __init__(self, corpus, mode='r', verbose=False):
-        basefile = Path(corpus)
-        self._corpus = open(basefile.with_suffix('.csv'))
-        self._index = open(basefile.with_suffix('.csv.index'), mode + 'b')
-        self._verbose = verbose
-        self.reset()
-
-    def close(self):
-        self._corpus.close()
-        self._index.close()
-        self._corpus = self._index = None
-
-    def __str__(self):
-        return f"[Corpus: {self._corpus.stem}]"
-
-    def reset(self):
-        self._corpus.seek(0)
-        # the first line in the CSV should be a header with the names of each column (=features)
-        self._features = self._corpus.readline().split()
-
-    def sentences(self):
-        self.reset()
-        while True:
-            _pos, sentence = self._get_next_sentence()
-            if sentence is None:
-                return
-            yield sentence
-
-    def _get_next_sentence(self):
-        features = self._features
-        corpus = self._corpus
-        line = None
-        while not line or line.startswith("# sentence"):
-            startpos = corpus.tell()
-            line = corpus.readline()
-            if not line:
-                return None, None
-            line = line.strip()
-        sentence = []
-        while line and not line.startswith("# sentence"):
-            token = dict(zip(features, line.split('\t')))
-            sentence.append(token)
-            line = corpus.readline().strip()
-        return startpos, sentence
-
-    _pointer_size = 4  # bytes per integer used in the index
-
-    def lookup_sentence(self, n):
-        self._index.seek(n * self._pointer_size)
-        csv_pos = int.from_bytes(self._index.read(self._pointer_size), byteorder=ENDIANNESS)
-        self._corpus.seek(csv_pos)
-        _pos, sentence = self._get_next_sentence()
-        return sentence
-
-    def build_index(self):
-        t0 = time.time()
-        self.reset()
-        self._index.write((0).to_bytes(self._pointer_size, byteorder=ENDIANNESS))  # number sentences from 1
-        ctr = 0
-        while True:
-            pos, sentence = self._get_next_sentence()
-            if sentence is None:
-                break
-            self._index.write(pos.to_bytes(self._pointer_size, byteorder=ENDIANNESS))
-            ctr += 1
-        log(f"Built corpus index, {ctr} sentences", self._verbose, start=t0)
-        log("", self._verbose)
-
-
 def yield_templates(features, max_dist):
     for feat in features:
         templ = [(feat, 0)]
@@ -801,6 +804,9 @@ def yield_templates(features, max_dist):
                 templ = [(feat, 0), (feat1, dist)]
                 yield templ
 
+
+################################################################################
+## Main
 
 parser = argparse.ArgumentParser(description='Test things')
 parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='binsearch', 
