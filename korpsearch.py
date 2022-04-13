@@ -64,11 +64,9 @@ class ShelfIndex:
     def _instance_key(self, instance):
         return ' '.join(instance)
 
-    def _template_key(self, sentence, k):
-        try:
-            return self._instance_key(sentence[k+i][feat] for (feat, i) in self.template)
-        except IndexError:
-            return None
+    def _yield_instances(self, sentence):
+        for k in range(len(sentence) - len(self.template)):
+            yield [sentence[k+i][feat] for (feat, i) in self.template]
 
     def search(self, instance):
         key = self._instance_key(instance)
@@ -80,12 +78,11 @@ class ShelfIndex:
         t0 = time.time()
         index = {}
         for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
-            for i in range(len(sentence)):
-                key = self._template_key(sentence, i)
-                if key:
-                    if key not in index:
-                        index[key] = set()
-                    index[key].add(n)
+            for instance in self._yield_instances(sentence):
+                key = self._instance_key(instance)
+                if key not in index:
+                    index[key] = set()
+                index[key].add(n)
         log(f" -> created {len(index)} keys in internal dict", self._verbose, start=t0)
         t0 = time.time()
         self._index.clear()
