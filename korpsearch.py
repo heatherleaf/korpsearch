@@ -140,11 +140,8 @@ class SplitIndex:
         return h % self._dimensions['max_key_size']
 
     def _yield_instances(self, sentence):
-        for k in range(len(sentence)):
-            try:
-                yield [sentence[k+i][feat] for (feat, i) in self.template]
-            except IndexError:
-                pass
+        for k in range(len(sentence) - len(self.template)):
+            yield [sentence[k+i][feat] for (feat, i) in self.template]
 
     def search(self, instance):
         key = self._instance_key(instance)
@@ -361,11 +358,8 @@ class InstanceIndex:
         return instance if isinstance(instance, str) else ' '.join(instance)
 
     def _yield_instances(self, sentence):
-        for k in range(len(sentence)):
-            try:
-                yield self._instance_str(sentence[k+i][feat] for (feat, i) in self.template)
-            except IndexError:
-                pass
+        for k in range(len(sentence) - len(self.template)):
+            yield [sentence[k+i][feat] for (feat, i) in self.template]
 
     def search(self, instance):
         set_start = self._lookup_instance(instance)
