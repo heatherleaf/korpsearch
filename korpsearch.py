@@ -37,7 +37,7 @@ class BaseIndex:
         return "-".join(f"{feat}{k}" for (feat, k) in self.template)
 
     def _basefile(self):
-        return self.basedir / self.__str__()
+        return self.basedir / str(self)
 
     def _instance_str(self, instance):
         return instance if isinstance(instance, str) else ' '.join(instance)
@@ -62,19 +62,22 @@ class ShelfIndex(BaseIndex):
 
     def __init__(self, corpus_name, template, mode='r', verbose=False):
         super().__init__(corpus_name, template, mode, verbose)
-        ifile = str(self._basefile())
-        if mode == 'r' and not self._basefile().is_file():
+        ifile = self._db_file()
+        if mode == 'r' and not ifile.is_file():
             raise FileNotFoundError(f"No such database file: '{ifile}'")
         if ifile in ShelfIndex._open_shelves:
             self._index = ShelfIndex._open_shelves[ifile]
         else:
-            self._index = shelve.open(ifile)
+            self._index = shelve.open(str(ifile))
             if mode == 'r' and len(self._index) == 0:
                 raise FileNotFoundError(f"No such database file: '{ifile}'")
             ShelfIndex._open_shelves[ifile] = self._index
 
+    def _db_file(self):
+        return self._basefile().with_suffix('.db')
+
     def close(self):
-        ifile = self._basefile()
+        ifile = self._db_file()
         if ifile in ShelfIndex._open_shelves:
             del ShelfIndex._open_shelves[ifile]
             self._index.close()
@@ -103,7 +106,7 @@ class ShelfIndex(BaseIndex):
         for m in index:
             self._index[m] = index[m]
         self.close()
-        size = self._basefile().stat().st_size / 1024 / 1024
+        size = self._db_file().stat().st_size / 1024 / 1024
         log(f" -> created shelve db ({size:.1f} mb)", self._verbose, start=t0)
         log("", self._verbose)
 
