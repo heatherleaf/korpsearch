@@ -22,9 +22,38 @@ def log(output, verbose, start=None):
 
 
 ################################################################################
+## BaseIndex (abstract class)
+
+class BaseIndex:
+    dir_suffix = NotImplemented
+
+    def __init__(self, corpus_name, template, mode='r', verbose=False):
+        assert mode in "rw"
+        self.basedir = corpus_name.with_suffix(self.dir_suffix)
+        self.template = template
+        self._verbose = verbose
+
+    def __str__(self):
+        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
+
+    def _basefile(self):
+        return self.basedir / self.__str__()
+
+    def _instance_str(self, instance):
+        return instance if isinstance(instance, str) else ' '.join(instance)
+
+    def _yield_instances(self, sentence):
+        for k in range(len(sentence) - len(self.template)):
+            yield [sentence[k+i][feat] for (feat, i) in self.template]
+
+    def build_index(self, corpus, **unused_kwargs):
+        raise NotImplementedError()
+
+
+################################################################################
 ## Shelf index
 
-class ShelfIndex:
+class ShelfIndex(BaseIndex):
     dir_suffix = '.indexes.shelve'
 
     # class variable to keep track of open shelves
@@ -32,11 +61,9 @@ class ShelfIndex:
     _open_shelves = {}
 
     def __init__(self, corpus_name, template, mode='r', verbose=False):
-        self.basedir = corpus_name.with_suffix(self.dir_suffix)
-        self.template = template
-        self._verbose = verbose
-        ifile = str(self._indexfile())
-        if mode == 'r' and not self._indexfile().is_file():
+        super().__init__(corpus_name, template, mode, verbose)
+        ifile = str(self._basefile())
+        if mode == 'r' and not self._basefile().is_file():
             raise FileNotFoundError(f"No such database file: '{ifile}'")
         if ifile in ShelfIndex._open_shelves:
             self._index = ShelfIndex._open_shelves[ifile]
@@ -47,7 +74,7 @@ class ShelfIndex:
             ShelfIndex._open_shelves[ifile] = self._index
 
     def close(self):
-        ifile = self._indexfile()
+        ifile = self._basefile()
         if ifile in ShelfIndex._open_shelves:
             del ShelfIndex._open_shelves[ifile]
             self._index.close()
@@ -55,31 +82,18 @@ class ShelfIndex:
     def __len__(self):
         return len(self._index)
 
-    def __str__(self):
-        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
-
-    def _indexfile(self):
-        return self.basedir / self.__str__()
-
-    def _instance_key(self, instance):
-        return ' '.join(instance)
-
-    def _yield_instances(self, sentence):
-        for k in range(len(sentence) - len(self.template)):
-            yield [sentence[k+i][feat] for (feat, i) in self.template]
-
     def search(self, instance):
-        key = self._instance_key(instance)
+        key = self._instance_str(instance)
         result = self._index[key]
         return IndexSet.from_set(result)
 
-    def build_index(self, corpus):
+    def build_index(self, corpus, **unused_kwargs):
         log(f"Building index for {self}", self._verbose)
         t0 = time.time()
         index = {}
         for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
             for instance in self._yield_instances(sentence):
-                key = self._instance_key(instance)
+                key = self._instance_str(instance)
                 if key not in index:
                     index[key] = set()
                 index[key].add(n)
@@ -89,7 +103,7 @@ class ShelfIndex:
         for m in index:
             self._index[m] = index[m]
         self.close()
-        size = self._indexfile().stat().st_size / 1024 / 1024
+        size = self._basefile().stat().st_size / 1024 / 1024
         log(f" -> created shelve db ({size:.1f} mb)", self._verbose, start=t0)
         log("", self._verbose)
 
@@ -100,12 +114,9 @@ class ShelfIndex:
 
 ENDIANNESS = 'little'
 
-class SplitIndex:
+class SplitIndex(BaseIndex):
     def __init__(self, corpus_name, template, mode='r', verbose=False):
-        assert mode in "rw"
-        self.basedir = corpus_name.with_suffix(self.dir_suffix)
-        self.template = template
-        self._verbose = verbose
+        super().__init__(corpus_name, template, mode, verbose)
         basefile = self._basefile()
         self._index = open(basefile.with_suffix('.index'), mode + 'b')
         self._sets = open(basefile.with_suffix('.sets'), mode + 'b')
@@ -126,22 +137,12 @@ class SplitIndex:
     def __len__(self):
         return self._dimensions['index_size']
 
-    def __str__(self):
-        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
-
-    def _basefile(self):
-        return self.basedir / self.__str__()
-
     def _instance_key(self, instance):
         h = 5381  # 5381 is from djb2:https://stackoverflow.com/questions/10696223/reason-for-the-number-5381-in-the-djb-hash-function
         for term in instance:
             for c in term:
                 h = h * 65587 + ord(c)  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
         return h % self._dimensions['max_key_size']
-
-    def _yield_instances(self, sentence):
-        for k in range(len(sentence) - len(self.template)):
-            yield [sentence[k+i][feat] for (feat, i) in self.template]
 
     def search(self, instance):
         key = self._instance_key(instance)
@@ -167,7 +168,7 @@ class SplitIndex:
     def _write_key_to_indexfile(self, current, key):
         raise NotImplementedError()
 
-    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
+    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False, **unused_kwargs):
         log(f"Building index for {self}", self._verbose)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
@@ -322,14 +323,11 @@ class HashIndex(SplitIndex):
 ################################################################################
 ## Binary search index, using instances as keys
 
-class InstanceIndex:
+class InstanceIndex(BaseIndex):
     dir_suffix = '.indexes.instances'
 
-    def __init__(self, corpus, template, mode='r', verbose=False):
-        assert mode in "rw"
-        self.corpus = Path(corpus)
-        self.template = template
-        self._verbose = verbose
+    def __init__(self, corpus_name, template, mode='r', verbose=False):
+        super().__init__(corpus_name, template, mode, verbose)
         basefile = self._basefile()
         self._keys = open(basefile.with_suffix('.keys'), mode + 'b')
         self._index = open(basefile.with_suffix('.index'), mode + 'b')
@@ -347,19 +345,6 @@ class InstanceIndex:
     def __len__(self):
         self._keys.seek(0, os.SEEK_END)
         return self._keys.tell() // self._dimensions['keyptr']
-
-    def __str__(self):
-        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
-
-    def _basefile(self):
-        return self.corpus.with_suffix(self.dir_suffix) / self.__str__()
-
-    def _instance_str(self, instance):
-        return instance if isinstance(instance, str) else ' '.join(instance)
-
-    def _yield_instances(self, sentence):
-        for k in range(len(sentence) - len(self.template)):
-            yield [sentence[k+i][feat] for (feat, i) in self.template]
 
     def search(self, instance):
         set_start = self._lookup_instance(instance)
@@ -398,7 +383,7 @@ class InstanceIndex:
         wc_output = subprocess.run(['wc', '-l', file], capture_output=True).stdout
         return int(wc_output.split()[0])
 
-    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False):
+    def build_index(self, corpus, keep_tmpfiles=False, **unused_kwargs):
         log(f"Building index for {self}", self._verbose)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
@@ -411,7 +396,7 @@ class InstanceIndex:
             for sentence in corpus.sentences():
                 nr_sentences += 1
                 for instance in self._yield_instances(sentence):
-                    print(instance, file=TMP)
+                    print(self._instance_str(instance), file=TMP)
                     nr_lines += 1
         log(f" -> created unsorted instances file, {nr_lines} lines, {nr_sentences} sentences", self._verbose, start=t0)
         t0 = time.time()
@@ -428,7 +413,7 @@ class InstanceIndex:
             width = math.ceil(math.log(nr_sentences + 1, 10)) + 1
             for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
                 for instance in self._yield_instances(sentence):
-                    print(f"{instance}\t{n:0{width}d}", file=TMP)
+                    print(f"{self._instance_str(instance)}\t{n:0{width}d}", file=TMP)
                     nr_lines += 1
         log(f" -> created unsorted key-sentence file, {nr_lines} lines", self._verbose, start=t0)
         t0 = time.time()
