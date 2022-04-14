@@ -749,6 +749,13 @@ def query_corpus(args):
     result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
     log(f"   {query} --> {result}", args.verbose, start=t0)
 
+    if args.out:
+        t0 = time.time()
+        with open(args.out, "w") as OUT:
+            for sent in sorted(result):
+                print(sent, corpus.lookup_sentence(sent), file=OUT)
+        log(f"{len(result)} sentences written to {args.out}", args.verbose, start=t0)
+
     log("", args.verbose)
     log(f"Result: {result}", args.verbose, start=starttime)
     print(result)
@@ -793,6 +800,7 @@ parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='bins
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 pgroup = parser.add_mutually_exclusive_group(required=True)
 pgroup.add_argument('query', nargs='?', help='the query')
+parser.add_argument('--out', type=Path, help='file to output the result (one sentence per line)')
 pgroup.add_argument('--build-index', action='store_true', help='build the indexes')
 parser.add_argument('--features', '-f', nargs='*', help='features')
 parser.add_argument('--max-dist', type=int, default=2, 
