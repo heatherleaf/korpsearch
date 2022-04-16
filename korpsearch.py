@@ -747,11 +747,12 @@ def query_corpus(args):
             result.intersection_update(sentences)
         log(f"   {index} = {'-'.join(instance)} : {len(sentences)} --> {result}", args.verbose, start=t0)
 
-    log("Final filter:", args.verbose)
-    t0 = time.time()
-    corpus = Corpus(args.corpus)
-    result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
-    log(f"   {query} --> {result}", args.verbose, start=t0)
+    if args.filter:
+        log("Final filter:", args.verbose)
+        t0 = time.time()
+        corpus = Corpus(args.corpus)
+        result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
+        log(f"   {query} --> {result}", args.verbose, start=t0)
 
     if args.out:
         t0 = time.time()
@@ -804,6 +805,7 @@ parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='bins
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 pgroup = parser.add_mutually_exclusive_group(required=True)
 pgroup.add_argument('query', nargs='?', help='the query')
+parser.add_argument('--filter', action='store_true', help='filter the final results (might take time)')
 parser.add_argument('--out', type=Path, help='file to output the result (one sentence per line)')
 pgroup.add_argument('--build-index', action='store_true', help='build the indexes')
 parser.add_argument('--features', '-f', nargs='*', help='features')
