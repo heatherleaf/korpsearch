@@ -430,7 +430,8 @@ class InstanceIndex(BaseIndex):
         # Calculate dimensions
         self._dimensions = {}
         self._dimensions['elemptr'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
-        self._dimensions['setptr'] = self._min_bytes_to_store_values(nr_inst_sent_pairs)
+        setfile_size = nr_inst_sent_pairs + nr_instances * (1 + self._dimensions['elemptr'])
+        self._dimensions['setptr'] = self._min_bytes_to_store_values(setfile_size)
         indexfile_size = size_of_all_instances + nr_instances * (1 + self._dimensions['setptr'])
         self._dimensions['keyptr'] = self._min_bytes_to_store_values(indexfile_size)
         with open(self._basefile().with_suffix('.dim'), 'w') as DIM:
