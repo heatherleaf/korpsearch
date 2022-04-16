@@ -43,8 +43,11 @@ class BaseIndex:
         return instance if isinstance(instance, str) else ' '.join(instance)
 
     def _yield_instances(self, sentence):
-        for k in range(len(sentence) - len(self.template)):
-            yield [sentence[k+i][feat] for (feat, i) in self.template]
+        try:
+            for k in range(len(sentence)):
+                yield [sentence[k+i][feat] for (feat, i) in self.template]
+        except IndexError:
+            pass
 
     def build_index(self, corpus, **unused_kwargs):
         raise NotImplementedError()
