@@ -10,6 +10,7 @@ import shelve
 import subprocess
 import itertools
 from pathlib import Path
+import mmap
 
 
 def log(output, verbose, start=None):
@@ -174,7 +175,7 @@ class SplitIndex(BaseIndex):
     def _write_key_to_indexfile(self, current, key):
         raise NotImplementedError()
 
-    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False, **unused_kwargs):
+    def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False, use_mmap=True, **unused_kwargs):
         log(f"Building index for {self}", self._verbose)
         unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
         sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
@@ -198,7 +199,11 @@ class SplitIndex(BaseIndex):
 
         # Calculate dimensions
         self._dimensions = {}
-        self._dimensions['elem_bytes'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
+
+        if use_mmap:
+            self._dimensions['elem_bytes'] = 4
+        else:
+            self._dimensions['elem_bytes'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
         self._dimensions['key_bytes'] = self._min_bytes_to_store_values(nr_instances)
         self._dimensions['max_key_size'] = self._get_max_key_size(nr_instances, load_factor)
 
@@ -494,6 +499,11 @@ class IndexSet:
     def __init__(self, setsfile, elemsize, start):
         self._setsfile = setsfile
         self._elemsize = elemsize
+        if self._elemsize == 4:
+            setsbytes = mmap.mmap(setsfile.fileno(), 0, prot=mmap.PROT_READ)
+            self._setsarray = memoryview(setsbytes).cast('i')
+        else:
+            self._setsarray = None
         self.start = start
         if start is None:
             self.size = 0
@@ -523,6 +533,8 @@ class IndexSet:
     def __iter__(self):
         if self.values is not None:
             yield from self.values
+        elif self._setsarray is not None:
+            yield from self._setsarray[self.start:self.start+self.size]
         else:
             self._setsfile.seek(self.start * self._elemsize)
             for _ in range(self.size):
