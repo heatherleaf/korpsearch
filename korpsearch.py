@@ -545,15 +545,34 @@ class IndexSet:
     _min_size_difference = 100
 
     def intersection_update(self, other):
+        # We assume that self is smaller than other!
         if len(other) > len(self) * self._min_size_difference:
             # O(self * log(other))
-            self.values = {elem for elem in self if elem in other}
+            self.values = [elem for elem in self if elem in other]
+        elif isinstance(self.values, set):
+            # O(self + other)
+            self.values.intersection_update(other)
         else:
             # O(self + other)
-            try:
-                self.values.intersection_update(set(other))
-            except AttributeError:
-                self.values = set(self) & set(other)
+            # The result can be a set or a list
+            # (sets seem to be slightly faster, but lists are easier to reimplement in C)
+            result = set()  # []
+            _add_result = result.add  # result.append
+            selfiter, otheriter = iter(sorted(self)), iter(other)
+            selfval, otherval = next(selfiter), next(otheriter)
+            while True:
+                try:
+                    if selfval == otherval:
+                        _add_result(selfval)
+                        selfval = next(selfiter)
+                        otherval = next(otheriter)
+                    elif selfval < otherval:
+                        selfval = next(selfiter)
+                    else: # selfval > otherval
+                        otherval = next(otheriter)
+                except StopIteration:
+                    break
+            self.values = result
         if not self.values:
             raise ValueError("Empty intersection")
         self.start = self.size = self._setsfile = None
@@ -563,13 +582,17 @@ class IndexSet:
         self.start = self.size = self._setsfile = None
 
     def __contains__(self, elem):
-        if self.values:
+        if self.values is None:
+            _lookup = self._lookup_in_file
+        elif isinstance(self.values, (list, tuple)):
+            _lookup = self.values.__getitem__
+        else: # self.values is a set
             return elem in self.values
-        start = self.start
+        start = self.start or 0
         end = start + self.size - 1
         while start <= end:
             mid = (start + end) // 2
-            elem0 = self._lookup(mid)
+            elem0 = _lookup(mid)
             if elem0 == elem:
                 return True
             elif elem0 < elem:
@@ -578,7 +601,7 @@ class IndexSet:
                 end = mid - 1
         return False
 
-    def _lookup(self, n):
+    def _lookup_in_file(self, n):
         self._setsfile.seek(n * self._elemsize)
         return int.from_bytes(self._setsfile.read(self._elemsize), byteorder=ENDIANNESS)
 
