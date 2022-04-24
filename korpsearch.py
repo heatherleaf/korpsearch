@@ -589,7 +589,7 @@ class IndexSet:
 class Corpus:
     def __init__(self, corpus, mode='r', verbose=False):
         basefile = Path(corpus)
-        self._corpus = open(basefile.with_suffix('.csv'))
+        self._corpus = open(basefile.with_suffix('.csv'), 'rb')
         self._index = open(basefile.with_suffix('.csv.index'), mode + 'b')
         self._verbose = verbose
         self.reset()
@@ -605,7 +605,7 @@ class Corpus:
     def reset(self):
         self._corpus.seek(0)
         # the first line in the CSV should be a header with the names of each column (=features)
-        self._features = self._corpus.readline().split()
+        self._features = self._corpus.readline().decode('utf-8').split()
 
     def sentences(self):
         self.reset()
@@ -624,12 +624,12 @@ class Corpus:
             line = corpus.readline()
             if not line:
                 return None, None
-            line = line.strip()
+            line = line.decode('utf-8').strip()
         sentence = []
         while line and not line.startswith("# sentence"):
             token = dict(zip(features, line.split('\t')))
             sentence.append(token)
-            line = corpus.readline().strip()
+            line = corpus.readline().decode('utf-8').strip()
         return startpos, sentence
 
     _pointer_size = 4  # bytes per integer used in the index
