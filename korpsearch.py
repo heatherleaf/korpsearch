@@ -28,8 +28,8 @@ def log(output, verbose, start=None):
 
 ENDIANNESS = 'little'
 
-class DiskArray:
-    _typecodes = {1: 'b', 2: 'h', 4: 'i', 8: 'q'}
+class DiskIntArray:
+    _typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
     for n, c in _typecodes.items(): assert array(c).itemsize == n
 
     _headersize = 8
@@ -94,22 +94,23 @@ class DiskArray:
             values = list(values)
             maxvalue = max(values)
 
-        elemsize = DiskArray._min_bytes_to_store_values(maxvalue)
+        elemsize = DiskIntArray._min_bytes_to_store_values(maxvalue)
         if use_mmap:
             if elemsize == 3: elemsize = 4
             if elemsize > 4 and elemsize <= 8: elemsize = 8
             if elemsize > 8:
-                raise RuntimeError('DiskArray: use_mmap=True not supported with elemsize > 8')
+                raise RuntimeError('DiskIntArray: use_mmap=True not supported with elemsize > 8')
 
         with path.open('wb') as file:
-            file.write(elemsize.to_bytes(DiskArray._headersize, byteorder=ENDIANNESS))
+            file.write(elemsize.to_bytes(DiskIntArray._headersize, byteorder=ENDIANNESS))
             for value in values:
                 file.write(value.to_bytes(elemsize, byteorder=ENDIANNESS))
+
+        return DiskIntArray(path)
 
     @staticmethod
     def _min_bytes_to_store_values(max_value):
         return math.ceil(math.log(max_value + 1, 2) / 8)
-
 
 ################################################################################
 ## String interning
@@ -117,11 +118,14 @@ class DiskArray:
 class StringDatabase:
     def __init__(self, path):
         path = Path(path)
-        stringsfile = open(path.with_suffix('.strings'), 'rb')
+        stringsfile = open(path, 'rb')
         self._strings = mmap.mmap(stringsfile.fileno(), 0, prot=mmap.PROT_READ)
-        self._starts = DiskArray(path.with_suffix('.strings.starts'))
-        self._lengths = DiskArray(path.with_suffix('.strings.lengths'))
+        self._starts = DiskIntArray(path.with_suffix(path.suffix + '.starts'))
+        self._lengths = DiskIntArray(path.with_suffix(path.suffix + '.lengths'))
         self._intern = None
+
+    def __len__(self):
+        return len(self._starts)
 
     def unintern(self, index):
         start = self._starts[index]
@@ -131,14 +135,14 @@ class StringDatabase:
     def fast_intern(self, string):
         if self._intern is None:
             self._intern = {}
-            for i in range(len(self._starts)):
+            for i in range(len(self)):
                 self._intern[self.unintern(i)] = i
 
         return self._intern[string]
 
     def intern(self, string):
         lo = 0
-        hi = len(self._starts)-1
+        hi = len(self)-1
         while lo <= hi:
             mid = (lo+hi)//2
             here = self.unintern(mid)
@@ -151,26 +155,80 @@ class StringDatabase:
         assert False, "string not found in database"
 
     @staticmethod
-    def build_database(path, strings):
+    def build(path, strings):
         stringset = set()
-        stringset.add(b"")
         for i, word in enumerate(strings):
             stringset.add(word)
 
         stringlist = list(stringset)
         stringlist.sort()
 
-        stringsfile = open(path.with_suffix('.strings'), 'wb')
-        for string in stringlist: stringsfile.write(string)
-        size = stringsfile.tell()
+        with open(path.with_suffix('.strings'), 'wb') as stringsfile:
+            for string in stringlist: stringsfile.write(string)
+            size = stringsfile.tell()
 
-        DiskArray.build(path.with_suffix('.strings.starts'),
-            itertools.accumulate((len(s) for s in stringlist), initial=0),
+        DiskIntArray.build(path.with_suffix('.strings.starts'),
+            itertools.accumulate((len(s) for s in stringlist[:-1]), initial=0),
             maxvalue = size),
 
-        DiskArray.build(path.with_suffix('.strings.lengths'),
+        DiskIntArray.build(path.with_suffix('.strings.lengths'),
             (len(s) for s in stringlist),
             maxvalue = size)
+
+        return StringDatabase(path)
+
+################################################################################
+## On-disk arrays of interned strings
+
+class DiskStringArray:
+    def __init__(self, path):
+        path = Path(path)
+        self._array = DiskIntArray(path)
+        self._strings = StringDatabase(path.with_suffix(path.suffix + '.strings'))
+
+    def raw(self):
+        return self._array
+
+    def fast_intern(self, x):
+        return self._strings.fast_intern(x)
+
+    def intern(self, x):
+        return self._strings.intern(x)
+
+    def unintern(self, x):
+        return self._strings.unintern(x)
+
+    def __len__(self):
+        return len(self._array)
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            for str in self._array[i]:
+                yield self._strings.unintern(str)
+
+        if not isinstance(i, int):
+            raise TypeError("invalid array index type")
+
+        return self._strings.unintern[self._array[i]]
+
+    def __iter__(self):
+        yield from self[:]
+
+    @staticmethod
+    def build(path, values, strings=None, use_mmap=False):
+        if strings is None:
+            values = strings = list(values)
+
+        strings_path = path.with_suffix(path.suffix + '.strings')
+
+        StringDatabase.build(strings_path, strings)
+        db = StringDatabase(strings_path)
+        DiskIntArray.build(path,
+            (db.fast_intern(str) for str in values),
+            maxvalue = len(db)-1,
+            use_mmap = use_mmap)
+
+        return DiskStringArray(path)
 
 ################################################################################
 ## BaseIndex (abstract class)
@@ -756,6 +814,86 @@ class IndexSet:
 
 ################################################################################
 ## Corpus
+
+class CorpusReader:
+    def __init__(self, corpus, verbose=False):
+        basefile = Path(corpus)
+        self._path = basefile
+        self._corpus = open(basefile.with_suffix('.csv'), 'rb')
+        self._verbose = verbose
+        self.reset()
+
+    def close(self):
+        self._corpus.close()
+        self._corpus = None
+
+    def __str__(self):
+        return f"[CorpusReader: {self._corpus.stem}]"
+
+    def reset(self):
+        self._corpus.seek(0)
+        # the first line in the CSV should be a header with the names of each column (=features)
+        self._features = self._corpus.readline().decode('utf-8').split()
+
+    def features(self):
+        return self._features
+
+    def strings(self):
+        result = [set() for _feature in self._features]
+        for _new_sentence, features in self._words():
+            for i, feature in enumerate(features):
+                result[i].add(feature)
+
+        return {self._features[i]: x for i, x in enumerate(result)}
+
+    def _words(self):
+        self.reset()
+
+        corpus = self._corpus
+        feature_count = len(self._features)
+        new_sentence = True
+
+        while True:
+            line = corpus.readline()
+            if not line: return
+
+            line = line.strip()
+            if line.startswith(b"# sentence"):
+                new_sentence = True
+            else:
+                features = line.split(b'\t')
+                while len(features) < feature_count:
+                    features.append(b'')
+                yield new_sentence, features
+                new_sentence = False
+
+    def _sentence_positions(self):
+        ctr = 0
+        for new_sentence, _features in self._words():
+            if new_sentence: yield ctr
+            ctr += 1
+
+    def build_index(self):
+        t0 = time.time()
+        strings = self.strings()
+        log(f"Collected strings for {len(strings)} features", self._verbose, start=t0)
+
+        for i, feature in enumerate(self._features):
+            t0 = time.time()
+            path = self._path.with_suffix(self._path.suffix + '.features.' + feature)
+            array = DiskStringArray.build(path,
+                (line[i] for _new_sentence, line in self._words()),
+                strings[feature])
+            count = len(array)
+            log(f"Built compact corpus for feature {feature}, {count} words", self._verbose, start=t0)
+
+        t0 = time.time()
+        array = DiskIntArray.build(path,
+            self._sentence_positions(),
+            maxvalue = count-1,
+            use_mmap = True)
+        log(f"Built sentence index, {len(array)} sentences", self._verbose, start=t0)
+        log("", self._verbose)
 
 class Corpus:
     def __init__(self, corpus, mode='r', verbose=False):
