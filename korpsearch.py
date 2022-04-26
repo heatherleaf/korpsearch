@@ -11,6 +11,7 @@ import subprocess
 import itertools
 from pathlib import Path
 import mmap
+import array
 
 
 def log(output, verbose, start=None):
@@ -21,6 +22,76 @@ def log(output, verbose, start=None):
         else:
             print(output)
 
+################################################################################
+## String interning
+
+class StringDatabase:
+    def __init__(self, path):
+        path = Path(path)
+        stringsfile = open(path.with_suffix('.strings'), 'rb')
+        startsfile = open(path.with_suffix('.strings.starts'), 'rb')
+        lengthsfile = open(path.with_suffix('.strings.lengths'), 'rb')
+
+        self._strings = mmap.mmap(stringsfile.fileno(), 0, prot=mmap.PROT_READ)
+        startsbytes = mmap.mmap(startsfile.fileno(), 0, prot=mmap.PROT_READ)
+        lengthsbytes = mmap.mmap(lengthsfile.fileno(), 0, prot=mmap.PROT_READ)
+
+        self._starts = memoryview(startsbytes).cast('i')
+        self._lengths = memoryview(lengthsbytes).cast('i')
+        self._intern = None
+
+    def unintern(self, index):
+        start = self._starts[index]
+        length = self._lengths[index]
+        return self._strings[start:start+length]
+
+    def fast_intern(self, string):
+        if self._intern is None:
+            self._intern = {}
+            for i in range(len(self._starts)):
+                self._intern[self.unintern(i)] = i
+
+        return self._intern[string]
+
+    def intern(self, string):
+        lo = 0
+        hi = len(self._starts)-1
+        while lo <= hi:
+            mid = (lo+hi)//2
+            here = self.unintern(mid)
+            if string < here:
+                hi = mid-1
+            elif string > here:
+                lo = mid+1
+            else:
+                return mid
+        assert False, "string not found in database"
+
+    @staticmethod
+    def build_database(path, strings):
+        stringset = set()
+        stringset.add(b"")
+        for i, word in enumerate(strings):
+            stringset.add(word)
+
+        stringlist = list(stringset)
+        stringlist.sort()
+
+        starts = array.array('i')
+        lengths = array.array('i')
+        pos = 0
+        for string in stringlist:
+            starts.append(pos)
+            lengths.append(len(string))
+            pos += len(string)
+
+        stringsfile = open(path.with_suffix('.strings'), 'wb')
+        startsfile = open(path.with_suffix('.strings.starts'), 'wb')
+        lengthsfile = open(path.with_suffix('.strings.lengths'), 'wb')
+
+        for string in stringlist: stringsfile.write(string)
+        starts.tofile(startsfile)
+        lengths.tofile(lengthsfile)
 
 ################################################################################
 ## BaseIndex (abstract class)
@@ -663,6 +734,13 @@ class Corpus:
         self._corpus.seek(csv_pos)
         _pos, sentence = self._get_next_sentence()
         return sentence
+
+    def strings(self):
+        self.reset()
+        for line in self._corpus:
+            if line.startswith(b"# sentence"): continue
+            for word in line.strip().split(b'\t'):
+                yield word
 
     def build_index(self):
         t0 = time.time()
