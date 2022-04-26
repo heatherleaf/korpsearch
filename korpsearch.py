@@ -739,10 +739,13 @@ class Query:
 
     @staticmethod
     def is_subquery(subtemplate, subinstance, template, instance):
-        subquery = [(feat, val) for ((feat, _), val) in zip(subtemplate, subinstance)]
-        query = [(feat, val) for ((feat, _), val) in zip(template, instance)]
-        if len(subquery) > 1: return False
-        return subquery[0] in query
+        positions = sorted({pos for _, pos in template})
+        query = {(feat, pos, val) for ((feat, pos), val) in zip(template, instance)}
+        for base in positions:
+            subquery = {(feat, base+pos, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
+            if subquery.issubset(query):
+                return True
+        return False
 
 
 def query_corpus(args):
