@@ -11,7 +11,8 @@ import subprocess
 import itertools
 from pathlib import Path
 import mmap
-import array
+from array import array
+import itertools
 
 
 def log(output, verbose, start=None):
@@ -23,21 +24,85 @@ def log(output, verbose, start=None):
             print(output)
 
 ################################################################################
+## On-disk arrays of numbers
+
+ENDIANNESS = 'little'
+
+class DiskArray:
+    _typecodes = {1: 'b', 2: 'h', 4: 'i', 8: 'q'}
+    for n, c in _typecodes.items(): assert array(c).itemsize == n
+
+    _headersize = 8
+
+    def __init__(self, path):
+        path = Path(path)
+        self._file = open(path, 'rb')
+        self._elemsize = int.from_bytes(self._file.read(self._headersize), byteorder=ENDIANNESS)
+
+        self._file.seek(0, os.SEEK_END)
+        self._length = (self._file.tell() - self._headersize) // self._elemsize
+
+        if self._elemsize in self._typecodes:
+            bytes = mmap.mmap(self._file.fileno(), 0, prot=mmap.PROT_READ)
+            self._array = memoryview(bytes).cast(self._typecodes[self._elemsize])
+            self._headercount = self._headersize // self._elemsize
+        else:
+            self._array = None
+
+    def __len__(self):
+        return self._length
+
+    def __getitem__(self, i):
+        if i < 0 or i >= len(self):
+            raise IndexError("array index out of range")
+
+        if self._array is None:
+            self._file.seek(self._headersize + i * self._elemsize)
+            return int.from_bytes(self._file.read(self._elemsize), byteorder=ENDIANNESS)
+        else:
+            return self._array[self._headercount + i]
+
+    def __iter__(self):
+        if self._array is None:
+            self._array.seek(self._headersize)
+            for _ in range(self._length):
+                yield int.from_bytes(self._array.read(self._elemsize), byteorder=ENDIANNESS)
+        else:
+            yield from self._array[self._headercount:]
+
+    @staticmethod
+    def build(path, values, maxvalue=None, use_mmap=False):
+        if maxvalue is None:
+            values = list(values)
+            maxvalue = max(values)
+
+        elemsize = DiskArray._min_bytes_to_store_values(maxvalue)
+        if use_mmap:
+            if elemsize == 3: elemsize = 4
+            if elemsize > 4 and elemsize <= 8: elemsize = 8
+            if elemsize > 8:
+                raise RuntimeError('DiskArray: use_mmap=True not supported with elemsize > 8')
+
+        with path.open('wb') as file:
+            file.write(elemsize.to_bytes(DiskArray._headersize, byteorder=ENDIANNESS))
+            for value in values:
+                file.write(value.to_bytes(elemsize, byteorder=ENDIANNESS))
+
+    @staticmethod
+    def _min_bytes_to_store_values(max_value):
+        return math.ceil(math.log(max_value + 1, 2) / 8)
+
+
+################################################################################
 ## String interning
 
 class StringDatabase:
     def __init__(self, path):
         path = Path(path)
         stringsfile = open(path.with_suffix('.strings'), 'rb')
-        startsfile = open(path.with_suffix('.strings.starts'), 'rb')
-        lengthsfile = open(path.with_suffix('.strings.lengths'), 'rb')
-
         self._strings = mmap.mmap(stringsfile.fileno(), 0, prot=mmap.PROT_READ)
-        startsbytes = mmap.mmap(startsfile.fileno(), 0, prot=mmap.PROT_READ)
-        lengthsbytes = mmap.mmap(lengthsfile.fileno(), 0, prot=mmap.PROT_READ)
-
-        self._starts = memoryview(startsbytes).cast('i')
-        self._lengths = memoryview(lengthsbytes).cast('i')
+        self._starts = DiskArray(path.with_suffix('.strings.starts'))
+        self._lengths = DiskArray(path.with_suffix('.strings.lengths'))
         self._intern = None
 
     def unintern(self, index):
@@ -77,21 +142,17 @@ class StringDatabase:
         stringlist = list(stringset)
         stringlist.sort()
 
-        starts = array.array('i')
-        lengths = array.array('i')
-        pos = 0
-        for string in stringlist:
-            starts.append(pos)
-            lengths.append(len(string))
-            pos += len(string)
-
         stringsfile = open(path.with_suffix('.strings'), 'wb')
-        startsfile = open(path.with_suffix('.strings.starts'), 'wb')
-        lengthsfile = open(path.with_suffix('.strings.lengths'), 'wb')
-
         for string in stringlist: stringsfile.write(string)
-        starts.tofile(startsfile)
-        lengths.tofile(lengthsfile)
+        size = stringsfile.tell()
+
+        DiskArray.build(path.with_suffix('.strings.starts'),
+            itertools.accumulate((len(s) for s in stringlist), initial=0),
+            maxvalue = size),
+
+        DiskArray.build(path.with_suffix('.strings.lengths'),
+            (len(s) for s in stringlist),
+            maxvalue = size)
 
 ################################################################################
 ## BaseIndex (abstract class)
@@ -189,8 +250,6 @@ class ShelfIndex(BaseIndex):
 ################################################################################
 ## Splitting the index in two files
 ## Note: This is an abstract class!
-
-ENDIANNESS = 'little'
 
 class SplitIndex(BaseIndex):
     def __init__(self, corpus_name, template, mode='r', verbose=False):
