@@ -53,6 +53,12 @@ class DiskArray:
         return self._length
 
     def __getitem__(self, i):
+        if isinstance(i, slice):
+            return self._slice(i)
+
+        if not isinstance(i, int):
+            raise TypeError("invalid array index type")
+
         if i < 0 or i >= len(self):
             raise IndexError("array index out of range")
 
@@ -61,6 +67,18 @@ class DiskArray:
             return int.from_bytes(self._file.read(self._elemsize), byteorder=ENDIANNESS)
         else:
             return self._array[self._headercount + i]
+
+    def _slice(self, slice):
+        start, stop, step = slice.indices(len(self))
+        if step != 1: raise IndexError("only slices with step 1 supported")
+
+        if self._array is None:
+            for i in range(start, stop):
+                yield self[i]
+        else:
+            start += self._headercount
+            stop += self._headercount
+            yield from self._array[start:stop]
 
     def __iter__(self):
         if self._array is None:
