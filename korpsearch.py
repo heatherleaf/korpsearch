@@ -89,27 +89,39 @@ class DiskIntArray:
             yield from self._array[self._headercount:]
 
     @staticmethod
-    def build(path, values, maxvalue=None, use_mmap=False):
-        if maxvalue is None:
+    def build(path, values, max_value = None, use_mmap=False):
+        if max_value is None:
             values = list(values)
-            maxvalue = max(values)
+            max_value = max(values)
 
-        elemsize = DiskIntArray._min_bytes_to_store_values(maxvalue)
-        if use_mmap:
-            if elemsize == 3: elemsize = 4
-            if elemsize > 4 and elemsize <= 8: elemsize = 8
-            if elemsize > 8:
-                raise RuntimeError('DiskIntArray: use_mmap=True not supported with elemsize > 8')
-
-        with path.open('wb') as file:
-            file.write(elemsize.to_bytes(DiskIntArray._headersize, byteorder=ENDIANNESS))
-            for value in values:
-                file.write(value.to_bytes(elemsize, byteorder=ENDIANNESS))
-
+        builder = DiskIntArrayBuilder(path, max_value, use_mmap)
+        for value in values: builder.append(value)
+        builder.close()
         return DiskIntArray(path)
 
-    @staticmethod
-    def _min_bytes_to_store_values(max_value):
+class DiskIntArrayBuilder:
+    def __init__(self, path, max_value, use_mmap=False):
+        self._path = Path(path)
+        self._max_value = max_value
+
+        self._elem_size = self._min_bytes_to_store_values(max_value)
+        if use_mmap:
+            if self._elem_size == 3: self._elem_size = 4
+            if self._elem_size > 4 and self._elem_size <= 8: self._elem_size = 8
+            if self._elem_size > 8:
+                raise RuntimeError('DiskIntArray: use_mmap=True not supported with self._elem_size > 8')
+
+        self._file = open(path, 'wb')
+        self._file.write(self._elem_size.to_bytes(DiskIntArray._headersize, byteorder=ENDIANNESS))
+
+    def append(self, value):
+        self._file.write(value.to_bytes(self._elem_size, byteorder=ENDIANNESS))
+
+    def close(self):
+        self._file.close()
+        self._file = None
+
+    def _min_bytes_to_store_values(self, max_value):
         return math.ceil(math.log(max_value + 1, 2) / 8)
 
 ################################################################################
@@ -169,11 +181,11 @@ class StringDatabase:
 
         DiskIntArray.build(path.with_suffix('.strings.starts'),
             itertools.accumulate((len(s) for s in stringlist[:-1]), initial=0),
-            maxvalue = size),
+            max_value = size),
 
         DiskIntArray.build(path.with_suffix('.strings.lengths'),
             (len(s) for s in stringlist),
-            maxvalue = size)
+            max_value = size)
 
         return StringDatabase(path)
 
@@ -219,16 +231,27 @@ class DiskStringArray:
         if strings is None:
             values = strings = list(values)
 
-        strings_path = path.with_suffix(path.suffix + '.strings')
-
-        StringDatabase.build(strings_path, strings)
-        db = StringDatabase(strings_path)
-        DiskIntArray.build(path,
-            (db.fast_intern(str) for str in values),
-            maxvalue = len(db)-1,
-            use_mmap = use_mmap)
+        builder = DiskStringArrayBuilder(path, strings, use_mmap)
+        for value in values:
+            builder.append(value)
+        builder.close()
 
         return DiskStringArray(path)
+
+class DiskStringArrayBuilder:
+    def __init__(self, path, strings, use_mmap=False):
+        self._path = Path(path)
+        strings_path = path.with_suffix(path.suffix + '.strings')
+        StringDatabase.build(strings_path, strings)
+        self._strings = StringDatabase(strings_path)
+        self._builder = DiskIntArrayBuilder(path, len(self._strings)-1, use_mmap)
+
+    def append(self, value):
+        self._builder.append(self._strings.fast_intern(value))
+
+    def close(self):
+        self._builder.close()
+        self._builder = None
 
 ################################################################################
 ## BaseIndex (abstract class)
@@ -838,14 +861,6 @@ class CorpusReader:
     def features(self):
         return self._features
 
-    def strings(self):
-        result = [set() for _feature in self._features]
-        for _new_sentence, features in self._words():
-            for i, feature in enumerate(features):
-                result[i].add(feature)
-
-        return {self._features[i]: x for i, x in enumerate(result)}
-
     def _words(self):
         self.reset()
 
@@ -867,32 +882,39 @@ class CorpusReader:
                 yield new_sentence, features
                 new_sentence = False
 
-    def _sentence_positions(self):
-        ctr = 0
-        for new_sentence, _features in self._words():
-            if new_sentence: yield ctr
-            ctr += 1
-
     def build_index(self):
         t0 = time.time()
-        strings = self.strings()
-        log(f"Collected strings for {len(strings)} features", self._verbose, start=t0)
-
-        for i, feature in enumerate(self._features):
-            t0 = time.time()
-            path = self._path.with_suffix(self._path.suffix + '.features.' + feature)
-            array = DiskStringArray.build(path,
-                (line[i] for _new_sentence, line in self._words()),
-                strings[feature])
-            count = len(array)
-            log(f"Built compact corpus for feature {feature}, {count} words", self._verbose, start=t0)
+        strings = [set() for _feature in self._features]
+        count = 0
+        for _new_sentence, features in self._words():
+            count += 1
+            for i, feature in enumerate(features):
+                strings[i].add(feature)
+        log(f"Interned {sum(map(len, strings))} strings", self._verbose, start=t0)
 
         t0 = time.time()
-        array = DiskIntArray.build(path,
-            self._sentence_positions(),
-            maxvalue = count-1,
-            use_mmap = True)
-        log(f"Built sentence index, {len(array)} sentences", self._verbose, start=t0)
+        sentences = DiskIntArrayBuilder(self._path.with_suffix('.sentences'),
+            max_value = count-1, use_mmap = True)
+        features = []
+        for i, feature in enumerate(self._features):
+            path = self._path.with_suffix('.corpus.' + feature)
+            builder = DiskStringArrayBuilder(path, strings[i])
+            features.append(builder)
+
+        sentence_count = 0
+        ctr = 0
+        for new_sentence, word in self._words():
+            if new_sentence:
+                sentences.append(ctr)
+                sentence_count += 1
+            for i, feature in enumerate(word):
+                features[i].append(feature)
+            ctr += 1
+
+        sentences.close()
+        for builder in features: builder.close()
+
+        log(f"Built compact corpus, {ctr} words, {sentence_count} sentences", self._verbose, start=t0)
         log("", self._verbose)
 
 class Corpus:
