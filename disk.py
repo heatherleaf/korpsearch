@@ -250,7 +250,7 @@ class DiskStringArray:
 
     def _slice(self, slice):
         for str in self._array[slice]:
-            yield self._strings.unintern(str)
+            yield self._strings.from_index(str)
 
     def __iter__(self):
         yield from self._slice(slice(None))
