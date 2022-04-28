@@ -126,7 +126,7 @@ class StringCollection:
     def unintern(self, index):
         start = self._starts[index]
         length = self._lengths[index]
-        return self._strings[start:start+length].decode('utf-8')
+        return self._strings[start:start+length]
 
     def fast_intern(self, string):
         if self._intern is None:
@@ -154,7 +154,7 @@ class StringCollection:
     def build(path, strings):
         stringset = set()
         for i, word in enumerate(strings):
-            stringset.add(word.encode('utf-8'))
+            stringset.add(word)
 
         stringlist = list(stringset)
         stringlist.sort()

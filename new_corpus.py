@@ -43,9 +43,9 @@ def build_corpus_index(corpusfile, verbose=False):
             if line.startswith(b"# sentence"):
                 new_sentence = True
             else:
-                word = line.decode('utf-8').split('\t')
+                word = line.split(b'\t')
                 while len(word) < len(features):
-                    word.append('')
+                    word.append(b'')
                 yield new_sentence, word
                 new_sentence = False
 
@@ -90,9 +90,10 @@ class Corpus:
         basedir = Path(corpus).with_suffix('.corpus')
         self._path = Path(corpus)
         self._features = json.load(open(basedir / 'features', 'r'))
+        self._features = [f.encode('utf-8') for f in self._features]
         self._sentences = DiskIntArray(basedir / 'sentences')
         self._words = \
-            {feature: DiskStringArray(basedir / ('feature.' + feature))
+            {feature: DiskStringArray(basedir / ('feature.' + feature.decode('utf-8')))
              for feature in self._features}
         
     def __str__(self):

@@ -23,6 +23,42 @@ def log(output, verbose, start=None):
             print(output)
 
 ################################################################################
+## Templates and instances
+
+def _bytesify(s):
+    assert isinstance(s, (bytes, str)), f"Not str or bytes: {s}"
+    return s.encode() if isinstance(s, str) else s
+
+
+class Template:
+    def __init__(self, *feature_positions):
+        self._feature_positions = [(_bytesify(feat), pos) for feat, pos in feature_positions]
+
+    def __bytes__(self):
+        return b'-'.join(feat + str(pos).encode() for feat, pos in self._feature_positions)
+
+    def __str__(self):
+        return '-'.join(feat.decode() + str(pos) for feat, pos in self._feature_positions)
+
+    def __iter__(self):
+        yield from self._feature_positions
+
+
+class Instance:
+    def __init__(self, *values):
+        self._values = [_bytesify(val) for val in values]
+
+    def __bytes__(self):
+        return b' '.join(self._values)
+
+    def __str__(self):
+        return ' '.join(map(bytes.decode, self._values))
+
+    def __iter__(self):
+        yield from self._values
+
+
+################################################################################
 ## BaseIndex (abstract class)
 
 class BaseIndex:
@@ -30,23 +66,22 @@ class BaseIndex:
 
     def __init__(self, corpus_name, template, mode='r', verbose=False):
         assert mode in "rw"
+        assert isinstance(template, Template)
         self.basedir = corpus_name.with_suffix(self.dir_suffix)
         self.template = template
         self._verbose = verbose
 
     def __str__(self):
-        return "-".join(f"{feat}{k}" for (feat, k) in self.template)
+        return self.__class__.__name__ + ':' + str(self.template) 
 
     def _basefile(self):
-        return self.basedir / str(self)
-
-    def _instance_str(self, instance):
-        return instance if isinstance(instance, str) else ' '.join(instance)
+        return self.basedir / str(self.template)
 
     def _yield_instances(self, sentence):
         try:
             for k in range(len(sentence)):
-                yield [sentence[k+i][feat] for (feat, i) in self.template]
+                instance_values = [sentence[k+i][feat] for (feat, i) in self.template]
+                yield Instance(*instance_values)
         except IndexError:
             pass
 
@@ -90,7 +125,7 @@ class ShelfIndex(BaseIndex):
         return len(self._index)
 
     def search(self, instance):
-        key = self._instance_str(instance)
+        key = str(instance)
         result = self._index[key]
         return IndexSet.from_set(result)
 
@@ -100,7 +135,7 @@ class ShelfIndex(BaseIndex):
         index = {}
         for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
             for instance in self._yield_instances(sentence):
-                key = self._instance_str(instance)
+                key = str(instance)
                 if key not in index:
                     index[key] = set()
                 index[key].add(n)
@@ -148,7 +183,7 @@ class SplitIndex(BaseIndex):
         h = 5381  # 5381 is from djb2:https://stackoverflow.com/questions/10696223/reason-for-the-number-5381-in-the-djb-hash-function
         for term in instance:
             for c in term:
-                h = h * 65587 + ord(c)  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
+                h = h * 65587 + c  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
         return h % self._dimensions['max_key_size']
 
     def search(self, instance):
@@ -188,7 +223,7 @@ class SplitIndex(BaseIndex):
             for sentence in corpus.sentences():
                 nr_sentences += 1
                 for instance in self._yield_instances(sentence):
-                    print(" ".join(instance), file=TMP)
+                    print(instance, file=TMP)
                     nr_lines += 1
         log(f" -> created unsorted instances file, {nr_lines} lines, {nr_sentences} sentences", self._verbose, start=t0)
         t0 = time.time()
@@ -362,7 +397,7 @@ class InstanceIndex(BaseIndex):
         return IndexSet(self._sets, self._dimensions['elemptr'], set_start)
 
     def _lookup_instance(self, instance):
-        instance = self._instance_str(instance)
+        instance_bytes = bytes(instance)
         # store in local variables for faster access
         keyptr_size = self._dimensions['keyptr']
         setptr_size = self._dimensions['setptr']
@@ -374,11 +409,11 @@ class InstanceIndex(BaseIndex):
             keyptr = int.from_bytes(self._keys.read(keyptr_size), byteorder=ENDIANNESS)
             self._index.seek(keyptr)
             keylen = int.from_bytes(self._index.read(1), byteorder=ENDIANNESS)
-            instance0 = self._index.read(keylen).decode('utf-8')
-            if instance0 == instance:
+            instance_current = self._index.read(keylen)
+            if instance_current == instance_bytes:
                 set_start = int.from_bytes(self._index.read(setptr_size), byteorder=ENDIANNESS)
                 return set_start
-            elif instance0 < instance:
+            elif instance_current < instance_bytes:
                 start = mid + 1
             else:
                 end = mid - 1
@@ -407,7 +442,7 @@ class InstanceIndex(BaseIndex):
             for sentence in corpus.sentences():
                 nr_sentences += 1
                 for instance in self._yield_instances(sentence):
-                    print(self._instance_str(instance), file=TMP)
+                    print(instance, file=TMP)
                     nr_lines += 1
         log(f" -> created unsorted instances file, {nr_lines} lines, {nr_sentences} sentences", self._verbose, start=t0)
         t0 = time.time()
@@ -424,7 +459,7 @@ class InstanceIndex(BaseIndex):
             width = math.ceil(math.log(nr_sentences + 1, 10)) + 1
             for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
                 for instance in self._yield_instances(sentence):
-                    print(f"{self._instance_str(instance)}\t{n:0{width}d}", file=TMP)
+                    print(f"{instance}\t{n:0{width}d}", file=TMP)
                     nr_lines += 1
         log(f" -> created unsorted key-sentence file, {nr_lines} lines", self._verbose, start=t0)
         t0 = time.time()
@@ -446,33 +481,32 @@ class InstanceIndex(BaseIndex):
         # Build keys file, index file and sets file
         t0 = time.time()
         nr_keys = nr_elements = 0
-        with open(sorted_tmpfile) as IN:
-            current = set_start = set_size = None
+        with open(sorted_tmpfile, 'rb') as IN:
+            instance_current = set_start = set_size = None
             # Dummy sentence to account for null pointers:
             self._sets.write((0).to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
             nr_elements += 1
             for line in IN:
-                instance, sent = line.split('\t')
+                instance_bytes, sent = line.split(b'\t')
                 sent = int(sent)
-                if current != instance:
+                if instance_current != instance_bytes:
                     if set_start is not None:
                         assert set_size
                         # Now the set is full, and we can write the size of the set at its beginning
                         self._sets.seek(set_start)
                         self._sets.write(set_size.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
                         self._sets.seek(0, os.SEEK_END)
-                    key = instance.encode('utf-8')
-                    assert len(key) <= 255, f"Too long instance: {instance}"
+                    assert len(instance_bytes) <= 255, f"Too long instance: {instance_bytes}"
                     keyptr = self._index.tell()
                     self._keys.write(keyptr.to_bytes(self._dimensions['keyptr'], byteorder=ENDIANNESS))
-                    self._index.write(len(key).to_bytes(1, byteorder=ENDIANNESS))
-                    self._index.write(key)
+                    self._index.write(len(instance_bytes).to_bytes(1, byteorder=ENDIANNESS))
+                    self._index.write(instance_bytes)
                     self._index.write(nr_elements.to_bytes(self._dimensions['setptr'], byteorder=ENDIANNESS))
                     # Add a placeholder for the size of the set
                     set_start, set_size = self._sets.tell(), 0
                     self._sets.write(set_size.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
                     nr_elements += 1
-                    current = instance
+                    instance_current = instance_bytes
                     nr_keys += 1
                 self._sets.write(sent.to_bytes(self._dimensions['elemptr'], byteorder=ENDIANNESS))
                 set_size += 1
@@ -628,7 +662,7 @@ class Corpus:
     def reset(self):
         self._corpus.seek(0)
         # the first line in the CSV should be a header with the names of each column (=features)
-        self._features = self._corpus.readline().decode('utf-8').split()
+        self._features = self._corpus.readline().split()
 
     def sentences(self):
         self.reset()
@@ -642,17 +676,17 @@ class Corpus:
         features = self._features
         corpus = self._corpus
         line = None
-        while not line or line.startswith("# sentence"):
+        while not line or line.startswith(b"# sentence"):
             startpos = corpus.tell()
             line = corpus.readline()
             if not line:
                 return None, None
-            line = line.strip().decode('utf-8')
+            line = line.strip()
         sentence = []
-        while line and not line.startswith("# sentence"):
-            token = dict(zip(features, line.split('\t')))
+        while line and not line.startswith(b"# sentence"):
+            token = dict(zip(features, line.split(b'\t')))
             sentence.append(token)
-            line = corpus.readline().strip().decode('utf-8')
+            line = corpus.readline().strip()
         return startpos, sentence
 
     _pointer_size = 4  # bytes per integer used in the index
@@ -694,25 +728,27 @@ ALGORITHMS = {
 ################################################################################
 ## Queries
 
-QUEREGEX = re.compile(rf'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
+QUEREGEX = re.compile(rb'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 
 class Query:
     def __init__(self, querystr):
-        querystr = querystr.replace(' ', '')
+        querystr = _bytesify(querystr)
+        querystr = querystr.replace(b' ', b'')
         if not QUEREGEX.match(querystr):
             raise ValueError(f"Error in query: {querystr}")
-        tokens = querystr.split('][')
+        tokens = querystr.split(b'][')
         self.query = []
         for tok in tokens:
             self.query.append([])
-            parts = re.findall(r'\w+="[^"]+"', tok)
+            parts = re.findall(rb'\w+="[^"]+"', tok)
             for part in parts:
-                feat, value = part.split('=', 1)
-                value = value.replace('"', '')
+                feat, value = part.split(b'=', 1)
+                value = value.replace(b'"', b'')
                 self.query[-1].append((feat, value))
 
     def __str__(self):
-        return " ".join("[" + " ".join(f'{feat}="{val}"' for feat, val in subq) + "]" for subq in self.query)
+        return " ".join("[" + " ".join(f'{feat.decode()}="{val.decode()}"' for feat, val in subq) + "]" 
+                        for subq in self.query)
 
     def subqueries(self):
         # Pairs of tokens
@@ -720,12 +756,12 @@ class Query:
             for feat, value in tok:
                 for dist in range(1, len(self.query)-i):
                     for feat1, value1 in self.query[i+dist]:
-                        templ = [(feat,0), (feat1,dist)]
-                        yield (templ, [value, value1])
+                        templ = Template((feat, 0), (feat1, dist))
+                        yield (templ, Instance(value, value1))
         # Single tokens: yield subqueries after more complex queries!
         for tok in self.query:
             for feat, value in tok:
-                yield ([(feat,0)], [value])
+                yield (Template((feat, 0)), Instance(value))
 
     def features(self):
         return {feat for tok in self.query for feat, _val in tok}
@@ -741,10 +777,13 @@ class Query:
 
     @staticmethod
     def is_subquery(subtemplate, subinstance, template, instance):
-        subquery = [(feat, val) for ((feat, _), val) in zip(subtemplate, subinstance)]
-        query = [(feat, val) for ((feat, _), val) in zip(template, instance)]
-        if len(subquery) > 1: return False
-        return subquery[0] in query
+        positions = sorted({pos for _, pos in template})
+        query = {(feat, pos, val) for ((feat, pos), val) in zip(template, instance)}
+        for base in positions:
+            subquery = {(feat, base+pos, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
+            if subquery.issubset(query):
+                return True
+        return False
 
 
 def query_corpus(args):
@@ -765,7 +804,7 @@ def query_corpus(args):
             continue
         t0 = time.time()
         sentences = index.search(instance)
-        log(f"   {index} = {'-'.join(instance)} --> {len(sentences)}", args.verbose, start=t0)
+        log(f"   {index} = {instance} --> {len(sentences)}", args.verbose, start=t0)
         search_results.append((index, instance, sentences))
 
     log("Sorting:", args.verbose)
@@ -782,7 +821,7 @@ def query_corpus(args):
             result = sentences
         else:
             result.intersection_update(sentences)
-        log(f"   {index} = {'-'.join(instance)} : {len(sentences)} --> {result}", args.verbose, start=t0)
+        log(f"   {index} = {instance} : {len(sentences)} --> {result}", args.verbose, start=t0)
 
     if args.filter:
         log("Final filter:", args.verbose)
@@ -826,12 +865,10 @@ def build_indexes(args):
 
 def yield_templates(features, max_dist):
     for feat in features:
-        templ = [(feat, 0)]
-        yield templ
+        yield Template((feat, 0))
         for feat1 in features:
             for dist in range(1, max_dist+1):
-                templ = [(feat, 0), (feat1, dist)]
-                yield templ
+                yield Template((feat, 0), (feat1, dist))
 
 
 ################################################################################
