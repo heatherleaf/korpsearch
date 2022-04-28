@@ -1,4 +1,3 @@
-
 import os
 import time
 import math
@@ -12,7 +11,7 @@ import itertools
 from pathlib import Path
 import mmap
 from array import array
-import itertools
+from disk import *
 
 
 def log(output, verbose, start=None):
@@ -22,236 +21,6 @@ def log(output, verbose, start=None):
             print(output.ljust(100), f"{duration//60:4.0f}:{duration%60:05.2f}")
         else:
             print(output)
-
-################################################################################
-## On-disk arrays of numbers
-
-ENDIANNESS = 'little'
-
-class DiskIntArray:
-    _typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
-    for n, c in _typecodes.items(): assert array(c).itemsize == n
-
-    _headersize = 8
-
-    def __init__(self, path):
-        path = Path(path)
-        self._file = open(path, 'rb')
-        self._elemsize = int.from_bytes(self._file.read(self._headersize), byteorder=ENDIANNESS)
-
-        self._file.seek(0, os.SEEK_END)
-        self._length = (self._file.tell() - self._headersize) // self._elemsize
-
-        if self._elemsize in self._typecodes:
-            bytes = mmap.mmap(self._file.fileno(), 0, prot=mmap.PROT_READ)
-            self._array = memoryview(bytes).cast(self._typecodes[self._elemsize])
-            self._headercount = self._headersize // self._elemsize
-        else:
-            self._array = None
-
-    def __len__(self):
-        return self._length
-
-    def __getitem__(self, i):
-        if isinstance(i, slice):
-            return self._slice(i)
-
-        if not isinstance(i, int):
-            raise TypeError("invalid array index type")
-
-        if i < 0 or i >= len(self):
-            raise IndexError("array index out of range")
-
-        if self._array is None:
-            self._file.seek(self._headersize + i * self._elemsize)
-            return int.from_bytes(self._file.read(self._elemsize), byteorder=ENDIANNESS)
-        else:
-            return self._array[self._headercount + i]
-
-    def _slice(self, slice):
-        start, stop, step = slice.indices(len(self))
-        if step != 1: raise IndexError("only slices with step 1 supported")
-
-        if self._array is None:
-            for i in range(start, stop):
-                yield self[i]
-        else:
-            start += self._headercount
-            stop += self._headercount
-            yield from self._array[start:stop]
-
-    def __iter__(self):
-        if self._array is None:
-            self._array.seek(self._headersize)
-            for _ in range(self._length):
-                yield int.from_bytes(self._array.read(self._elemsize), byteorder=ENDIANNESS)
-        else:
-            yield from self._array[self._headercount:]
-
-    @staticmethod
-    def build(path, values, max_value = None, use_mmap=False):
-        if max_value is None:
-            values = list(values)
-            max_value = max(values)
-
-        builder = DiskIntArrayBuilder(path, max_value, use_mmap)
-        for value in values: builder.append(value)
-        builder.close()
-        return DiskIntArray(path)
-
-class DiskIntArrayBuilder:
-    def __init__(self, path, max_value, use_mmap=False):
-        self._path = Path(path)
-        self._max_value = max_value
-
-        self._elem_size = self._min_bytes_to_store_values(max_value)
-        if use_mmap:
-            if self._elem_size == 3: self._elem_size = 4
-            if self._elem_size > 4 and self._elem_size <= 8: self._elem_size = 8
-            if self._elem_size > 8:
-                raise RuntimeError('DiskIntArray: use_mmap=True not supported with self._elem_size > 8')
-
-        self._file = open(path, 'wb')
-        self._file.write(self._elem_size.to_bytes(DiskIntArray._headersize, byteorder=ENDIANNESS))
-
-    def append(self, value):
-        self._file.write(value.to_bytes(self._elem_size, byteorder=ENDIANNESS))
-
-    def close(self):
-        self._file.close()
-        self._file = None
-
-    def _min_bytes_to_store_values(self, max_value):
-        return math.ceil(math.log(max_value + 1, 2) / 8)
-
-################################################################################
-## String interning
-
-class StringDatabase:
-    def __init__(self, path):
-        path = Path(path)
-        stringsfile = open(path, 'rb')
-        self._strings = mmap.mmap(stringsfile.fileno(), 0, prot=mmap.PROT_READ)
-        self._starts = DiskIntArray(path.with_suffix(path.suffix + '.starts'))
-        self._lengths = DiskIntArray(path.with_suffix(path.suffix + '.lengths'))
-        self._intern = None
-
-    def __len__(self):
-        return len(self._starts)
-
-    def unintern(self, index):
-        start = self._starts[index]
-        length = self._lengths[index]
-        return self._strings[start:start+length]
-
-    def fast_intern(self, string):
-        if self._intern is None:
-            self._intern = {}
-            for i in range(len(self)):
-                self._intern[self.unintern(i)] = i
-
-        return self._intern[string]
-
-    def intern(self, string):
-        lo = 0
-        hi = len(self)-1
-        while lo <= hi:
-            mid = (lo+hi)//2
-            here = self.unintern(mid)
-            if string < here:
-                hi = mid-1
-            elif string > here:
-                lo = mid+1
-            else:
-                return mid
-        assert False, "string not found in database"
-
-    @staticmethod
-    def build(path, strings):
-        stringset = set()
-        for i, word in enumerate(strings):
-            stringset.add(word)
-
-        stringlist = list(stringset)
-        stringlist.sort()
-
-        with open(path.with_suffix('.strings'), 'wb') as stringsfile:
-            for string in stringlist: stringsfile.write(string)
-            size = stringsfile.tell()
-
-        DiskIntArray.build(path.with_suffix('.strings.starts'),
-            itertools.accumulate((len(s) for s in stringlist[:-1]), initial=0),
-            max_value = size),
-
-        DiskIntArray.build(path.with_suffix('.strings.lengths'),
-            (len(s) for s in stringlist),
-            max_value = size)
-
-        return StringDatabase(path)
-
-################################################################################
-## On-disk arrays of interned strings
-
-class DiskStringArray:
-    def __init__(self, path):
-        path = Path(path)
-        self._array = DiskIntArray(path)
-        self._strings = StringDatabase(path.with_suffix(path.suffix + '.strings'))
-
-    def raw(self):
-        return self._array
-
-    def fast_intern(self, x):
-        return self._strings.fast_intern(x)
-
-    def intern(self, x):
-        return self._strings.intern(x)
-
-    def unintern(self, x):
-        return self._strings.unintern(x)
-
-    def __len__(self):
-        return len(self._array)
-
-    def __getitem__(self, i):
-        if isinstance(i, slice):
-            for str in self._array[i]:
-                yield self._strings.unintern(str)
-
-        if not isinstance(i, int):
-            raise TypeError("invalid array index type")
-
-        return self._strings.unintern[self._array[i]]
-
-    def __iter__(self):
-        yield from self[:]
-
-    @staticmethod
-    def build(path, values, strings=None, use_mmap=False):
-        if strings is None:
-            values = strings = list(values)
-
-        builder = DiskStringArrayBuilder(path, strings, use_mmap)
-        for value in values:
-            builder.append(value)
-        builder.close()
-
-        return DiskStringArray(path)
-
-class DiskStringArrayBuilder:
-    def __init__(self, path, strings, use_mmap=False):
-        self._path = Path(path)
-        strings_path = path.with_suffix(path.suffix + '.strings')
-        StringDatabase.build(strings_path, strings)
-        self._strings = StringDatabase(strings_path)
-        self._builder = DiskIntArrayBuilder(path, len(self._strings)-1, use_mmap)
-
-    def append(self, value):
-        self._builder.append(self._strings.fast_intern(value))
-
-    def close(self):
-        self._builder.close()
-        self._builder = None
 
 ################################################################################
 ## BaseIndex (abstract class)
@@ -349,6 +118,8 @@ class ShelfIndex(BaseIndex):
 ################################################################################
 ## Splitting the index in two files
 ## Note: This is an abstract class!
+
+ENDIANNESS = 'little'
 
 class SplitIndex(BaseIndex):
     def __init__(self, corpus_name, template, mode='r', verbose=False):
@@ -838,85 +609,6 @@ class IndexSet:
 ################################################################################
 ## Corpus
 
-class CorpusReader:
-    def __init__(self, corpus, verbose=False):
-        basefile = Path(corpus)
-        self._path = basefile
-        self._corpus = open(basefile.with_suffix('.csv'), 'rb')
-        self._verbose = verbose
-        self.reset()
-
-    def close(self):
-        self._corpus.close()
-        self._corpus = None
-
-    def __str__(self):
-        return f"[CorpusReader: {self._corpus.stem}]"
-
-    def reset(self):
-        self._corpus.seek(0)
-        # the first line in the CSV should be a header with the names of each column (=features)
-        self._features = self._corpus.readline().decode('utf-8').split()
-
-    def features(self):
-        return self._features
-
-    def _words(self):
-        self.reset()
-
-        corpus = self._corpus
-        feature_count = len(self._features)
-        new_sentence = True
-
-        while True:
-            line = corpus.readline()
-            if not line: return
-
-            line = line.strip()
-            if line.startswith(b"# sentence"):
-                new_sentence = True
-            else:
-                features = line.split(b'\t')
-                while len(features) < feature_count:
-                    features.append(b'')
-                yield new_sentence, features
-                new_sentence = False
-
-    def build_index(self):
-        t0 = time.time()
-        strings = [set() for _feature in self._features]
-        count = 0
-        for _new_sentence, features in self._words():
-            count += 1
-            for i, feature in enumerate(features):
-                strings[i].add(feature)
-        log(f"Interned {sum(map(len, strings))} strings", self._verbose, start=t0)
-
-        t0 = time.time()
-        sentences = DiskIntArrayBuilder(self._path.with_suffix('.sentences'),
-            max_value = count-1, use_mmap = True)
-        features = []
-        for i, feature in enumerate(self._features):
-            path = self._path.with_suffix('.corpus.' + feature)
-            builder = DiskStringArrayBuilder(path, strings[i])
-            features.append(builder)
-
-        sentence_count = 0
-        ctr = 0
-        for new_sentence, word in self._words():
-            if new_sentence:
-                sentences.append(ctr)
-                sentence_count += 1
-            for i, feature in enumerate(word):
-                features[i].append(feature)
-            ctr += 1
-
-        sentences.close()
-        for builder in features: builder.close()
-
-        log(f"Built compact corpus, {ctr} words, {sentence_count} sentences", self._verbose, start=t0)
-        log("", self._verbose)
-
 class Corpus:
     def __init__(self, corpus, mode='r', verbose=False):
         basefile = Path(corpus)
@@ -955,12 +647,12 @@ class Corpus:
             line = corpus.readline()
             if not line:
                 return None, None
-            line = line.decode('utf-8').strip()
+            line = line.strip().decode('utf-8')
         sentence = []
         while line and not line.startswith("# sentence"):
             token = dict(zip(features, line.split('\t')))
             sentence.append(token)
-            line = corpus.readline().decode('utf-8').strip()
+            line = corpus.readline().strip().decode('utf-8')
         return startpos, sentence
 
     _pointer_size = 4  # bytes per integer used in the index
@@ -971,13 +663,6 @@ class Corpus:
         self._corpus.seek(csv_pos)
         _pos, sentence = self._get_next_sentence()
         return sentence
-
-    def strings(self):
-        self.reset()
-        for line in self._corpus:
-            if line.startswith(b"# sentence"): continue
-            for word in line.strip().split(b'\t'):
-                yield word
 
     def build_index(self):
         t0 = time.time()
@@ -993,6 +678,8 @@ class Corpus:
         log(f"Built corpus index, {ctr} sentences", self._verbose, start=t0)
         log("", self._verbose)
 
+def build_corpus_index(corpusfile, verbose=False):
+    Corpus(corpusfile, 'w', verbose).build_index()
 
 ################################################################################
 ## Algorithms
@@ -1106,6 +793,7 @@ def query_corpus(args):
 
     if args.out:
         t0 = time.time()
+        corpus = Corpus(args.corpus)
         with open(args.out, "w") as OUT:
             for sent in sorted(result):
                 print(sent, corpus.lookup_sentence(sent), file=OUT)
@@ -1126,9 +814,9 @@ def build_indexes(args):
     basedir = args.corpus.with_suffix(index_class.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
-    corpus = Corpus(args.corpus, mode='w', verbose=args.verbose)
     t0 = time.time()
-    corpus.build_index()
+    build_corpus_index(args.corpus, verbose=args.verbose)
+    corpus = Corpus(args.corpus)
     ctr = 1
     for template in yield_templates(args.features, args.max_dist):
         index_class(args.corpus, template, mode='w', verbose=args.verbose).build_index(corpus)
@@ -1152,6 +840,7 @@ def yield_templates(features, max_dist):
 parser = argparse.ArgumentParser(description='Test things')
 parser.add_argument('--algorithm', '-a', choices=list(ALGORITHMS), default='binsearch', 
                     help='which lookup algorithm/data structure to use')
+parser.add_argument('--new-corpus', action='store_true', help='use the new corpus format')
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 pgroup = parser.add_mutually_exclusive_group(required=True)
 pgroup.add_argument('query', nargs='?', help='the query')
@@ -1165,6 +854,10 @@ parser.add_argument('--verbose', '-v', action='store_true', help='verbose output
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    if args.new_corpus:
+        # Replace the default Corpus class
+        from new_corpus import Corpus, build_corpus_index
+
     if args.build_index:
         if not args.features:
             parser.error("You must specify some --features")
