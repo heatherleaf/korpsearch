@@ -194,16 +194,16 @@ class InternedString:
         return f"InternedString({self})"
 
     def __eq__(self, other):
-        if isinstance(other, InternedString) and this._db == other._db:
-            return this.index == other.index
+        if isinstance(other, InternedString) and self._db == other._db:
+            return self.index == other.index
         elif isinstance(other, bytes) or isinstance(other, InternedString):
             return bytes(self) == bytes(other)
         else:
             return False
 
     def __lt__(self, other):
-        if isinstance(other, InternedString) and this._db == other._db:
-            return this.index < other.index
+        if isinstance(other, InternedString) and self._db == other._db:
+            return self.index < other.index
         elif isinstance(other, bytes) or isinstance(other, InternedString):
             return bytes(self) < bytes(other)
         else:

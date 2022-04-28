@@ -45,13 +45,16 @@ class Template:
 
 class Instance:
     def __init__(self, *values):
-        self._values = [_bytesify(val) for val in values]
+        self._values = values
 
     def __bytes__(self):
-        return b' '.join(self._values)
+        return b' '.join(map(_bytesify, self._values))
 
     def __str__(self):
-        return ' '.join(map(bytes.decode, self._values))
+        return bytes.decode(bytes(self))
+
+    def __repr__(self):
+        return repr(self._values)
 
     def __iter__(self):
         yield from self._values
@@ -181,8 +184,11 @@ class SplitIndex(BaseIndex):
     def _instance_key(self, instance):
         h = 5381  # 5381 is from djb2:https://stackoverflow.com/questions/10696223/reason-for-the-number-5381-in-the-djb-hash-function
         for term in instance:
-            for c in term:
-                h = h * 65587 + c  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
+            if isinstance(term, InternedString):
+                h = h * 65587 + term.index
+            else:
+                for c in term:
+                    h = h * 65587 + c  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
         return h % self._dimensions['max_key_size']
 
     def search(self, instance):
