@@ -243,8 +243,7 @@ class DiskStringArray:
         return self._strings.from_index(self._array[i])
 
     def _slice(self, slice):
-        for str in self._array[slice]:
-            yield self._strings.from_index(str)
+        return map(self._strings.from_index, self._array[slice])
 
     def __iter__(self):
         yield from self._slice(slice(None))
