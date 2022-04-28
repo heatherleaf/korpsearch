@@ -6,6 +6,7 @@ from pathlib import Path
 import mmap
 from array import array
 import itertools
+from dataclasses import dataclass
 
 ################################################################################
 ## On-disk arrays of numbers
@@ -123,31 +124,29 @@ class StringCollection:
     def __len__(self):
         return len(self._starts)
 
-    def unintern(self, index):
-        start = self._starts[index]
-        length = self._lengths[index]
-        return self._strings[start:start+length]
+    def from_index(self, index):
+        return InternedString(self, index)
 
     def fast_intern(self, string):
         if self._intern is None:
             self._intern = {}
             for i in range(len(self)):
-                self._intern[self.unintern(i)] = i
+                self._intern[bytes(self.from_index(i))] = i
 
-        return self._intern[string]
+        return self.from_index(self._intern[string])
 
     def intern(self, string):
         lo = 0
         hi = len(self)-1
         while lo <= hi:
             mid = (lo+hi)//2
-            here = self.unintern(mid)
+            here = bytes(self.from_index(mid))
             if string < here:
                 hi = mid-1
             elif string > here:
                 lo = mid+1
             else:
-                return mid
+                return self.from_index(mid)
         assert False, "string not found in database"
 
     @staticmethod
@@ -175,6 +174,19 @@ class StringCollection:
 
         return StringCollection(path)
 
+@dataclass
+class InternedString:
+    db: StringCollection
+    index: int
+
+    def __bytes__(self):
+        start = self.db._starts[self.index]
+        length = self.db._lengths[self.index]
+        return self.db._strings[start:start+length]
+
+    def __str__(self):
+        return str(bytes(self))
+
 ################################################################################
 ## On-disk arrays of interned strings
 
@@ -193,9 +205,6 @@ class DiskStringArray:
     def intern(self, x):
         return self._strings.intern(x)
 
-    def unintern(self, x):
-        return self._strings.unintern(x)
-
     def __len__(self):
         return len(self._array)
 
@@ -206,7 +215,7 @@ class DiskStringArray:
         if not isinstance(i, int):
             raise TypeError("invalid array index type")
 
-        return self._strings.unintern(self._array[i])
+        return self._strings.from_index(self._array[i])
 
     def _slice(self, slice):
         for str in self._array[slice]:
@@ -236,7 +245,7 @@ class DiskStringArrayBuilder:
         self._builder = DiskIntArrayBuilder(path, len(self._strings)-1, use_mmap)
 
     def append(self, value):
-        self._builder.append(self._strings.fast_intern(value))
+        self._builder.append(self._strings.fast_intern(value).index)
 
     def close(self):
         self._builder.close()

@@ -26,8 +26,7 @@ def log(output, verbose, start=None):
 ## Templates and instances
 
 def _bytesify(s):
-    assert isinstance(s, (bytes, str)), f"Not str or bytes: {s}"
-    return s.encode() if isinstance(s, str) else s
+    return s.encode() if isinstance(s, str) else bytes(s)
 
 
 class Template:
