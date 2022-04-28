@@ -6,7 +6,7 @@ from pathlib import Path
 import mmap
 from array import array
 import itertools
-from dataclasses import dataclass
+from functools import total_ordering
 
 ################################################################################
 ## On-disk arrays of numbers
@@ -174,18 +174,49 @@ class StringCollection:
 
         return StringCollection(path)
 
-@dataclass
+@total_ordering
 class InternedString:
-    db: StringCollection
-    index: int
+    __slots__ = ['_db', 'index']
+
+    def __init__(self, db, index):
+        object.__setattr__(self, "_db", db)
+        object.__setattr__(self, "index", index)
 
     def __bytes__(self):
-        start = self.db._starts[self.index]
-        length = self.db._lengths[self.index]
-        return self.db._strings[start:start+length]
+        start = self._db._starts[self.index]
+        length = self._db._lengths[self.index]
+        return self._db._strings[start:start+length]
 
     def __str__(self):
         return str(bytes(self))
+
+    def __repr__(self):
+        return f"InternedString({self})"
+
+    def __eq__(self, other):
+        if isinstance(other, InternedString) and this._db == other._db:
+            return this.index == other.index
+        elif isinstance(other, bytes) or isinstance(other, InternedString):
+            return bytes(self) == bytes(other)
+        else:
+            return False
+
+    def __lt__(self, other):
+        if isinstance(other, InternedString) and this._db == other._db:
+            return this.index < other.index
+        elif isinstance(other, bytes) or isinstance(other, InternedString):
+            return bytes(self) < bytes(other)
+        else:
+            raise TypeError("invalid types for InternedString comparison")
+
+    def __hash__(self):
+        return hash(bytes(self))
+
+    def __setattr__(self, _field, _value):
+        raise TypeError("InternedString is read-only")
+
+    def __delattr__(self, _field):
+        raise TypeError("InternedString is read-only")
 
 ################################################################################
 ## On-disk arrays of interned strings
