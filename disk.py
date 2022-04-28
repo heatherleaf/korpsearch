@@ -17,20 +17,18 @@ class DiskIntArray:
     _typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
     for n, c in _typecodes.items(): assert array(c).itemsize == n
 
-    _headersize = 8
-
     def __init__(self, path):
         path = Path(path)
         self._file = open(path, 'rb')
-        self._elemsize = int.from_bytes(self._file.read(self._headersize), byteorder=ENDIANNESS)
+        with open(str(path) + '.elemsize') as file:
+            self._elemsize = int(file.read().strip())
 
         self._file.seek(0, os.SEEK_END)
-        self._length = (self._file.tell() - self._headersize) // self._elemsize
+        self._length = self._file.tell() // self._elemsize
 
         if self._elemsize in self._typecodes:
             bytes = mmap.mmap(self._file.fileno(), 0, prot=mmap.PROT_READ)
             self._array = memoryview(bytes).cast(self._typecodes[self._elemsize])
-            self._headercount = self._headersize // self._elemsize
         else:
             self._array = None
 
@@ -38,40 +36,35 @@ class DiskIntArray:
         return self._length
 
     def __getitem__(self, i):
-        if isinstance(i, slice):
-            return list(self._slice(i))
-
-        if not isinstance(i, int):
-            raise TypeError("invalid array index type")
-
-        if i < 0 or i >= len(self):
-            raise IndexError("array index out of range")
-
-        if self._array is None:
-            self._file.seek(self._headersize + i * self._elemsize)
-            return int.from_bytes(self._file.read(self._elemsize), byteorder=ENDIANNESS)
+        if self._array is not None:
+            return self._array[i]
         else:
-            return self._array[self._headercount + i]
+            if isinstance(i, slice):
+                return list(self._slice(i))
+
+            if not isinstance(i, int):
+                raise TypeError("invalid array index type")
+
+            if i < 0 or i >= len(self):
+                raise IndexError("array index out of range")
+
+            self._file.seek(i * self._elemsize)
+            return int.from_bytes(self._file.read(self._elemsize), byteorder=ENDIANNESS)
 
     def _slice(self, slice):
         start, stop, step = slice.indices(len(self))
         if step != 1: raise IndexError("only slices with step 1 supported")
 
-        if self._array is None:
-            for i in range(start, stop):
-                yield self[i]
-        else:
-            start += self._headercount
-            stop += self._headercount
-            yield from self._array[start:stop]
+        for i in range(start, stop):
+            yield self[i]
 
     def __iter__(self):
         if self._array is None:
-            self._array.seek(self._headersize)
+            self._array.seek(0)
             for _ in range(self._length):
                 yield int.from_bytes(self._array.read(self._elemsize), byteorder=ENDIANNESS)
         else:
-            yield from self._array[self._headercount:]
+            yield from self._array
 
     @staticmethod
     def build(path, values, max_value = None, use_mmap=False):
@@ -96,8 +89,9 @@ class DiskIntArrayBuilder:
             if self._elem_size > 8:
                 raise RuntimeError('DiskIntArray: use_mmap=True not supported with self._elem_size > 8')
 
+        with open(str(path) + '.elemsize', 'w') as file:
+            file.write(str(self._elem_size))
         self._file = open(path, 'wb')
-        self._file.write(self._elem_size.to_bytes(DiskIntArray._headersize, byteorder=ENDIANNESS))
 
     def append(self, value):
         self._file.write(value.to_bytes(self._elem_size, byteorder=ENDIANNESS))
