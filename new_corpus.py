@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 from disk import *
+from dataclasses import dataclass
 
 def log(output, verbose, start=None):
     if verbose:
@@ -113,5 +114,28 @@ class Corpus:
         return [self._get_word(i) for i in range(start, end)]
 
     def _get_word(self, i):
-        return {feature: words[i]
-                for feature, words in self._words.items()}
+        return Word(self, i)
+
+@dataclass(frozen=True)
+class Word:
+    corpus: Corpus
+    pos: int
+
+    def __getitem__(self, feature):
+        return self.corpus._words[feature][self.pos]
+
+    def keys(self):
+        return self.corpus.features.keys()
+
+    def items(self):
+        for feature, value in self.corpus.features.items():
+            yield feature, value[self.pos]
+
+    def __str__(self):
+        return str(dict(self.items()))
+
+    def __repr__(self):
+        return f"Word({dict(self.items())})"
+
+    def __eq__(self, other):
+        return dict(self) == dict(other)

@@ -184,11 +184,8 @@ class SplitIndex(BaseIndex):
     def _instance_key(self, instance):
         h = 5381  # 5381 is from djb2:https://stackoverflow.com/questions/10696223/reason-for-the-number-5381-in-the-djb-hash-function
         for term in instance:
-            if isinstance(term, InternedString):
-                h = h * 65587 + term.index
-            else:
-                for c in term:
-                    h = h * 65587 + c  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
+            for c in bytes(term):
+                h = h * 65587 + c  # 65587 is from https://github.com/davidar/sdbm/blob/29d5ed2b5297e51125ee45f6efc5541851aab0fb/hash.c#L16
         return h % self._dimensions['max_key_size']
 
     def search(self, instance):
