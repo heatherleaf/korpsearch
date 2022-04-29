@@ -110,6 +110,7 @@ class StringCollection:
     def __init__(self, path):
         path = Path(path)
         stringsfile = open(path, 'rb')
+        self._path = path
         self._strings = mmap.mmap(stringsfile.fileno(), 0, prot=mmap.PROT_READ)
         self._starts = DiskIntArray(path.with_suffix(path.suffix + '.starts'))
         self._lengths = DiskIntArray(path.with_suffix(path.suffix + '.lengths'))
@@ -130,6 +131,11 @@ class StringCollection:
         return self.from_index(self._intern[string])
 
     def intern(self, string):
+        if isinstance(string, InternedString):
+            if string._db is self:
+                return string
+            else:
+                return self.intern(bytes(string))
         lo = 0
         hi = len(self)-1
         while lo <= hi:
@@ -188,23 +194,19 @@ class InternedString:
         return f"InternedString({self})"
 
     def __eq__(self, other):
-        if isinstance(other, InternedString) and self._db == other._db:
+        if isinstance(other, InternedString) and self._db is other._db:
             return self.index == other.index
-        elif isinstance(other, bytes) or isinstance(other, InternedString):
-            return bytes(self) == bytes(other)
         else:
-            return False
+            raise TypeError(f"Comparing InternedString against {type(other)}")
 
     def __lt__(self, other):
-        if isinstance(other, InternedString) and self._db == other._db:
+        if isinstance(other, InternedString) and self._db is other._db:
             return self.index < other.index
-        elif isinstance(other, bytes) or isinstance(other, InternedString):
-            return bytes(self) < bytes(other)
         else:
-            raise TypeError("invalid types for InternedString comparison")
+            raise TypeError(f"Comparing InternedString against {type(other)}")
 
     def __hash__(self):
-        return hash(bytes(self))
+        return hash(self.index)
 
     def __setattr__(self, _field, _value):
         raise TypeError("InternedString is read-only")

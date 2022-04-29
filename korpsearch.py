@@ -706,6 +706,10 @@ class Corpus:
         log(f"Built corpus index, {ctr} sentences", self._verbose, start=t0)
         log("", self._verbose)
 
+    # dummy method for compatibility with new_corpus.py
+    def intern(self, _feature, value):
+        return value
+
 def build_corpus_index(corpusfile, verbose=False):
     Corpus(corpusfile, 'w', verbose).build_index()
 
@@ -725,7 +729,8 @@ ALGORITHMS = {
 QUEREGEX = re.compile(rb'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 
 class Query:
-    def __init__(self, querystr):
+    def __init__(self, corpus, querystr):
+        self.corpus = corpus
         querystr = _bytesify(querystr)
         querystr = querystr.replace(b' ', b'')
         if not QUEREGEX.match(querystr):
@@ -738,10 +743,10 @@ class Query:
             for part in parts:
                 feat, value = part.split(b'=', 1)
                 value = value.replace(b'"', b'')
-                self.query[-1].append((feat, value))
+                self.query[-1].append((feat, self.corpus.intern(feat, value)))
 
     def __str__(self):
-        return " ".join("[" + " ".join(f'{feat.decode()}="{val.decode()}"' for feat, val in subq) + "]" 
+        return " ".join("[" + " ".join(f'{feat.decode()}="{bytes(val).decode()}"' for feat, val in subq) + "]"
                         for subq in self.query)
 
     def subqueries(self):
@@ -781,8 +786,9 @@ class Query:
 
 
 def query_corpus(args):
+    corpus = Corpus(args.corpus)
     index_class = ALGORITHMS[args.algorithm]
-    query = Query(args.query)
+    query = Query(corpus, args.query)
     starttime = time.time()
     log(f"Query: {args.query} --> {query}", args.verbose)
    
@@ -820,13 +826,11 @@ def query_corpus(args):
     if args.filter:
         log("Final filter:", args.verbose)
         t0 = time.time()
-        corpus = Corpus(args.corpus)
         result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
         log(f"   {query} --> {result}", args.verbose, start=t0)
 
     if args.out:
         t0 = time.time()
-        corpus = Corpus(args.corpus)
         with open(args.out, "w") as OUT:
             for sent in sorted(result):
                 print(sent, corpus.lookup_sentence(sent), file=OUT)

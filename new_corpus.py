@@ -110,6 +110,9 @@ class Corpus:
         for i in range(1, len(self._sentences)):
             yield self.lookup_sentence(i)
 
+    def intern(self, feature, value):
+        return self._words[feature]._strings.intern(value)
+
     def lookup_sentence(self, n):
         start = self._sentences[n]
         if n+1 < len(self._sentences):
@@ -131,10 +134,10 @@ class Word:
         return self.corpus._words[feature][self.pos]
 
     def keys(self):
-        return self.corpus.features.keys()
+        return self.corpus._features
 
     def items(self):
-        for feature, value in self.corpus.features.items():
+        for feature, value in self.corpus._words.items():
             yield feature, value[self.pos]
 
     def __str__(self):
