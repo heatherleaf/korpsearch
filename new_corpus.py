@@ -100,6 +100,12 @@ class Corpus:
     def __str__(self):
         return f"[Corpus: {self._path.stem}]"
 
+    def num_sentences(self):
+        return len(self._sentences)-1
+
+    def num_words(self):
+        return len(self._words[self._features[0]])
+
     def sentences(self):
         for i in range(1, len(self._sentences)):
             yield self.lookup_sentence(i)

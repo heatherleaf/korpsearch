@@ -12,6 +12,7 @@ from pathlib import Path
 import mmap
 from array import array
 from disk import *
+import sqlite3
 
 
 def log(output, verbose, start=None):
@@ -214,25 +215,8 @@ class SplitIndex(BaseIndex):
 
     def build_index(self, corpus, load_factor=1.0, keep_tmpfiles=False, use_mmap=True, **unused_kwargs):
         log(f"Building index for {self}", self._verbose)
-        unsorted_tmpfile = self._basefile().with_suffix('.unsorted.tmp')
-        sorted_tmpfile = self._basefile().with_suffix('.sorted.tmp')
 
-        # Count sentences and instances
-        start_time = t0 = time.time()
-        nr_sentences = 0
-        nr_lines = 0
-        with open(unsorted_tmpfile, 'w') as TMP:
-            for sentence in corpus.sentences():
-                nr_sentences += 1
-                for instance in self._yield_instances(sentence):
-                    print(instance, file=TMP)
-                    nr_lines += 1
-        log(f" -> created unsorted instances file, {nr_lines} lines, {nr_sentences} sentences", self._verbose, start=t0)
-        t0 = time.time()
-        subprocess.run(['sort', '--unique', '--output', sorted_tmpfile, unsorted_tmpfile])
-        self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile)
-        nr_instances = self._count_lines_in_file(sorted_tmpfile)
-        log(f" -> sorted {nr_instances} unique instances", self._verbose, start=t0)
+        nr_sentences = corpus.num_sentences()
 
         # Calculate dimensions
         self._dimensions = {}
@@ -241,22 +225,27 @@ class SplitIndex(BaseIndex):
             self._dimensions['elem_bytes'] = 4
         else:
             self._dimensions['elem_bytes'] = self._min_bytes_to_store_values(nr_sentences + 1)   # +1 because we number sentences from 1
-        self._dimensions['key_bytes'] = self._min_bytes_to_store_values(nr_instances)
-        self._dimensions['max_key_size'] = self._get_max_key_size(nr_instances, load_factor)
+        self._dimensions['key_bytes'] = self._min_bytes_to_store_values(nr_sentences)
+        self._dimensions['max_key_size'] = self._get_max_key_size(nr_sentences, load_factor)
 
-        # Build file of key-sentence pairs
-        t0 = time.time()
-        nr_lines = 0
-        with open(unsorted_tmpfile, 'w') as TMP:
-            for n, sentence in enumerate(corpus.sentences(), 1):   # number sentences from 1
+        dbfile = self._basefile().with_suffix('.db.tmp')
+        con = sqlite3.connect(dbfile)
+        con.execute('create table pairs(hash int, sentence int, primary key(hash, sentence)) without rowid')
+
+        # Build database of key-sentence pairs
+        start_time = t0 = time.time()
+        def pairs():
+            for n, sentence in enumerate(corpus.sentences(), 1):
                 for instance in self._yield_instances(sentence):
                     key = self._instance_key(instance)
-                    print(f"{key}\t{n}", file=TMP)
-                    nr_lines += 1
-        log(f" -> created unsorted key-sentence file, {nr_lines} lines", self._verbose, start=t0)
+                    yield key, n
+        con.executemany('insert or ignore into pairs values(?, ?)', pairs())
+        nr_instances = con.execute('select count(*) from (select distinct hash from pairs)').fetchone()[0]
+        log(f" -> created instance database, {nr_instances} instances, {nr_sentences} sentences", self._verbose, start=t0)
+
+        # Build index file and sets file
         t0 = time.time()
-        self._sort_file_unique(unsorted_tmpfile, sorted_tmpfile, '--numeric-sort', '--key=1', '--key=2')
-        size_of_setsfile = self._count_lines_in_file(sorted_tmpfile)
+        size_of_setsfile = con.execute('select count(*) from pairs').fetchone()[0]
         log(f" -> sorted {size_of_setsfile} unique key-sentence pairs", self._verbose, start=t0)
         size_of_setsfile += 1 + nr_instances  # +1 because pointer 0 has a special meaning, +nr_instances because every set has a size
 
@@ -269,43 +258,40 @@ class SplitIndex(BaseIndex):
         # Build index file and sets file
         t0 = time.time()
         nr_keys = nr_elements = 0
-        with open(sorted_tmpfile) as TMP:
-            current = set_start = set_size = -1
-            # Dummy sentence to account for null pointers:
-            self._sets.write((0).to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
-            nr_elements += 1
-            for line in TMP:
-                key, sent = map(int, line.rsplit(maxsplit=1))
-                if current < key:
-                    if set_start >= 0:
-                        assert current >= 0 and set_size > 0
-                        # Now the set is full, and we can write the size of the set at its beginning
-                        self._sets.seek(set_start)
-                        self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
-                        self._sets.seek(0, os.SEEK_END)
-                    self._write_key_to_indexfile(current, key)
-                    self._index.write(nr_elements.to_bytes(self._dimensions['ptr_bytes'], byteorder=ENDIANNESS))
-                    # Add a placeholder for the size of the set
-                    set_start, set_size = self._sets.tell(), 0
+        current = set_start = set_size = -1
+        # Dummy sentence to account for null pointers:
+        self._sets.write((0).to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
+        nr_elements += 1
+        for key, sent in con.execute("select * from pairs order by hash, sentence"):
+            if current < key:
+                if set_start >= 0:
+                    assert current >= 0 and set_size > 0
+                    # Now the set is full, and we can write the size of the set at its beginning
+                    self._sets.seek(set_start)
                     self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
-                    nr_elements += 1
-                    current = key
-                    nr_keys += 1
-                self._sets.write(sent.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
-                set_size += 1
+                    self._sets.seek(0, os.SEEK_END)
+                self._write_key_to_indexfile(current, key)
+                self._index.write(nr_elements.to_bytes(self._dimensions['ptr_bytes'], byteorder=ENDIANNESS))
+                # Add a placeholder for the size of the set
+                set_start, set_size = self._sets.tell(), 0
+                self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
                 nr_elements += 1
-            # Write the size of the final set at its beginning
-            self._sets.seek(set_start)
-            self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
-            self._sets.seek(0, os.SEEK_END)
+                current = key
+                nr_keys += 1
+            self._sets.write(sent.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
+            set_size += 1
+            nr_elements += 1
+        # Write the size of the final set at its beginning
+        self._sets.seek(set_start)
+        self._sets.write(set_size.to_bytes(self._dimensions['elem_bytes'], byteorder=ENDIANNESS))
+        self._sets.seek(0, os.SEEK_END)
         log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
         sizes = [f.tell()/1024/1024 for f in (self._index, self._sets)]
         log(f" -> created .index ({sizes[0]:.1f} mb), .sets ({sizes[1]:.1f} mb)", self._verbose, start=start_time)
 
         # Cleanup
         if not keep_tmpfiles:
-            unsorted_tmpfile.unlink()
-            sorted_tmpfile.unlink()
+            dbfile.unlink()
         self.close()
         log("", self._verbose)
 
@@ -690,6 +676,12 @@ class Corpus:
             sentence.append(token)
             line = corpus.readline().strip()
         return startpos, sentence
+
+    def num_sentences(self):
+        i = 0
+        for _ in self.sentences():
+            i += 1
+        return i
 
     _pointer_size = 4  # bytes per integer used in the index
 
