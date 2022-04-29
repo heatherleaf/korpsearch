@@ -132,3 +132,4 @@ dmypy.json
 private
 *.csv.index
 *.indexes.*/
+*.hashindex/
