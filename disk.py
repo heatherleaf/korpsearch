@@ -78,7 +78,8 @@ class DiskIntArray:
         return DiskIntArray(path)
 
 class DiskIntArrayBuilder:
-    def __init__(self, path, max_value, use_mmap=False):
+    def __init__(self, path, max_value=None, use_mmap=False):
+        if self._max_value is None: self._max_value = 4
         self._path = Path(path)
         self._max_value = max_value
 
