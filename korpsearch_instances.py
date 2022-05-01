@@ -201,19 +201,14 @@ class Index:
         # Write the size of the final set at its beginning
         self._sets[set_start] = set_size
         log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", self._verbose, start=t0)
+        log("", self._verbose)
 
         # Cleanup
         if not keep_tmpfiles:
             dbfile.unlink()
-
-        size = 0
-        for path, _, files in os.walk(self.basedir):
-            for file in files:
-                size += os.path.getsize(os.path.join(path, file))
-
-        log(f" -> created index ({size/1024/1024:.1f} mb)", self._verbose, start=start_time)
-        log("", self._verbose)
         self.close()
+
+
 
 
 ################################################################################

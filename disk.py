@@ -170,16 +170,13 @@ class StringCollection:
 
         with open(path.with_suffix('.strings'), 'wb') as stringsfile:
             for string in stringlist: stringsfile.write(string)
-            size = stringsfile.tell()
 
         DiskIntArray.build(path.with_suffix('.strings.starts'),
             itertools.accumulate((len(s) for s in stringlist[:-1]), initial=0),
-            max_value = size,
             use_mmap = True)
 
         DiskIntArray.build(path.with_suffix('.strings.lengths'),
             (len(s) for s in stringlist),
-            max_value = size,
             use_mmap = True)
 
         return StringCollection(path)
