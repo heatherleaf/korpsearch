@@ -133,3 +133,4 @@ private
 *.csv.index
 *.indexes.*/
 *.hashindex/
+*.corpus/
