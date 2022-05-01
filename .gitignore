@@ -134,3 +134,4 @@ private
 *.indexes.*/
 *.hashindex/
 *.corpus/
+*.instanceindex/

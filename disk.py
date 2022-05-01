@@ -79,7 +79,7 @@ class DiskIntArray:
 
 class DiskIntArrayBuilder:
     def __init__(self, path, max_value=None, use_mmap=False):
-        if self._max_value is None: self._max_value = 4
+        if max_value is None: max_value = 2**32-1
         self._path = Path(path)
         self._max_value = max_value
 
@@ -96,6 +96,14 @@ class DiskIntArrayBuilder:
 
     def append(self, value):
         self._file.write(value.to_bytes(self._elem_size, byteorder=ENDIANNESS))
+
+    def __setitem__(self, k, value):
+        self._file.seek(k * self._elem_size)
+        self._file.write(value.to_bytes(self._elem_size, byteorder=ENDIANNESS))
+        self._file.seek(0, os.SEEK_END)
+
+    def __len__(self):
+        return self._file.tell() // self._elem_size
 
     def close(self):
         self._file.close()
@@ -123,20 +131,21 @@ class StringCollection:
     def from_index(self, index):
         return InternedString(self, index)
 
-    def fast_intern(self, string):
+    def preload(self):
         if self._intern is None:
             self._intern = {}
             for i in range(len(self)):
                 self._intern[bytes(self.from_index(i))] = i
 
-        return self.from_index(self._intern[string])
-
     def intern(self, string):
-        if isinstance(string, InternedString):
-            if string._db is self:
-                return string
-            else:
-                return self.intern(bytes(string))
+        if isinstance(string, InternedString) and string._db is self:
+            return string
+
+        string = bytes(string)
+
+        if self._intern is not None:
+            return self.from_index(self._intern[string])
+
         lo = 0
         hi = len(self)-1
         while lo <= hi:
@@ -148,7 +157,7 @@ class StringCollection:
                 lo = mid+1
             else:
                 return self.from_index(mid)
-        assert False, "string not found in database"
+        raise KeyError("string not found in database")
 
     @staticmethod
     def build(path, strings):
@@ -227,9 +236,6 @@ class DiskStringArray:
     def raw(self):
         return self._array
 
-    def fast_intern(self, x):
-        return self._strings.fast_intern(x)
-
     def intern(self, x):
         return self._strings.intern(x)
 
@@ -269,10 +275,11 @@ class DiskStringArrayBuilder:
         strings_path = path.with_suffix(path.suffix + '.strings')
         StringCollection.build(strings_path, strings)
         self._strings = StringCollection(strings_path)
+        self._strings.preload()
         self._builder = DiskIntArrayBuilder(path, len(self._strings)-1, use_mmap)
 
     def append(self, value):
-        self._builder.append(self._strings.fast_intern(value).index)
+        self._builder.append(self._strings.intern(value).index)
 
     def close(self):
         self._builder.close()
