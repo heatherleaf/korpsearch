@@ -75,17 +75,23 @@ class Instance:
 class Index:
     dir_suffix = '.instanceindex'
 
-    def __init__(self, corpus_name, template, mode='r', verbose=False):
+    def __init__(self, corpus, template, mode='r', verbose=False):
         assert mode in "rw"
-        array_class = DiskIntArray if mode == 'r' else DiskIntArrayBuilder
         assert isinstance(template, Template)
-        self.basedir = corpus_name.with_suffix(self.dir_suffix)
+        self.basedir = corpus.path().with_suffix(self.dir_suffix)
+        self.corpus = corpus
         self.template = template
         self._verbose = verbose
         basefile = self._basefile()
-        self._keys = [array_class(basefile.with_suffix('.key' + str(i))) for i in range(len(template))]
-        self._index = array_class(basefile.with_suffix('.index'))
-        self._sets = array_class(basefile.with_suffix('.sets'))
+
+        self._keypaths = [basefile.with_suffix('.key' + str(i)) for i in range(len(template))]
+        self._indexpath = basefile.with_suffix('.index')
+        self._setspath = basefile.with_suffix('.sets')
+
+        if mode == 'r':
+            self._keys = [DiskIntArray(path) for path in key_paths]
+            self._index = DiskIntArray(index_path)
+            self._sets = DiskIntArray(sets_path)
 
     def __str__(self):
         return self.__class__.__name__ + ':' + str(self.template) 
@@ -136,7 +142,7 @@ class Index:
                 end = mid - 1
         raise ValueError("Key not found")
 
-    def build_index(self, corpus, keep_tmpfiles=False, **unused_kwargs):
+    def build_index(self, keep_tmpfiles=False, **unused_kwargs):
         log(f"Building index for {self}", self._verbose)
         start_time = t0 = time.time()
 
@@ -159,19 +165,25 @@ class Index:
 
         # Add all features
         def rows():
-            for n, sentence in enumerate(corpus.sentences(), 1):
+            for n, sentence in enumerate(self.corpus.sentences(), 1):
                 for instance in self._yield_instances(sentence):
                     yield *(value.index for value in instance.values()), n
 
         places = ', '.join('?' for _ in range(len(self.template)))
         con.executemany(f'insert or ignore into features values({places}, ?)', rows())
 
-        nr_sentences = corpus.num_sentences()
+        nr_sentences = self.corpus.num_sentences()
         nr_instances = con.execute(f'select count(*) from (select distinct {features} from features)').fetchone()[0]
-        log(f" -> created instance database, {nr_instances} instances, {nr_sentences} sentences", self._verbose, start=t0)
+        nr_rows = con.execute(f'select count(*) from features').fetchone()[0]
+        log(f" -> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences", self._verbose, start=t0)
 
-        # Build index file and sets file
+        # Build keys files, index file and sets file
         t0 = time.time()
+        self._keys = [DiskIntArrayBuilder(path, max_value = len(self.corpus.strings(feat)))
+                for (feat, _), path in zip(self.template, self._keypaths)]
+        self._sets = DiskIntArrayBuilder(self._setspath, max_value = nr_sentences+1)
+        self._index = DiskIntArrayBuilder(self._indexpath, max_value = nr_rows)
+
         nr_keys = nr_elements = 0
         current = None
         set_start = set_size = -1
@@ -390,6 +402,9 @@ class Corpus:
     def path(self):
         return self._path
 
+    def strings(self, feature):
+        return self._words[feature]._strings
+
     def intern(self, feature, value):
         return self._words[feature].intern(value)
 
@@ -508,7 +523,7 @@ def query_corpus(args):
                for (prev_index, prev_instance, _) in search_results):
             continue
         try:
-            index = Index(args.corpus, template)
+            index = Index(corpus, template)
         except FileNotFoundError:
             continue
         t0 = time.time()
@@ -563,7 +578,7 @@ def build_indexes(args):
     corpus = Corpus(args.corpus)
     ctr = 1
     for template in yield_templates(args.features, args.max_dist):
-        Index(args.corpus, template, mode='w', verbose=args.verbose).build_index(corpus)
+        Index(corpus, template, mode='w', verbose=args.verbose).build_index()
         ctr += 1
     log(f"Created {ctr} indexes", args.verbose, start=t0)
 
