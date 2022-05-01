@@ -89,9 +89,9 @@ class Index:
         self._setspath = basefile.with_suffix('.sets')
 
         if mode == 'r':
-            self._keys = [DiskIntArray(path) for path in key_paths]
-            self._index = DiskIntArray(index_path)
-            self._sets = DiskIntArray(sets_path)
+            self._keys = [DiskIntArray(path) for path in self._keypaths]
+            self._index = DiskIntArray(self._indexpath)
+            self._sets = DiskIntArray(self._setspath)
 
     def __str__(self):
         return self.__class__.__name__ + ':' + str(self.template) 
