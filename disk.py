@@ -13,69 +13,54 @@ from functools import total_ordering
 
 ENDIANNESS = 'little'
 
-class DiskIntArray:
-    _typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
-    for n, c in _typecodes.items(): assert array(c).itemsize == n
+def DiskIntArray(path):
+    typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+    for n, c in typecodes.items(): assert array(c).itemsize == n
 
-    def __init__(self, path):
-        path = Path(path)
-        self._file = open(path, 'rb')
-        with open(str(path) + '.elemsize') as file:
-            self._elemsize = int(file.read().strip())
+    path = Path(path)
+    file = open(path, 'rb')
+    with open(str(path) + '.elemsize') as sizefile:
+        elemsize = int(sizefile.read().strip())
+    arr = mmap.mmap(file.fileno(), 0, prot=mmap.PROT_READ)
 
-        self._file.seek(0, os.SEEK_END)
-        self._length = self._file.tell() // self._elemsize
+    if elemsize in typecodes:
+        return memoryview(arr).cast(typecodes[elemsize])
+    else:
+        return SlowDiskIntArray(arr, elemsize)
 
-        if self._elemsize in self._typecodes:
-            bytes = mmap.mmap(self._file.fileno(), 0, prot=mmap.PROT_READ)
-            self._array = memoryview(bytes).cast(self._typecodes[self._elemsize])
-        else:
-            self._array = None
+class SlowDiskIntArray:
+    def __init__(self, array, elemsize):
+        self._array = array
+        self._elemsize = elemsize
+        self._length = len(array) // elemsize
 
     def __len__(self):
         return self._length
 
     def __getitem__(self, i):
-        if self._array is not None:
-            return self._array[i]
-        else:
-            if isinstance(i, slice):
-                return list(self._slice(i))
+        if isinstance(i, slice):
+            return list(self._slice(i))
 
-            if not isinstance(i, int):
-                raise TypeError("invalid array index type")
+        if not isinstance(i, int):
+            raise TypeError("invalid array index type")
 
-            if i < 0 or i >= len(self):
-                raise IndexError("array index out of range")
+        if i < 0 or i >= len(self):
+            raise IndexError("array index out of range")
 
-            self._file.seek(i * self._elemsize)
-            return int.from_bytes(self._file.read(self._elemsize), byteorder=ENDIANNESS)
+        start = i * self._elemsize
+        return int.from_bytes(self._array[start:start+self._elemsize], byteorder=ENDIANNESS)
 
     def _slice(self, slice):
         start, stop, step = slice.indices(len(self))
         if step != 1: raise IndexError("only slices with step 1 supported")
 
-        for i in range(start, stop):
-            yield self[i]
+        start *= self._elemsize
+        stop *= self._elemsize
+        for i in range(start, stop, self._elemsize):
+            yield int.from_bytes(self._array[i:i+self._elemsize], byteorder=ENDIANNESS)
 
     def __iter__(self):
-        if self._array is None:
-            self._array.seek(0)
-            for _ in range(self._length):
-                yield int.from_bytes(self._array.read(self._elemsize), byteorder=ENDIANNESS)
-        else:
-            yield from self._array
-
-    @staticmethod
-    def build(path, values, max_value = None, use_mmap=False):
-        if max_value is None:
-            values = list(values)
-            max_value = max(values)
-
-        builder = DiskIntArrayBuilder(path, max_value, use_mmap)
-        for value in values: builder.append(value)
-        builder.close()
-        return DiskIntArray(path)
+        return self._slice(slice(None))
 
 class DiskIntArrayBuilder:
     def __init__(self, path, max_value=None, use_mmap=False):
@@ -111,6 +96,17 @@ class DiskIntArrayBuilder:
 
     def _min_bytes_to_store_values(self, max_value):
         return math.ceil(math.log(max_value + 1, 2) / 8)
+
+    @staticmethod
+    def build(path, values, max_value = None, use_mmap=False):
+        if max_value is None:
+            values = list(values)
+            max_value = max(values)
+
+        builder = DiskIntArrayBuilder(path, max_value, use_mmap)
+        for value in values: builder.append(value)
+        builder.close()
+        return DiskIntArray(path)
 
 ################################################################################
 ## String interning
@@ -171,11 +167,11 @@ class StringCollection:
         with open(path.with_suffix('.strings'), 'wb') as stringsfile:
             for string in stringlist: stringsfile.write(string)
 
-        DiskIntArray.build(path.with_suffix('.strings.starts'),
+        DiskIntArrayBuilder.build(path.with_suffix('.strings.starts'),
             itertools.accumulate((len(s) for s in stringlist[:-1]), initial=0),
             use_mmap = True)
 
-        DiskIntArray.build(path.with_suffix('.strings.lengths'),
+        DiskIntArrayBuilder.build(path.with_suffix('.strings.lengths'),
             (len(s) for s in stringlist),
             use_mmap = True)
 
