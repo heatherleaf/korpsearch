@@ -84,7 +84,7 @@ class Index:
         self._verbose = verbose
         basefile = self._basefile()
 
-        self._keypaths = [basefile.with_suffix('.key' + str(i)) for i in range(len(template))]
+        self._keypaths = [basefile.with_suffix(f'.{feature.decode()}{pos}') for feature, pos in template]
         self._indexpath = basefile.with_suffix('.index')
         self._setspath = basefile.with_suffix('.sets')
 
