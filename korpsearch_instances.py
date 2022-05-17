@@ -10,7 +10,7 @@ import sys
 import subprocess
 import itertools
 from pathlib import Path
-from disk import *
+from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder
 import sqlite3
 from dataclasses import dataclass
 
@@ -129,11 +129,11 @@ class Index:
 
     def _lookup_instance(self, instance):
         # binary search
+        instance_key = tuple(str.index for str in instance)
         start, end = 0, len(self)-1
         while start <= end:
             mid = (start + end) // 2
-            key = [keyarray[mid] for keyarray in self._keys]
-            instance_key = [str.index for str in instance]
+            key = tuple(keyarray[mid] for keyarray in self._keys)
             if key == instance_key:
                 return self._index[mid]
             elif key < instance_key:
@@ -167,7 +167,7 @@ class Index:
         def rows():
             for n, sentence in enumerate(self.corpus.sentences(), 1):
                 for instance in self._yield_instances(sentence):
-                    yield *(value.index for value in instance.values()), n
+                    yield tuple(value.index for value in instance.values()) + (n,)
 
         places = ', '.join('?' for _ in range(len(self.template)))
         con.executemany(f'insert or ignore into features values({places}, ?)', rows())
@@ -360,7 +360,7 @@ def build_corpus_index(corpusfile, verbose=False):
 
     t0 = time.time()
     sentence_builder = DiskIntArrayBuilder(basedir / 'sentences',
-        max_value = count-1, use_mmap = True)
+        max_value = count-1, use_memoryview = True)
     feature_builders = []
     for i, feature in enumerate(features):
         path = basedir / ('feature.' + feature)
