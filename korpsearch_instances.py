@@ -440,13 +440,16 @@ class Word:
             yield feature, value[self.pos]
 
     def __str__(self):
-        return str(dict(self.items()))
+        return bytes(self[b"word"]).decode('utf-8')
 
     def __repr__(self):
         return f"Word({dict(self.items())})"
 
     def __eq__(self, other):
         return dict(self) == dict(other)
+
+def render_sentence(sentence):
+    return " ".join(map(str, sentence))
 
 ################################################################################
 ## Queries
@@ -556,7 +559,7 @@ def query_corpus(args):
         t0 = time.time()
         with open(args.out, "w") as OUT:
             for sent in sorted(result):
-                print(sent, corpus.lookup_sentence(sent), file=OUT)
+                print(sent, render_sentence(corpus.lookup_sentence(sent)), file=OUT)
         log(f"{len(result)} sentences written to {args.out}", args.verbose, start=t0)
 
     log("", args.verbose)
