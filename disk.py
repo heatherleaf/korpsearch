@@ -196,20 +196,16 @@ class StringCollection:
 class StringCollectionBuilder:
     @staticmethod
     def build(path, strings):
-        stringset = set()
-        for i, word in enumerate(strings):
-            stringset.add(word)
-
-        stringlist = list(stringset)
-        stringlist.sort()
+        stringlist = sorted(set(strings))
 
         with open(path, 'wb') as stringsfile:
             for string in stringlist: 
                 stringsfile.write(string)
 
+        stringlist.insert(0, '')  # this is to emulate the 'initial' keyword in accumulate, which was introduced in Python 3.8
         DiskIntArrayBuilder.build(
             add_suffix(path, STARTS_SUFFIX),
-            itertools.accumulate((len(s) for s in stringlist), initial=0),
+            itertools.accumulate((len(s) for s in stringlist)),
             use_memoryview = True
         )
 
