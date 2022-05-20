@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder
 from util import log
 
-
 ################################################################################
 ## Corpus
 

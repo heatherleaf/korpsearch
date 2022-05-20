@@ -9,3 +9,6 @@ def log(output, verbose, start=None):
         else:
             print(output)
 
+
+def bytesify(s):
+    return s.encode() if isinstance(s, str) else bytes(s)
