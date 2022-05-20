@@ -5,16 +5,17 @@ from pathlib import Path
 from index import Index
 from corpus import Corpus, render_sentence
 from query import Query
-from util import log
+from util import setup_logger
+import logging
 
 
 def search_corpus(args):
     corpus = Corpus(args.corpus)
     query = Query(corpus, args.query)
     starttime = time.time()
-    log(f"Query: {args.query} --> {query}", args.verbose)
+    logging.info(f"Query: {args.query} --> {query}")
    
-    log("Searching:", args.verbose)
+    logging.debug("Searching...")
     search_results = []
     for template, instance in query.subqueries():
         if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
@@ -24,42 +25,39 @@ def search_corpus(args):
             index = Index(corpus, template)
         except FileNotFoundError:
             continue
-        t0 = time.time()
         sentences = index.search(instance)
-        log(f"   {index} = {instance} --> {len(sentences)}", args.verbose, start=t0)
+        logging.debug(f"   {index} = {instance} --> {len(sentences)}")
         search_results.append((index, instance, sentences))
+    logging.info(f"Searched {len(search_results)} indexes")
 
-    log("Sorting:", args.verbose)
-    t0 = time.time()
+    logging.debug("Sorting indexes...")
     search_results.sort(key=lambda r: len(r[-1]))
-    log("   " + " ".join(str(index) for index, _, _ in search_results), args.verbose, start=t0)
+    logging.debug("   " + " ".join(str(index) for index, _, _ in search_results))
 
-    log("Intersecting:", args.verbose)
+    logging.debug("Intersecting...")
     result = None
     for index, instance, sentences in search_results:
-        t0 = time.time()
         if result is None:
             result = sentences
         else:
             result.intersection_update(sentences)
-        log(f"   {index} = {instance} : {len(sentences)} --> {result}", args.verbose, start=t0)
+        logging.debug(f"   {index} = {instance} : {len(sentences)} --> {result}")
+    logging.info(f"After intersection: {result}")
 
     if args.filter:
-        log("Final filter:", args.verbose)
-        t0 = time.time()
+        logging.debug("Filtering...")
         result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
-        log(f"   {query} --> {result}", args.verbose, start=t0)
+        logging.debug(f"   {query} --> {result}")
+        logging.info(f"After filtering: {result}")
 
     if args.out:
-        t0 = time.time()
+        logging.debug("Printing results...")
         with open(args.out, "w") as OUT:
             for sent in sorted(result):
                 print(sent, render_sentence(corpus.lookup_sentence(sent)), file=OUT)
-        log(f"{len(result)} sentences written to {args.out}", args.verbose, start=t0)
+        logging.info(f"{len(result)} sentences written to {args.out}")
 
-    log("", args.verbose)
-    log(f"Result: {result}", args.verbose, start=starttime)
-    print(result)
+    logging.info(f"Final result: {result}")
     for index, _, _ in search_results:
         index.close()
 
@@ -72,8 +70,10 @@ parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 parser.add_argument('query', help='the query')
 parser.add_argument('--filter', action='store_true', help='filter the final results (might take time)')
 parser.add_argument('--out', type=Path, help='file to output the result (one sentence per line)')
-parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
+parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
+parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    setup_logger('{levelname:<6s} {relativeCreated:8.2f} s | {message}', timedivider=1000, loglevel=args.loglevel)
     search_corpus(args)

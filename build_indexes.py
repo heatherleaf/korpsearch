@@ -1,21 +1,21 @@
 
 import os
-import time
 import shutil
 import argparse
 from pathlib import Path
 from index import Index, Instance, Template
 from disk import DiskIntArrayBuilder
 from corpus import Corpus, build_corpus_index
-from util import log
+from util import setup_logger
+import logging
 import sqlite3
+
 
 ################################################################################
 ## Building one index
 
-def build_index(index, keep_tmpfiles=False, verbose=False):
-    log(f"Building index for {index}", verbose)
-    t0 = time.time()
+def build_index(index, keep_tmpfiles=False):
+    logging.debug(f"Building index for {index}...")
 
     dbfile = index.basefile().with_suffix('.db.tmp')
     con = sqlite3.connect(dbfile)
@@ -46,10 +46,9 @@ def build_index(index, keep_tmpfiles=False, verbose=False):
     nr_sentences = index.corpus.num_sentences()
     nr_instances = con.execute(f'select count(*) from (select distinct {features} from features)').fetchone()[0]
     nr_rows = con.execute(f'select count(*) from features').fetchone()[0]
-    log(f" -> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences", verbose, start=t0)
+    logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences")
 
     # Build keys files, index file and sets file
-    t0 = time.time()
     index._keys = [DiskIntArrayBuilder(path, max_value = len(index.corpus.strings(feat)))
             for (feat, _), path in zip(index.template, index._keypaths)]
     index._sets = DiskIntArrayBuilder(index._setspath, max_value = nr_sentences+1)
@@ -83,8 +82,7 @@ def build_index(index, keep_tmpfiles=False, verbose=False):
         nr_elements += 1
     # Write the size of the final set at its beginning
     index._sets[set_start] = set_size
-    log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", verbose, start=t0)
-    log("", verbose)
+    logging.info(f"Built index for {index}, with {nr_keys} keys, {nr_elements} set elements")
 
     # Cleanup
     if not keep_tmpfiles:
@@ -108,15 +106,14 @@ def build_indexes(args):
     basedir = args.corpus.with_suffix(Index.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
-    t0 = time.time()
-    build_corpus_index(args.corpus, verbose=args.verbose)
+    build_corpus_index(args.corpus)
     corpus = Corpus(args.corpus)
     ctr = 1
     for template in yield_templates(args.features, args.max_dist):
         index = Index(corpus, template, mode='w')
-        build_index(index, keep_tmpfiles=args.keep_tmpfiles, verbose=args.verbose)
+        build_index(index, keep_tmpfiles=args.keep_tmpfiles)
         ctr += 1
-    log(f"Created {ctr} indexes", args.verbose, start=t0)
+    logging.info(f"Created {ctr} indexes")
 
 
 def yield_templates(features, max_dist):
@@ -135,9 +132,11 @@ parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 parser.add_argument('--features', '-f', nargs='+', help='features')
 parser.add_argument('--max-dist', type=int, default=2, 
                     help='max distance between token pairs (default: 2)')
-parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
 parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
+parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
+parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
 
 if __name__ == '__main__':
     args = parser.parse_args()
+    setup_logger('{levelname:<6s} {relativeCreated:8.2f} min | {message}', timedivider=60*1000, loglevel=args.loglevel)
     build_indexes(args)

@@ -1,18 +1,17 @@
 
 import os
-import time
 import json
 import shutil
 from pathlib import Path
 from dataclasses import dataclass
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder
-from util import log
+import logging
 
 ################################################################################
 ## Corpus
 
-def build_corpus_index(corpusfile, verbose=False):
-    log(f"Building corpus index", verbose)
+def build_corpus_index(corpusfile):
+    logging.debug(f"Building corpus index...")
     basedir = Path(corpusfile).with_suffix(Corpus.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
@@ -44,16 +43,14 @@ def build_corpus_index(corpusfile, verbose=False):
                 yield new_sentence, word
                 new_sentence = False
 
-    t0 = time.time()
     strings = [set() for _feature in features]
     count = 0
     for _new_sentence, word in words():
         count += 1
         for i, feature in enumerate(word):
             strings[i].add(feature)
-    log(f" -> read {sum(map(len, strings))} distinct strings", verbose, start=t0)
+    logging.debug(f" --> read {sum(map(len, strings))} distinct strings")
 
-    t0 = time.time()
     sentence_builder = DiskIntArrayBuilder(basedir / 'sentences',
         max_value = count-1, use_memoryview = True)
     feature_builders = []
@@ -77,8 +74,7 @@ def build_corpus_index(corpusfile, verbose=False):
     sentence_builder.close()
     for builder in feature_builders: builder.close()
 
-    log(f" -> built corpus index, {word_count} words, {sentence_count} sentences", verbose, start=t0)
-    log("", verbose)
+    logging.info(f"Built corpus index, {word_count} words, {sentence_count} sentences")
 
 
 class Corpus:
