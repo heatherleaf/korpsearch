@@ -1,5 +1,4 @@
 
-import time
 import argparse
 from pathlib import Path
 from index import Index
@@ -12,7 +11,6 @@ import logging
 def search_corpus(args):
     corpus = Corpus(args.corpus)
     query = Query(corpus, args.query)
-    starttime = time.time()
     logging.info(f"Query: {args.query} --> {query}")
    
     logging.debug("Searching...")
