@@ -13,11 +13,11 @@ import sqlite3
 ################################################################################
 ## Building one index
 
-def build_index(index, keep_tmpfiles=False, **unused_kwargs):
-    log(f"Building index for {index}", index._verbose)
+def build_index(index, keep_tmpfiles=False, verbose=False):
+    log(f"Building index for {index}", verbose)
     t0 = time.time()
 
-    dbfile = index._basefile().with_suffix('.db.tmp')
+    dbfile = index.basefile().with_suffix('.db.tmp')
     con = sqlite3.connect(dbfile)
 
     # Switch off journalling etc to speed up database creation
@@ -37,7 +37,7 @@ def build_index(index, keep_tmpfiles=False, **unused_kwargs):
     # Add all features
     def rows():
         for n, sentence in enumerate(index.corpus.sentences(), 1):
-            for instance in _yield_instances(index, sentence):
+            for instance in yield_instances(index, sentence):
                 yield tuple(value.index for value in instance.values()) + (n,)
 
     places = ', '.join('?' for _ in range(len(index.template)))
@@ -46,7 +46,7 @@ def build_index(index, keep_tmpfiles=False, **unused_kwargs):
     nr_sentences = index.corpus.num_sentences()
     nr_instances = con.execute(f'select count(*) from (select distinct {features} from features)').fetchone()[0]
     nr_rows = con.execute(f'select count(*) from features').fetchone()[0]
-    log(f" -> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences", index._verbose, start=t0)
+    log(f" -> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences", verbose, start=t0)
 
     # Build keys files, index file and sets file
     t0 = time.time()
@@ -83,8 +83,8 @@ def build_index(index, keep_tmpfiles=False, **unused_kwargs):
         nr_elements += 1
     # Write the size of the final set at its beginning
     index._sets[set_start] = set_size
-    log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", index._verbose, start=t0)
-    log("", index._verbose)
+    log(f" -> created index file with {nr_keys} keys, sets file with {nr_elements} elements", verbose, start=t0)
+    log("", verbose)
 
     # Cleanup
     if not keep_tmpfiles:
@@ -92,7 +92,7 @@ def build_index(index, keep_tmpfiles=False, **unused_kwargs):
     index.close()
 
 
-def _yield_instances(index, sentence):
+def yield_instances(index, sentence):
     try:
         for k in range(len(sentence)):
             instance_values = [sentence[k+i][feat] for (feat, i) in index.template]
@@ -113,8 +113,8 @@ def build_indexes(args):
     corpus = Corpus(args.corpus)
     ctr = 1
     for template in yield_templates(args.features, args.max_dist):
-        index = Index(corpus, template, mode='w', verbose=args.verbose)
-        build_index(index)
+        index = Index(corpus, template, mode='w')
+        build_index(index, keep_tmpfiles=args.keep_tmpfiles, verbose=args.verbose)
         ctr += 1
     log(f"Created {ctr} indexes", args.verbose, start=t0)
 
@@ -136,6 +136,7 @@ parser.add_argument('--features', '-f', nargs='+', help='features')
 parser.add_argument('--max-dist', type=int, default=2, 
                     help='max distance between token pairs (default: 2)')
 parser.add_argument('--verbose', '-v', action='store_true', help='verbose output')
+parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
 
 if __name__ == '__main__':
     args = parser.parse_args()

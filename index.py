@@ -50,14 +50,13 @@ class Instance:
 class Index:
     dir_suffix = '.indexes'
 
-    def __init__(self, corpus, template, mode='r', verbose=False):
+    def __init__(self, corpus, template, mode='r'):
         assert mode in "rw"
         assert isinstance(template, Template)
         self.basedir = corpus.path().with_suffix(self.dir_suffix)
         self.corpus = corpus
         self.template = template
-        self._verbose = verbose
-        basefile = self._basefile()
+        basefile = self.basefile()
 
         self._keypaths = [basefile.with_suffix(f'.{feature.decode()}{pos}') for feature, pos in template]
         self._indexpath = basefile.with_suffix('.index')
@@ -74,7 +73,7 @@ class Index:
     def __len__(self):
         return len(self._index)
 
-    def _basefile(self):
+    def basefile(self):
         return self.basedir / str(self.template)
 
     def close(self):
