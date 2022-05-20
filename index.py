@@ -48,7 +48,7 @@ class Instance:
 ## Implemented as a sorted array of interned strings
 
 class Index:
-    dir_suffix = '.instanceindex'
+    dir_suffix = '.indexes'
 
     def __init__(self, corpus, template, mode='r', verbose=False):
         assert mode in "rw"

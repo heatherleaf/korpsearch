@@ -13,7 +13,7 @@ from util import log
 
 def build_corpus_index(corpusfile, verbose=False):
     log(f"Building corpus index", verbose)
-    basedir = Path(corpusfile).with_suffix('.corpus')
+    basedir = Path(corpusfile).with_suffix(Corpus.dir_suffix)
     shutil.rmtree(basedir, ignore_errors=True)
     os.mkdir(basedir)
     corpus = open(Path(corpusfile).with_suffix('.csv'), 'rb')
@@ -82,8 +82,10 @@ def build_corpus_index(corpusfile, verbose=False):
 
 
 class Corpus:
+    dir_suffix = '.corpus'
+
     def __init__(self, corpus):
-        basedir = Path(corpus).with_suffix('.corpus')
+        basedir = Path(corpus).with_suffix(self.dir_suffix)
         self._path = Path(corpus)
         self._features = json.load(open(basedir / 'features', 'r'))
         self._features = [f.encode('utf-8') for f in self._features]
