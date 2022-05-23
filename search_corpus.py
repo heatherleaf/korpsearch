@@ -23,7 +23,10 @@ def search_corpus(args):
             index = Index(corpus, template)
         except FileNotFoundError:
             continue
-        sentences = index.search(instance)
+        try:
+            sentences = index.search(instance)
+        except KeyError:
+            continue
         logging.debug(f"   {index} = {instance} --> {len(sentences)}")
         search_results.append((index, instance, sentences))
     logging.info(f"Searched {len(search_results)} indexes")

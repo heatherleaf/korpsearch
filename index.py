@@ -106,7 +106,7 @@ class Index:
                 start = mid + 1
             else:
                 end = mid - 1
-        raise ValueError("Key not found")
+        raise KeyError(f'Instance "{instance}" not found')
 
 
 ################################################################################
