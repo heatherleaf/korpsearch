@@ -296,7 +296,7 @@ class DiskStringArrayBuilder:
         StringCollectionBuilder.build(strings_path, strings)
         self._strings = StringCollection(strings_path)
         self._strings.preload()
-        self._builder = DiskIntArrayBuilder(path, len(self._strings)-1, use_memoryview=use_memoryview)
+        self._builder = DiskIntArrayBuilder(path, max_value=len(self._strings)-1, use_memoryview=use_memoryview)
 
     def append(self, value):
         self._builder.append(self._strings.intern(value).index)
