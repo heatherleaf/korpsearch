@@ -12,6 +12,7 @@ class RelativeTimeFormatter(logging.Formatter):
 
     def format(self, record):
         record.relativeCreated = record.relativeCreated / self._divider
+        record.warningname = f"{record.levelname:<9s}" if record.levelno >= logging.WARNING else ""
         return super().format(record)
 
 

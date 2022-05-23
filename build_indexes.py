@@ -138,5 +138,5 @@ parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", co
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    setup_logger('{levelname:<6s} {relativeCreated:8.2f} min | {message}', timedivider=60*1000, loglevel=args.loglevel)
+    setup_logger('{relativeCreated:8.2f} min {warningname}| {message}', timedivider=60*1000, loglevel=args.loglevel)
     build_indexes(args)

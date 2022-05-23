@@ -73,5 +73,5 @@ parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", co
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    setup_logger('{levelname:<6s} {relativeCreated:8.2f} s | {message}', timedivider=1000, loglevel=args.loglevel)
+    setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=args.loglevel)
     search_corpus(args)
