@@ -113,8 +113,9 @@ class Index:
 ## Index set
 
 class IndexSet:
-    def __init__(self, setsarray, start):
+    def __init__(self, setsarray, start, use_list=False):
         self._setsarray = setsarray
+        self._use_list = use_list
         self.start = start
         if start is None:
             self.size = 0
@@ -157,13 +158,14 @@ class IndexSet:
             # The result can be a set or a list (sets seem to be 25-50% faster, 
             # but lists are easier to reimplement in C, and to store externally)
             # (It seems like lists are faster with PyPy, but sets with CPython)
-            result = set()  # []
+            result = [] if self._use_list else set()
+            add_result = result.append if self._use_list else result.add
             selfiter, otheriter = iter(sorted(self)), iter(other)
             selfval, otherval = next(selfiter), next(otheriter)
             while True:
                 try:
                     if selfval == otherval:
-                        result.add(selfval)  # result.append
+                        add_result(selfval)
                         selfval = next(selfiter)
                         otherval = next(otheriter)
                     elif selfval < otherval:
