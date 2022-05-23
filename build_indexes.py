@@ -52,7 +52,11 @@ def build_index(index, keep_tmpfiles=False):
     index._keys = [DiskIntArrayBuilder(path, max_value = len(index.corpus.strings(feat)))
             for (feat, _), path in zip(index.template, index._keypaths)]
     index._sets = DiskIntArrayBuilder(index._setspath, max_value = nr_sentences+1)
-    index._index = DiskIntArrayBuilder(index._indexpath, max_value = nr_rows)
+    # nr_rows is the sum of all set sizes, but the .sets file also includes the set sizes,
+    # so in some cases we get an OverflowError.
+    # This happens e.g. for bnc-20M when building lemma0: nr_rows = 16616400 < 2^24 < 16777216 = nr_rows+nr_sets
+    # What we need is max_value = nr_rows + nr_sets; this is a simple hack until we have better solution:
+    index._index = DiskIntArrayBuilder(index._indexpath, max_value = nr_rows*2)
 
     nr_keys = nr_elements = 0
     current = None
