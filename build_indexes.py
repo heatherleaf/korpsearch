@@ -1,11 +1,11 @@
 
-import os
 import shutil
 import argparse
+import itertools
 from pathlib import Path
 from index import Index, Instance, Template
 from disk import DiskIntArrayBuilder
-from corpus import Corpus, build_corpus_index
+from corpus import Corpus, build_corpus_index_from_csv
 from util import setup_logger
 import logging
 import sqlite3
@@ -104,20 +104,44 @@ def yield_instances(index, sentence):
 
 
 ################################################################################
-## Building the corpus index, and all query indexes
+## Building the corpus index and the query indexes
 
-def build_indexes(args):
-    basedir = args.corpus.with_suffix(Index.dir_suffix)
-    shutil.rmtree(basedir, ignore_errors=True)
-    os.mkdir(basedir)
-    build_corpus_index(args.corpus)
-    corpus = Corpus(args.corpus)
-    ctr = 1
-    for template in yield_templates(args.features, args.max_dist):
-        index = Index(corpus, template, mode='w')
-        build_index(index, keep_tmpfiles=args.keep_tmpfiles)
-        ctr += 1
-    logging.info(f"Created {ctr} indexes")
+def main(args):
+    base = Path(args.corpus)
+    corpusdir = base.with_suffix(Corpus.dir_suffix)
+    indexdir = base.with_suffix(Index.dir_suffix)
+
+    if args.clean:
+        shutil.rmtree(corpusdir, ignore_errors=True)
+        shutil.rmtree(indexdir, ignore_errors=True)
+        logging.info(f"Removed all indexes")
+
+    if args.corpus_index:
+        corpusdir.mkdir(exist_ok=True)
+        corpusfile = base.with_suffix('.csv')
+        build_corpus_index_from_csv(corpusdir, corpusfile)
+        logging.info(f"Created the corpus index")
+
+    if args.features or args.templates:
+        corpus = Corpus(base)
+        indexdir.mkdir(exist_ok=True)
+        ctr = 0
+        for template in itertools.chain(
+                            yield_templates(args.features, args.max_dist),
+                            map(parse_template, args.templates),
+                        ):
+            index = Index(corpus, template, mode='w')
+            build_index(index, keep_tmpfiles=args.keep_tmpfiles)
+            ctr += 1
+        logging.info(f"Created {ctr} query indexes")
+
+
+def parse_template(template_str):
+    template = [tuple(feat_dist.split('.')) for feat_dist in template_str.split('-')]
+    try:
+        return Template(*[(feat, int(dist)) for (feat, dist) in template])
+    except ValueError:
+        raise ValueError("Ill-formed template: it should be on the form pos.0 or word.0-pos.2")
 
 
 def yield_templates(features, max_dist):
@@ -132,15 +156,25 @@ def yield_templates(features, max_dist):
 ## Main
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
-parser.add_argument('--features', '-f', nargs='+', help='features')
+parser.add_argument('corpus', type=Path, help='corpus base name (i.e. without suffix)')
+
+parser.add_argument('--clean', action='store_true',
+    help='remove the corpus index and all query indexes')
+parser.add_argument('--corpus-index', '-c', action='store_true',
+    help='build the corpus index')
+parser.add_argument('--features', '-f', nargs='+', default=[],
+    help='build all possible (unary and binary) query indexes for the given features')
+parser.add_argument('--templates', '-t', nargs='+', default=[],
+    help='build query indexes for the given templates: e.g., pos.0 (unary index), or word.0-pos.2 (binary index)')
+
 parser.add_argument('--max-dist', type=int, default=2, 
-                    help='max distance between token pairs (default: 2)')
+                    help='[only with the --features option] max distance between token pairs (default: 2)')
 parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
 
+
 if __name__ == '__main__':
     args = parser.parse_args()
     setup_logger('{relativeCreated:8.2f} min {warningname}| {message}', timedivider=60*1000, loglevel=args.loglevel)
-    build_indexes(args)
+    main(args)

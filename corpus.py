@@ -10,12 +10,10 @@ import logging
 ################################################################################
 ## Corpus
 
-def build_corpus_index(corpusfile):
+def build_corpus_index_from_csv(basedir, csv_corpusfile):
     logging.debug(f"Building corpus index...")
-    basedir = Path(corpusfile).with_suffix(Corpus.dir_suffix)
-    shutil.rmtree(basedir, ignore_errors=True)
-    os.mkdir(basedir)
-    corpus = open(Path(corpusfile).with_suffix('.csv'), 'rb')
+    corpus = open(csv_corpusfile, 'rb')
+
     # the first line in the CSV should be a header with the names of each column (=features)
     features = corpus.readline().decode('utf-8').split()
 
