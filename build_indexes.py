@@ -14,8 +14,13 @@ import sqlite3
 ################################################################################
 ## Building one index
 
-def build_index(index, keep_tmpfiles=False):
+def build_index(index, keep_tmpfiles=False, min_frequency=None):
     logging.debug(f"Building index for {index}...")
+
+    unary_indexes = None
+    if min_frequency and len(index.template) > 1:
+        unary_indexes = [Index(index.corpus, Template((feat,0)))
+                         for (feat, _pos) in index.template]
 
     dbfile = index.basefile().with_suffix('.db.tmp')
     con = sqlite3.connect(dbfile)
@@ -35,13 +40,23 @@ def build_index(index, keep_tmpfiles=False):
         ) without rowid''')
 
     # Add all features
+    skipped_instances = 0
     def rows():
+        nonlocal skipped_instances
         for n, sentence in enumerate(index.corpus.sentences(), 1):
             for instance in yield_instances(index, sentence):
+                if unary_indexes and any(
+                            len(unary.search(Instance(val))) < min_frequency 
+                            for val, unary in zip(instance, unary_indexes)
+                        ):
+                    skipped_instances += 1
+                    continue
                 yield tuple(value.index for value in instance.values()) + (n,)
 
     places = ', '.join('?' for _ in range(len(index.template)))
     con.executemany(f'insert or ignore into features values({places}, ?)', rows())
+    if skipped_instances:
+        logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
     nr_sentences = index.corpus.num_sentences()
     nr_instances = con.execute(f'select count(*) from (select distinct {features} from features)').fetchone()[0]
@@ -131,7 +146,7 @@ def main(args):
                             map(parse_template, args.templates),
                         ):
             index = Index(corpus, template, mode='w')
-            build_index(index, keep_tmpfiles=args.keep_tmpfiles)
+            build_index(index, keep_tmpfiles=args.keep_tmpfiles, min_frequency=args.min_frequency)
             ctr += 1
         logging.info(f"Created {ctr} query indexes")
 
@@ -147,6 +162,7 @@ def parse_template(template_str):
 def yield_templates(features, max_dist):
     for feat in features:
         yield Template((feat, 0))
+    for feat in features:
         for feat1 in features:
             for dist in range(1, max_dist+1):
                 yield Template((feat, 0), (feat1, dist))
@@ -169,6 +185,9 @@ parser.add_argument('--templates', '-t', nargs='+', default=[],
 
 parser.add_argument('--max-dist', type=int, default=2, 
                     help='[only with the --features option] max distance between token pairs (default: 2)')
+parser.add_argument('--min-frequency', type=int, 
+                    help='[only for binary indexes] min unary frequency for all values in a binary instance')
+
 parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
