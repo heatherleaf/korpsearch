@@ -180,7 +180,8 @@ class IndexSet:
         self.start = self.size = self._setsarray = None
 
     def filter(self, check):
-        self.values = {elem for elem in self if check(elem)}
+        result_class = list if self._use_list else set
+        self.values = result_class(elem for elem in self if check(elem))
         self.start = self.size = self._setsarray = None
 
     def __contains__(self, elem):
