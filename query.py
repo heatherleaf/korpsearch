@@ -1,7 +1,9 @@
 
 import re
 from index import Template, Instance
-from util import bytesify
+from corpus import Corpus, Word
+from disk import InternedString
+from typing import List, Tuple, Set, Iterator
 
 ################################################################################
 ## Queries
@@ -9,14 +11,15 @@ from util import bytesify
 QUEREGEX = re.compile(rb'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 
 class Query:
-    def __init__(self, corpus, querystr):
-        self._corpus = corpus
-        querystr = bytesify(querystr)
+    def __init__(self, corpus:Corpus, querystr:bytes):
+        self._corpus : Corpus = corpus
+        if isinstance(querystr, str):
+            querystr = querystr.encode() 
         querystr = querystr.replace(b' ', b'')
         if not QUEREGEX.match(querystr):
-            raise ValueError(f"Error in query: {querystr}")
+            raise ValueError(f"Error in query: {querystr!r}")
         tokens = querystr.split(b'][')
-        self.query = []
+        self.query : List[List[Tuple[bytes, InternedString]]] = []
         for tok in tokens:
             self.query.append([])
             parts = re.findall(rb'\w+="[^"]+"', tok)
@@ -25,11 +28,11 @@ class Query:
                 value = value.replace(b'"', b'')
                 self.query[-1].append((feat, self._corpus.intern(feat, value)))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return " ".join("[" + " ".join(f'{feat.decode()}="{bytes(val).decode()}"' for feat, val in subq) + "]"
                         for subq in self.query)
 
-    def subqueries(self):
+    def subqueries(self) -> Iterator[Tuple[Template, Instance]]:
         # Pairs of tokens
         for i, tok in enumerate(self.query):
             for feat, value in tok:
@@ -42,10 +45,10 @@ class Query:
             for feat, value in tok:
                 yield (Template((feat, 0)), Instance(value))
 
-    def features(self):
+    def features(self) -> Set[bytes]:
         return {feat for tok in self.query for feat, _val in tok}
 
-    def check_sentence(self, sentence):
+    def check_sentence(self, sentence:List[Word]) -> bool:
         for k in range(len(sentence) - len(self.query) + 1):
             if all(sentence[k+i][feat] == value 
                    for i, token_query in enumerate(self.query)
@@ -55,11 +58,12 @@ class Query:
         return False
 
     @staticmethod
-    def is_subquery(subtemplate, subinstance, template, instance):
-        positions = sorted({pos for _, pos in template})
-        query = {(feat, pos, val) for ((feat, pos), val) in zip(template, instance)}
+    def is_subquery(subtemplate:Template, subinstance:Instance, template:Template, instance:Instance):
+        positions : List[int] = sorted({pos for _, pos in template})
+        QuerySet = Set[Tuple[bytes, int, InternedString]]
+        query : QuerySet = {(feat, pos, val) for ((feat, pos), val) in zip(template, instance)}
         for base in positions:
-            subquery = {(feat, base+pos, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
+            subquery : QuerySet = {(feat, base+pos, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
             if subquery.issubset(query):
                 return True
         return False
