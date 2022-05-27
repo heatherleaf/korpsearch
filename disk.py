@@ -157,14 +157,14 @@ class StringCollection:
         self.starts = DiskIntArray(add_suffix(path, STARTS_SUFFIX))
         self._intern : Dict[bytes, int] = {}
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.starts)-1
 
     def from_index(self, index:int) -> 'InternedString':
         return InternedString(self, index)
 
     def preload(self):
-        if self._intern is None:
+        if not self._intern:
             self._intern = {}
             for i in range(len(self)):
                 self._intern[bytes(self.from_index(i))] = i
