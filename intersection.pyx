@@ -5,42 +5,48 @@ import sys
 
 from libc.stdlib cimport malloc, free
 
-cdef to_bytes_and_elemsize(array):
-    """Convert an array to a pair (bytes, item size)."""
+ctypedef const unsigned char[::1] buffer
+
+cdef buffer to_buffer(array, start, length):
+    """Convert an array to an array of bytes."""
+
+    cdef buffer result
+    start *= elemsize(array)
+    length *= elemsize(array)
 
     if isinstance(array, memoryview):
-        bytearray = array.obj
-        elemsize = array.itemsize
+        result = array.obj
     elif isinstance(array, SlowDiskIntArray):
         assert array._byteorder == sys.byteorder
-        bytearray = array._array
-        elemsize = array._elemsize
+        result = array._array
     else:
-        assert False, "argument to to_bytes_and_elemsize has unknown type"
+        assert False, "argument to to_memoryview has unknown type"
 
-    return bytearray, elemsize
+    return result[start:start+length]
 
-cdef const unsigned char[::1] to_memoryview(array, elemsize, start, length):
-    """Convert a slice of an array into a memoryview."""
+cdef elemsize(array):
+    """Find the element size of an array."""
 
-    cdef const unsigned char[::1] result = array
-    return result[start*elemsize:(start+length)*elemsize]
+    if isinstance(array, memoryview):
+        return array.itemsize
+    elif isinstance(array, SlowDiskIntArray):
+        return array._elemsize
+    else:
+        assert False, "argument to elemsize has unknown type"
 
 def intersection(arr1, start1, length1, arr2, start2, length2):
     """Take the intersection of two sorted arrays."""
 
-    arr1, elemsize = to_bytes_and_elemsize(arr1)
-    arr2, elemsize2 = to_bytes_and_elemsize(arr2)
-    assert elemsize == elemsize2
+    assert elemsize(arr1) == elemsize(arr2)
+    size = elemsize(arr1)
 
-    cdef const unsigned char[::1] buf1 = to_memoryview(arr1, elemsize, start1, length1)
-    cdef const unsigned char[::1] buf2 = to_memoryview(arr2, elemsize, start2, length2)
+    cdef buffer buf1 = to_buffer(arr1, start1, length1)
+    cdef buffer buf2 = to_buffer(arr2, start2, length2)
     out = <char*>malloc(max(len(buf1), len(buf2)))
 
     try:
-        length = intersection_switch(&buf1[0], len(buf1), &buf2[0], len(buf2), out, elemsize)
-        result = out[:length]
-        return SlowDiskIntArray(result, elemsize, sys.byteorder)
+        length = intersection_switch(&buf1[0], len(buf1), &buf2[0], len(buf2), out, size)
+        return SlowDiskIntArray(out[:length], size, sys.byteorder)
     finally:
         free(out)
 
