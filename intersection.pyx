@@ -1,3 +1,5 @@
+# cython: language_level=3
+
 from disk import SlowDiskIntArray
 import sys
 
