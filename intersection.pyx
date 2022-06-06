@@ -40,28 +40,25 @@ def intersection(arr1, start1, length1, arr2, start2, length2):
     assert elemsize(arr1) == elemsize(arr2)
     size = elemsize(arr1)
 
-    cdef buffer buf1 = to_buffer(arr1, start1, length1)
-    cdef buffer buf2 = to_buffer(arr2, start2, length2)
-    out = <char*>malloc(max(len(buf1), len(buf2)))
-
-    try:
-        length = intersection_switch(&buf1[0], len(buf1), &buf2[0], len(buf2), out, size)
-        return SlowDiskIntArray(out[:length], size, sys.byteorder)
-    finally:
-        free(out)
-
-cdef int intersection_switch(const void *in1, int len1, const void *in2, int len2, void *out, int size):
     # Generate specialised code for each value of 'size'.
     # This improves performance because it allows the C compiler to specialise
     # read_bytes and write_bytes to the given size.
-    if size == 1: return intersection_core(in1, len1, in2, len2, out, 1)
-    elif size == 2: return intersection_core(in1, len1, in2, len2, out, 2)
-    elif size == 3: return intersection_core(in1, len1, in2, len2, out, 3)
-    elif size == 4: return intersection_core(in1, len1, in2, len2, out, 4)
-    else: return intersection_core(in1, len1, in2, len2, out, size)
+    if size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 1)
+    elif size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 2)
+    elif size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 3)
+    elif size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 4)
+    else: return intersection_core(arr1, start1, length1, arr2, start2, length2, size)
 
-cdef inline int intersection_core(const void *in1, int len1, const void *in2, int len2, void *out, int size):
-    """The low-level intersection routine."""
+cdef inline intersection_core(arr1, start1, length1, arr2, start2, length2, int size):
+    cdef buffer buf1 = to_buffer(arr1, start1, length1)
+    cdef buffer buf2 = to_buffer(arr2, start2, length2)
+
+    cdef const unsigned char* in1 = &buf1[0]
+    cdef const unsigned char* in2 = &buf2[0]
+    cdef int len1 = buf1.nbytes
+    cdef int len2 = buf2.nbytes
+
+    out = <char*>malloc(max(len1, len2))
 
     cdef int i = 0
     cdef int j = 0
@@ -78,7 +75,10 @@ cdef inline int intersection_core(const void *in1, int len1, const void *in2, in
             i += size
             j += size
             k += size
-    return k
+
+    result = SlowDiskIntArray(out[:k], size, sys.byteorder)
+    free(out)
+    return result
 
 cdef extern from "string.h":
     void *memcpy(void *dest, const void *src, size_t len)
