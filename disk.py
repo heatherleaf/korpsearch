@@ -60,7 +60,7 @@ class SlowDiskIntArray:
 
     def __getitem__(self, i):
         if isinstance(i, slice):
-            return list(self._slice(i))
+            return self._slice(i)
         if not isinstance(i, int):
             raise TypeError("SlowDiskIntArray: invalid array index type")
         if i < 0 or i >= len(self):
@@ -275,7 +275,7 @@ class DiskStringArray:
 
     def __getitem__(self, i):
         if isinstance(i, slice):
-            return list(self._slice(i))
+            return self._slice(i)
 
         if not isinstance(i, int):
             raise TypeError("invalid array index type")
