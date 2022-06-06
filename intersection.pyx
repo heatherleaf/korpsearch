@@ -38,18 +38,8 @@ def intersection(arr1, start1, length1, arr2, start2, length2):
     """Take the intersection of two sorted arrays."""
 
     assert elemsize(arr1) == elemsize(arr2)
-    size = elemsize(arr1)
+    cdef int size = elemsize(arr1)
 
-    # Generate specialised code for each value of 'size'.
-    # This improves performance because it allows the C compiler to specialise
-    # read_bytes and write_bytes to the given size.
-    if size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 1)
-    elif size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 2)
-    elif size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 3)
-    elif size == 1: return intersection_core(arr1, start1, length1, arr2, start2, length2, 4)
-    else: return intersection_core(arr1, start1, length1, arr2, start2, length2, size)
-
-cdef inline intersection_core(arr1, start1, length1, arr2, start2, length2, int size):
     cdef buffer buf1 = to_buffer(arr1, start1, length1)
     cdef buffer buf2 = to_buffer(arr2, start2, length2)
 
