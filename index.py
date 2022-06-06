@@ -2,6 +2,13 @@
 import itertools
 from disk import DiskIntArray
 from util import bytesify
+import sys
+
+try:
+    from intersection import intersection
+except ModuleNotFoundError:
+    print("Module 'intersection' not found - run pypy setup.py build_ext --inplace", file=sys.stderr)
+    sys.exit(1)
 
 ################################################################################
 ## Templates and instances
@@ -141,43 +148,13 @@ class IndexSet:
         else:
             yield from self._setsarray[self.start:self.start+self.size]
 
-    # if the sets have very uneven size, use __contains__ on the larger set
-    # instead of normal set intersection
-    _min_size_difference = 1000
-
     def intersection_update(self, other):
-        # We assume that self is smaller than other!
-        if len(other) > len(self) * self._min_size_difference:
-            # O(self * log(other))
-            self.values = [elem for elem in self if elem in other]
-        elif isinstance(self.values, set):
-            # O(self + other)
-            self.values.intersection_update(other)
-        else:
-            # O(self + other)
-            # The result can be a set or a list (sets seem to be 25-50% faster, 
-            # but lists are easier to reimplement in C, and to store externally)
-            # (It seems like lists are faster with PyPy, but sets with CPython)
-            result = [] if self._use_list else set()
-            add_result = result.append if self._use_list else result.add
-            selfiter, otheriter = iter(sorted(self)), iter(other)
-            selfval, otherval = next(selfiter), next(otheriter)
-            while True:
-                try:
-                    if selfval == otherval:
-                        add_result(selfval)
-                        selfval = next(selfiter)
-                        otherval = next(otheriter)
-                    elif selfval < otherval:
-                        selfval = next(selfiter)
-                    else: # selfval > otherval
-                        otherval = next(otheriter)
-                except StopIteration:
-                    break
-            self.values = result
-        if not self.values:
-            raise ValueError("Empty intersection")
-        self.start = self.size = self._setsarray = None
+        assert self.values is None and other.values is None
+
+        self._setsarray = intersection(self._setsarray, self.start, self.size,
+                                       other._setsarray, other.start, other.size)
+        self.start = 0
+        self.size = len(self._setsarray)
 
     def filter(self, check):
         result_class = list if self._use_list else set
