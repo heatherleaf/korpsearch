@@ -5,7 +5,7 @@ import sys
 
 from libc.stdlib cimport malloc, free
 
-def to_bytes_and_elemsize(array, start, length):
+cdef to_bytes_and_elemsize(array):
     """Convert an array to a pair (bytes, item size)."""
 
     if isinstance(array, memoryview):
@@ -18,20 +18,27 @@ def to_bytes_and_elemsize(array, start, length):
     else:
         assert False, "argument to to_bytes_and_elemsize has unknown type"
 
-    start *= elemsize
-    length *= elemsize
-    return bytearray[start:start+length], elemsize
+    return bytearray, elemsize
 
-def intersection(in1, start1, length1, in2, start2, length2):
+cdef const unsigned char[::1] to_memoryview(array, elemsize, start, length):
+    """Convert a slice of an array into a memoryview."""
+
+    cdef const unsigned char[::1] result = array
+    return result[start*elemsize:(start+length)*elemsize]
+
+def intersection(arr1, start1, length1, arr2, start2, length2):
     """Take the intersection of two sorted arrays."""
 
-    in1, elemsize = to_bytes_and_elemsize(in1, start1, length1)
-    in2, elemsize2 = to_bytes_and_elemsize(in2, start2, length2)
+    arr1, elemsize = to_bytes_and_elemsize(arr1)
+    arr2, elemsize2 = to_bytes_and_elemsize(arr2)
     assert elemsize == elemsize2
-    out = <char*>malloc(max(len(in1), len(in2)))
+
+    cdef const unsigned char[::1] buf1 = to_memoryview(arr1, elemsize, start1, length1)
+    cdef const unsigned char[::1] buf2 = to_memoryview(arr2, elemsize, start2, length2)
+    out = <char*>malloc(max(len(buf1), len(buf2)))
 
     try:
-        length = intersection_switch(<const char*>in1, len(in1), <const char*>in2, len(in2), out, elemsize)
+        length = intersection_switch(&buf1[0], len(buf1), &buf2[0], len(buf2), out, elemsize)
         result = out[:length]
         return SlowDiskIntArray(result, elemsize, sys.byteorder)
     finally:
