@@ -1,76 +1,75 @@
 
-import os
 import json
-import shutil
 from pathlib import Path
 from dataclasses import dataclass
-from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder
+import disk
+from typing import BinaryIO, List, Tuple, Set, Dict, Iterator
 import logging
 
 ################################################################################
 ## Corpus
 
-def build_corpus_index_from_csv(basedir, csv_corpusfile):
+def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
     logging.debug(f"Building corpus index...")
-    corpus = open(csv_corpusfile, 'rb')
+    corpus : BinaryIO = open(csv_corpusfile, 'rb')
 
     # the first line in the CSV should be a header with the names of each column (=features)
-    features = corpus.readline().decode('utf-8').split()
+    features : List[str] = corpus.readline().decode('utf-8').split()
 
     with open(basedir / 'features', 'w') as features_file:
         json.dump(features, features_file)
 
-    def words():
+    def words() -> Iterator[Tuple[bool, List[bytes]]]:
         # Skip over the first line
         corpus.seek(0)
         corpus.readline()
 
-        new_sentence = True
+        new_sentence : bool = True
 
         while True:
-            line = corpus.readline()
+            line : bytes = corpus.readline()
             if not line: return
 
             line = line.strip()
             if line.startswith(b"# sentence"):
                 new_sentence = True
             else:
-                word = line.split(b'\t')
+                word : List[bytes] = line.split(b'\t')
                 while len(word) < len(features):
                     word.append(b'')
                 yield new_sentence, word
                 new_sentence = False
 
-    strings = [set() for _feature in features]
-    count = 0
+    strings : List[Set[bytes]] = [set() for _feature in features]
+    count : int = 0
     for _new_sentence, word in words():
         count += 1
-        for i, feature in enumerate(word):
-            strings[i].add(feature)
+        for i, feat in enumerate(word):
+            strings[i].add(feat)
     logging.debug(f" --> read {sum(map(len, strings))} distinct strings")
 
-    sentence_builder = DiskIntArrayBuilder(basedir / 'sentences',
-        max_value = count-1, use_memoryview = True)
-    feature_builders = []
+    sentence_builder = disk.DiskIntArrayBuilder(
+        basedir/'sentences', max_value=count-1, use_memoryview=True)
+    feature_builders : List[disk.DiskStringArrayBuilder] = []
     for i, feature in enumerate(features):
         path = basedir / ('feature.' + feature)
-        builder = DiskStringArrayBuilder(path, strings[i])
+        builder = disk.DiskStringArrayBuilder(path, strings[i])
         feature_builders.append(builder)
 
     sentence_builder.append(0) # sentence 0 doesn't exist
 
-    sentence_count = 0
-    word_count = 0
+    sentence_count : int = 0
+    word_count : int = 0
     for new_sentence, word in words():
         if new_sentence:
             sentence_builder.append(word_count)
             sentence_count += 1
-        for i, feature in enumerate(word):
-            feature_builders[i].append(feature)
+        for i, feat in enumerate(word):
+            feature_builders[i].append(feat)
         word_count += 1
 
-    sentence_builder.close()
-    for builder in feature_builders: builder.close()
+    # sentence_builder.close()
+    # for builder in feature_builders: builder.close()
 
     logging.info(f"Built corpus index, {word_count} words, {sentence_count} sentences")
 
@@ -78,42 +77,44 @@ def build_corpus_index_from_csv(basedir, csv_corpusfile):
 class Corpus:
     dir_suffix = '.corpus'
 
-    def __init__(self, corpus):
-        basedir = Path(corpus).with_suffix(self.dir_suffix)
-        self._path = Path(corpus)
-        self._features = json.load(open(basedir / 'features', 'r'))
-        self._features = [f.encode('utf-8') for f in self._features]
-        self._sentences = DiskIntArray(basedir / 'sentences')
-        self._words = \
-            {feature: DiskStringArray(basedir / ('feature.' + feature.decode('utf-8')))
-             for feature in self._features}
+    features : List[bytes]
+    words : Dict[bytes, disk.DiskStringArray]
+    _sentences : disk.DiskIntArrayType
+    _path : Path
+
+    def __init__(self, corpus:Path):
+        basedir : Path = corpus.with_suffix(self.dir_suffix)
+        self._path = corpus
+        self.features = [f.encode('utf-8') for f in json.load(open(basedir/'features', 'r'))]
+        self._sentences = disk.DiskIntArray(basedir / 'sentences')
+        self.words = {
+            feature: disk.DiskStringArray(basedir / ('feature.' + feature.decode('utf-8')))
+            for feature in self.features
+        }
         
-    def __str__(self):
+    def __str__(self) -> str:
         return f"[Corpus: {self._path.stem}]"
 
-    def path(self):
+    def path(self) -> Path:
         return self._path
 
-    def strings(self, feature):
-        return self._words[feature]._strings
+    def strings(self, feature:bytes) -> disk.StringCollection:
+        return self.words[feature].strings
 
-    def intern(self, feature, value):
-        return self._words[feature].intern(value)
+    def intern(self, feature:bytes, value:bytes) -> disk.InternedString:
+        return self.words[feature].intern(value)
 
-    def num_sentences(self):
+    def num_sentences(self) -> int:
         return len(self._sentences)-1
 
-    def sentences(self):
+    def sentences(self) -> Iterator[List['Word']]:
         for i in range(1, len(self._sentences)):
             yield self.lookup_sentence(i)
 
-    def lookup_sentence(self, n):
-        start = self._sentences[n]
-        if n+1 < len(self._sentences):
-            end = self._sentences[n+1]
-        else:
-            end = len(self._sentences)
-
+    def lookup_sentence(self, n:int) -> List['Word']:
+        start : int = self._sentences[n]
+        nsents : int = len(self._sentences)
+        end : int = self._sentences[n+1] if n+1 < nsents else nsents
         return [Word(self, i) for i in range(start, end)]
 
 
@@ -122,25 +123,27 @@ class Word:
     corpus: Corpus
     pos: int
 
-    def __getitem__(self, feature):
-        return self.corpus._words[feature][self.pos]
+    def __getitem__(self, feature:bytes) -> disk.InternedString:
+        return self.corpus.words[feature][self.pos]
 
-    def keys(self):
-        return self.corpus._features
+    def keys(self) -> List[bytes]:
+        return self.corpus.features
 
-    def items(self):
-        for feature, value in self.corpus._words.items():
+    def items(self) -> Iterator[Tuple[bytes, disk.InternedString]]:
+        for feature, value in self.corpus.words.items():
             yield feature, value[self.pos]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return bytes(self[b"word"]).decode('utf-8')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Word({dict(self.items())})"
 
-    def __eq__(self, other):
-        return dict(self) == dict(other)
+    def __eq__(self, other:object) -> bool:
+        if isinstance(other, Word):
+            return dict(self) == dict(other)
+        return False
 
 
-def render_sentence(sentence):
+def render_sentence(sentence:List[Word]) -> str:
     return " ".join(map(str, sentence))

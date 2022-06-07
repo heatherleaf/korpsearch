@@ -1,20 +1,21 @@
 
 import argparse
 from pathlib import Path
-from index import Index
+from index import Index, Instance, IndexSet
 from corpus import Corpus, render_sentence
 from query import Query
 from util import setup_logger
+from typing import List, Tuple
 import logging
 
 
-def search_corpus(args):
+def search_corpus(args:argparse.Namespace):
     corpus = Corpus(args.corpus)
     query = Query(corpus, args.query)
     logging.info(f"Query: {args.query} --> {query}")
    
     logging.debug("Searching...")
-    search_results = []
+    search_results : List[Tuple[Index, Instance, IndexSet]] = []
     for template, instance in query.subqueries():
         if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
                for (prev_index, prev_instance, _) in search_results):
@@ -24,7 +25,7 @@ def search_corpus(args):
         except FileNotFoundError:
             continue
         try:
-            sentences = index.search(instance)
+            sentences : IndexSet = index.search(instance)
         except KeyError:
             continue
         logging.debug(f"   {index} = {instance} --> {len(sentences)}")
@@ -36,9 +37,9 @@ def search_corpus(args):
     logging.debug("   " + " ".join(str(index) for index, _, _ in search_results))
 
     logging.debug("Intersecting...")
-    result = None
+    result = IndexSet([])
     for index, instance, sentences in search_results:
-        if result is None:
+        if not result:
             result = sentences
         else:
             result.intersection_update(sentences)
@@ -59,8 +60,6 @@ def search_corpus(args):
         logging.info(f"{len(result)} sentences written to {args.out}")
 
     logging.info(f"Final result: {result}")
-    for index, _, _ in search_results:
-        index.close()
 
 
 ################################################################################
@@ -75,6 +74,6 @@ parser.add_argument('--debug', action="store_const", dest="loglevel", const=logg
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
 
 if __name__ == '__main__':
-    args = parser.parse_args()
+    args : argparse.Namespace = parser.parse_args()
     setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=args.loglevel)
     search_corpus(args)
