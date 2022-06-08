@@ -1,7 +1,6 @@
 
 import json
 from pathlib import Path
-from dataclasses import dataclass
 import disk
 from typing import BinaryIO, List, Tuple, Set, Dict, Iterator
 import logging
@@ -107,43 +106,23 @@ class Corpus:
     def num_sentences(self) -> int:
         return len(self._sentences)-1
 
-    def sentences(self) -> Iterator[List['Word']]:
-        for i in range(1, len(self._sentences)):
-            yield self.lookup_sentence(i)
+    def sentences(self) -> Iterator[slice]:
+        sents : disk.DiskIntArrayType = self._sentences
+        for start, end in zip(sents[1:], sents[2:]):
+            yield slice(start, end)
+        yield slice(sents[-1], len(sents))
 
-    def lookup_sentence(self, n:int) -> List['Word']:
-        start : int = self._sentences[n]
-        nsents : int = len(self._sentences)
-        end : int = self._sentences[n+1] if n+1 < nsents else nsents
-        return [Word(self, i) for i in range(start, end)]
+    def lookup_sentence(self, n:int) -> slice:
+        sents : disk.DiskIntArrayType = self._sentences
+        start : int = sents[n]
+        nsents : int = len(sents)
+        end : int = sents[n+1] if n+1 < nsents else nsents
+        return slice(start, end)
 
+    def render_sentence(self, n:int) -> str:
+        # TODO: the feature(s) to show should be configurable
+        feat : bytes = b'word' if b'word' in self.features else self.features[0]
+        words : disk.DiskStringArray = self.words[feat]
+        sent : slice = self.lookup_sentence(n)
+        return " ".join(map(str, words[sent]))
 
-@dataclass(frozen=True)
-class Word:
-    corpus: Corpus
-    pos: int
-
-    def __getitem__(self, feature:bytes) -> disk.InternedString:
-        return self.corpus.words[feature][self.pos]
-
-    def keys(self) -> List[bytes]:
-        return self.corpus.features
-
-    def items(self) -> Iterator[Tuple[bytes, disk.InternedString]]:
-        for feature, value in self.corpus.words.items():
-            yield feature, value[self.pos]
-
-    def __str__(self) -> str:
-        return bytes(self[b"word"]).decode('utf-8')
-
-    def __repr__(self) -> str:
-        return f"Word({dict(self.items())})"
-
-    def __eq__(self, other:object) -> bool:
-        if isinstance(other, Word):
-            return dict(self) == dict(other)
-        return False
-
-
-def render_sentence(sentence:List[Word]) -> str:
-    return " ".join(map(str, sentence))

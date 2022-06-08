@@ -2,7 +2,7 @@
 import argparse
 from pathlib import Path
 from index import Index, Instance, IndexSet
-from corpus import Corpus, render_sentence
+from corpus import Corpus
 from query import Query
 from util import setup_logger
 from typing import List, Tuple
@@ -48,7 +48,7 @@ def search_corpus(args:argparse.Namespace):
 
     if args.filter:
         logging.debug("Filtering...")
-        result.filter(lambda sent: query.check_sentence(corpus.lookup_sentence(sent)))
+        result.filter(query.check_sentence)
         logging.debug(f"   {query} --> {result}")
         logging.info(f"After filtering: {result}")
 
@@ -56,7 +56,7 @@ def search_corpus(args:argparse.Namespace):
         logging.debug("Printing results...")
         with open(args.out, "w") as OUT:
             for sent in sorted(result):
-                print(sent, render_sentence(corpus.lookup_sentence(sent)), file=OUT)
+                print(sent, corpus.render_sentence(sent), file=OUT)
         logging.info(f"{len(result)} sentences written to {args.out}")
 
     logging.info(f"Final result: {result}")

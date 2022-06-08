@@ -1,9 +1,9 @@
 
 import re
 from index import Template, Instance
-from corpus import Corpus, Word
-from disk import InternedString
-from typing import List, Tuple, Set, Iterator
+from corpus import Corpus
+from disk import InternedString, DiskStringArray
+from typing import List, Tuple, Set, Dict, Iterator
 
 ################################################################################
 ## Queries
@@ -11,22 +11,32 @@ from typing import List, Tuple, Set, Iterator
 QUEREGEX = re.compile(rb'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 
 class Query:
+    corpus : Corpus
+    query : List[List[Tuple[bytes, InternedString]]]
+    featured_query : List[Tuple[bytes, List[Tuple[int, InternedString]]]]
+
     def __init__(self, corpus:Corpus, querystr:bytes):
-        self._corpus : Corpus = corpus
+        self.corpus = corpus
         if isinstance(querystr, str):
             querystr = querystr.encode() 
         querystr = querystr.replace(b' ', b'')
         if not QUEREGEX.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
         tokens = querystr.split(b'][')
-        self.query : List[List[Tuple[bytes, InternedString]]] = []
+        self.query = []
         for tok in tokens:
             self.query.append([])
             parts = re.findall(rb'\w+="[^"]+"', tok)
             for part in parts:
                 feat, value = part.split(b'=', 1)
                 value = value.replace(b'"', b'')
-                self.query[-1].append((feat, self._corpus.intern(feat, value)))
+                self.query[-1].append((feat, self.corpus.intern(feat, value)))
+        features : Set[bytes] = {feat for tok in self.query for feat, _val in tok}
+        featured_query : Dict[bytes, List[Tuple[int, InternedString]]] = {f: [] for f in features}
+        for i, tok in enumerate(self.query):
+            for feat, val in tok:
+                featured_query[feat].append((i, val))
+        self.featured_query = list(featured_query.items())
 
     def __str__(self) -> str:
         return " ".join("[" + " ".join(f'{feat.decode()}="{bytes(val).decode()}"' for feat, val in subq) + "]"
@@ -48,12 +58,15 @@ class Query:
     def features(self) -> Set[bytes]:
         return {feat for tok in self.query for feat, _val in tok}
 
-    def check_sentence(self, sentence:List[Word]) -> bool:
-        for k in range(len(sentence) - len(self.query) + 1):
-            if all(sentence[k+i][feat] == value 
-                   for i, token_query in enumerate(self.query)
-                   for feat, value in token_query
-                   ):
+    def check_sentence(self, n:int) -> bool:
+        sent : slice = self.corpus.lookup_sentence(n)
+        words : Dict[bytes, DiskStringArray] = self.corpus.words
+        for k in range(sent.start, sent.stop - len(self.query) + 1):
+            for feat, vals in self.featured_query:
+                fsent : DiskStringArray = words[feat]
+                if not all(fsent[k+i] == v for i, v in vals):
+                    break
+            else:
                 return True
         return False
 

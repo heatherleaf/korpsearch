@@ -9,7 +9,7 @@ import mmap
 from array import array
 import itertools
 from functools import total_ordering
-from typing import overload, Dict, List, BinaryIO, Union, Iterator, Optional, Iterable
+from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable
 
 def open_readonly_mmap(file : BinaryIO) -> mmap.mmap:
     try:
@@ -63,7 +63,7 @@ class SlowDiskIntArray:
     @overload
     def __getitem__(self, i:int) -> int: pass
     @overload
-    def __getitem__(self, i:slice) -> List[int]: pass
+    def __getitem__(self, i:slice) -> Iterator[int]: pass
     def __getitem__(self, i:Union[int,slice]):
         if isinstance(i, slice):
             return self._slice(i)
@@ -228,7 +228,7 @@ class InternedString:
         return self.db.strings[start:nextstart]
 
     def __str__(self):
-        return str(bytes(self))
+        return bytes(self).decode('utf-8')
 
     def __repr__(self):
         return f"InternedString({self})"
@@ -279,14 +279,12 @@ class DiskStringArray:
     @overload
     def __getitem__(self, i:int) -> InternedString: pass
     @overload
-    def __getitem__(self, i:slice) -> List[InternedString]: pass
+    def __getitem__(self, i:slice) -> Iterator[InternedString]: pass
     def __getitem__(self, i:Union[int,slice]):
         if isinstance(i, slice):
             return self._slice(i)
-
         if not isinstance(i, int):
             raise TypeError("invalid array index type")
-
         return self.strings.from_index(self._array[i])
 
     def _slice(self, slice:slice) -> Iterator[InternedString]:

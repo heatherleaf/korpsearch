@@ -5,7 +5,7 @@ import itertools
 from pathlib import Path
 from index import Index, Instance, Template
 from disk import DiskIntArrayBuilder
-from corpus import Corpus, Word, build_corpus_index_from_csv
+from corpus import Corpus, build_corpus_index_from_csv
 from util import setup_logger
 from typing import List, Tuple, Iterator
 import logging
@@ -109,10 +109,10 @@ def build_index(index:Index, keep_tmpfiles:bool=False, min_frequency:int=0):
         dbfile.unlink()
 
 
-def yield_instances(index:Index, sentence:List[Word]) -> Iterator[Instance]:
+def yield_instances(index:Index, sentence:slice) -> Iterator[Instance]:
     try:
-        for k in range(len(sentence)):
-            instance_values = [sentence[k+i][feat] for (feat, i) in index.template]
+        for k in range(sentence.start, sentence.stop):
+            instance_values = [index.corpus.words[feat][k+i] for (feat, i) in index.template]
             yield Instance(*instance_values)
     except IndexError:
         pass
