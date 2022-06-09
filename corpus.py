@@ -67,8 +67,9 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
             feature_builders[i].append(feat)
         word_count += 1
 
-    # sentence_builder.close()
-    # for builder in feature_builders: builder.close()
+    sentence_builder.close()
+    for builder in feature_builders: 
+        builder.close()
 
     logging.info(f"Built corpus index, {word_count} words, {sentence_count} sentences")
 

@@ -307,8 +307,8 @@ class DiskStringArrayBuilder:
     def append(self, value:bytes):
         self._builder.append(self._strings.intern(value).index)
 
-    # def close(self):
-    #     self._builder.close()
+    def close(self):
+        self._builder.close()
 
     @staticmethod
     def build(path:Path, values:Iterable[bytes], strings:Optional[Iterable[bytes]]=None, use_memoryview:bool=False):
@@ -318,6 +318,6 @@ class DiskStringArrayBuilder:
         builder = DiskStringArrayBuilder(path, strings, use_memoryview)
         for value in values:
             builder.append(value)
-        # builder.close()
+        builder.close()
 
         return DiskStringArray(path)
