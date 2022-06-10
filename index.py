@@ -9,8 +9,8 @@ import sys
 try:
     from intersection import intersection
 except ModuleNotFoundError:
-    print("Module 'intersection' not found - run pypy setup.py build_ext --inplace", file=sys.stderr)
-    sys.exit(1)
+    sys.exit("Module 'intersection' not found - to install, run: 'python setup.py build_ext --inplace'")
+
 
 ################################################################################
 ## Templates and instances
