@@ -8,6 +8,9 @@ from util import setup_logger
 from typing import List, Tuple
 import logging
 
+# Alternative implementation of filtering, which hopefully is easier to transfer to Cython
+from filter_sentences import filter_sentences
+
 
 def search_corpus(args:argparse.Namespace):
     corpus = Corpus(args.corpus)
@@ -48,7 +51,8 @@ def search_corpus(args:argparse.Namespace):
 
     if args.filter:
         logging.debug("Filtering...")
-        result.filter(query.check_sentence)
+        filter_sentences(result, query)
+        # result.filter(query.check_sentence)
         logging.debug(f"   {query} --> {result}")
         logging.info(f"After filtering: {result}")
 
