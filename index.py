@@ -97,19 +97,6 @@ class Index:
     def basefile(self) -> Path:
         return self.basedir / str(self.template)
 
-    # def close(self):
-    #     for keyarray in self._keys: self._close(keyarray)
-    #     self._close(self._index)
-    #     self._close(self._sets)
-
-    #     self._keys = []
-    #     self._index = None
-    #     self._sets = None
-
-    # def _close(self, file : DiskIntArrayType):
-    #     if hasattr(file, 'close'):
-    #         file.close()
-
     def search(self, instance:Instance) -> 'IndexSet':
         set_start : int = self._lookup_instance(instance)
         return IndexSet(self.sets, set_start)
