@@ -79,24 +79,21 @@ class Corpus:
 
     features : List[bytes]
     words : Dict[bytes, disk.DiskStringArray]
-    _sentences : disk.DiskIntArrayType
-    _path : Path
+    sentence_pointers : disk.DiskIntArrayType
+    path : Path
 
     def __init__(self, corpus:Path):
         basedir : Path = corpus.with_suffix(self.dir_suffix)
-        self._path = corpus
+        self.path = corpus
         self.features = [f.encode('utf-8') for f in json.load(open(basedir/'features', 'r'))]
-        self._sentences = disk.DiskIntArray(basedir / 'sentences')
+        self.sentence_pointers = disk.DiskIntArray(basedir / 'sentences')
         self.words = {
             feature: disk.DiskStringArray(basedir / ('feature.' + feature.decode('utf-8')))
             for feature in self.features
         }
         
     def __str__(self) -> str:
-        return f"[Corpus: {self._path.stem}]"
-
-    def path(self) -> Path:
-        return self._path
+        return f"[Corpus: {self.path.stem}]"
 
     def strings(self, feature:bytes) -> disk.StringCollection:
         return self.words[feature].strings
@@ -105,16 +102,16 @@ class Corpus:
         return self.words[feature].intern(value)
 
     def num_sentences(self) -> int:
-        return len(self._sentences)-1
+        return len(self.sentence_pointers)-1
 
     def sentences(self) -> Iterator[slice]:
-        sents : disk.DiskIntArrayType = self._sentences
+        sents : disk.DiskIntArrayType = self.sentence_pointers
         for start, end in zip(sents[1:], sents[2:]):
             yield slice(start, end)
         yield slice(sents[-1], len(sents))
 
     def lookup_sentence(self, n:int) -> slice:
-        sents : disk.DiskIntArrayType = self._sentences
+        sents : disk.DiskIntArrayType = self.sentence_pointers
         start : int = sents[n]
         nsents : int = len(sents)
         end : int = sents[n+1] if n+1 < nsents else nsents

@@ -74,7 +74,7 @@ class Index:
     def __init__(self, corpus:Corpus, template:Template, mode:str='r'):
         assert mode in "rw"
         assert isinstance(template, Template)
-        self.basedir = corpus.path().with_suffix(self.dir_suffix)
+        self.basedir = corpus.path.with_suffix(self.dir_suffix)
         self.corpus = corpus
         self.template = template
         basefile : Path = self.basefile()
