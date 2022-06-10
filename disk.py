@@ -11,6 +11,7 @@ import itertools
 from functools import total_ordering
 from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable
 
+
 def open_readonly_mmap(file : BinaryIO) -> mmap.mmap:
     try:
         return mmap.mmap(file.fileno(), 0, prot=mmap.PROT_READ)
