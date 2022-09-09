@@ -2,7 +2,7 @@
 import sys
 import logging
 from pathlib import Path
-from typing import Any, Literal, Iterator, Iterable
+from typing import Any, Literal, Iterable, Optional
 
 
 ByteOrder = Literal['little', 'big']
@@ -20,7 +20,8 @@ def add_suffix(path:Path, suffix:str):
 ###############################################################################
 ## Progress bar
 
-class NoTQDM:
+class NoProgressBar:
+    """A simple progress bar wrapper class, doing nothing at all."""
     def __init__(self, iterable=None, desc=None, **kwargs):
         self._iter = None if iterable is None else iter(iterable)
 
@@ -37,19 +38,22 @@ class NoTQDM:
         pass
 
 
-tqdm_bar_format = '{desc:20s} {percentage:3.0f}%|{bar}|{n_fmt:>7s}/{total_fmt} [{elapsed},{rate_fmt:>10s}{postfix}]'
-# Specify a custom bar string formatting. May impact performance. 
-# [default: '{l_bar}{bar}{r_bar}'], where l_bar='{desc}: {percentage:3.0f}%|' and r_bar='| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, ' '{rate_fmt}{postfix}]' 
-# Possible vars: l_bar, bar, r_bar, n, n_fmt, total, total_fmt, percentage, elapsed, elapsed_s, ncols, nrows, desc, unit, rate, rate_fmt, rate_noinv, rate_noinv_fmt, rate_inv, rate_inv_fmt, postfix, unit_divisor, remaining, remaining_s, eta. 
-# Note that a trailing ": " is automatically removed after {desc} if the latter is empty.
-
 try:
-    from tqdm import tqdm as _tqdm
-    def tqdm(iterable:Iterable=(), desc:str='', unit_scale:bool=True, leave:bool=False, **kwargs):
-        return _tqdm(iterable=iterable, desc=desc.ljust(20), unit_scale=unit_scale, leave=leave, bar_format=tqdm_bar_format, **kwargs)
+    from tqdm import tqdm
 except ModuleNotFoundError:
-    print("Module `tqdm` not found, please consider installing it.", file=sys.stderr)
-    tqdm = NoTQDM  # type: ignore
+    print("Module `tqdm` not found, please consider installing it.\n", file=sys.stderr)
+    tqdm = NoProgressBar  # type: ignore
+
+_tqdm_bar_format = '{desc:20s} {percentage:3.0f}%|{bar}|{n_fmt:>7s}/{total_fmt} [{elapsed},{rate_fmt:>10s}{postfix}]'
+
+def progress_bar(iterable:Optional[Iterable]=None, desc:str="", **kwargs) -> tqdm:  # type: ignore
+    loglevel = logging.root.getEffectiveLevel()
+    if loglevel > logging.INFO:
+        return NoProgressBar(iterable)  # type: ignore
+    kwargs.setdefault('leave', loglevel <= logging.DEBUG)
+    kwargs.setdefault('unit_scale', True)
+    kwargs.setdefault('bar_format', _tqdm_bar_format)
+    return tqdm(iterable=iterable, desc=desc.ljust(20), **kwargs)
 
 
 ###############################################################################

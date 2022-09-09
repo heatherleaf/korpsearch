@@ -8,7 +8,7 @@ import sqlite3
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskIntArrayType, InternedString
 from corpus import Corpus
-from util import tqdm
+from util import progress_bar
 
 try:
     import fast_intersection  # type: ignore
@@ -156,15 +156,16 @@ class Index:
         skipped_instances : int = 0
         def generate_db_rows() -> Iterator[Tuple[int, ...]]:
             nonlocal skipped_instances
-            for n, sentence in enumerate(tqdm(corpus.sentences(), "Building database", total=corpus.num_sentences()), 1):
-                for instance in generate_instances(sentence):
-                    if unary_indexes and any(
-                                len(unary.search(Instance(val))) < min_frequency 
-                                for val, unary in zip(instance, unary_indexes)
-                            ):
-                        skipped_instances += 1
-                        continue
-                    yield tuple(value.index for value in instance.values()) + (n,)
+            with progress_bar(corpus.sentences(), "Building database", total=corpus.num_sentences()) as pbar_sentences:
+                for n, sentence in enumerate(pbar_sentences, 1):
+                    for instance in generate_instances(sentence):
+                        if unary_indexes and any(
+                                    len(unary.search(Instance(val))) < min_frequency 
+                                    for val, unary in zip(instance, unary_indexes)
+                                ):
+                            skipped_instances += 1
+                            continue
+                        yield tuple(value.index for value in instance.values()) + (n,)
 
         places : str = ', '.join('?' for _ in template)
         con.executemany(f'insert or ignore into features values({places}, ?)', generate_db_rows())
@@ -192,7 +193,8 @@ class Index:
         # Dummy sentence to account for null pointers:
         index_sets.append(0)
         nr_elements += 1
-        for row in tqdm(con.execute(f'select * from features order by {features}, sentence'), "Creating index", total=nr_rows):
+        db_row_iterator = con.execute(f'select * from features order by {features}, sentence')
+        for row in progress_bar(db_row_iterator, "Creating index", total=nr_rows):
             key = row[:-1]
             sent = row[-1]
             if current != key:

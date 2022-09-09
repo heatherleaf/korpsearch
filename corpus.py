@@ -5,7 +5,7 @@ import logging
 from typing import BinaryIO, List, Tuple, Set, Dict, Iterator
 
 import disk
-from util import tqdm
+from util import progress_bar
 
 ################################################################################
 ## Corpus
@@ -28,7 +28,7 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
         corpus.seek(0)
         corpus.readline()
 
-        with tqdm(total=csv_filesize, desc=description, unit_scale=True) as pbar:
+        with progress_bar(total=csv_filesize, desc=description) as pbar:
             new_sentence : bool = True
             for line in corpus:
                 pbar.update(len(line))
