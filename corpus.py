@@ -15,8 +15,8 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
     # the first line in the CSV should be a header with the names of each column (=features)
     features : List[str] = corpus.readline().decode('utf-8').split()
 
-    with open(basedir / 'features', 'w') as features_file:
-        json.dump(features, features_file)
+    with open(basedir / Corpus.features_file, 'w') as OUT:
+        json.dump(features, OUT)
 
     def words() -> Iterator[Tuple[bool, List[bytes]]]:
         # Skip over the first line
@@ -48,10 +48,14 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
     logging.debug(f" --> read {sum(map(len, strings))} distinct strings")
 
     sentence_builder = disk.DiskIntArrayBuilder(
-        basedir/'sentences', max_value=count-1, use_memoryview=True)
+        basedir / Corpus.sentences_path, 
+        max_value=count-1, 
+        use_memoryview=True,
+    )
     feature_builders : List[disk.DiskStringArrayBuilder] = []
     for i, feature in enumerate(features):
-        path = basedir / ('feature.' + feature)
+        path = basedir / (Corpus.feature_prefix + feature) / feature
+        path.parent.mkdir(exist_ok=True)
         builder = disk.DiskStringArrayBuilder(path, strings[i])
         feature_builders.append(builder)
 
@@ -76,6 +80,9 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
 
 class Corpus:
     dir_suffix = '.corpus'
+    features_file = 'features.cfg'
+    feature_prefix = 'feature:'
+    sentences_path = 'sentences'
 
     features : List[bytes]
     words : Dict[bytes, disk.DiskStringArray]
@@ -85,10 +92,11 @@ class Corpus:
     def __init__(self, corpus:Path):
         basedir : Path = corpus.with_suffix(self.dir_suffix)
         self.path = corpus
-        self.features = [f.encode('utf-8') for f in json.load(open(basedir/'features', 'r'))]
-        self.sentence_pointers = disk.DiskIntArray(basedir / 'sentences')
+        with open(basedir / self.features_file, 'r') as IN:
+            self.features = json.load(IN)
+        self.sentence_pointers = disk.DiskIntArray(basedir / self.sentences_path)
         self.words = {
-            feature: disk.DiskStringArray(basedir / ('feature.' + feature.decode('utf-8')))
+            feature: disk.DiskStringArray(basedir / (self.feature_prefix + feature.decode()) / feature.decode())
             for feature in self.features
         }
         

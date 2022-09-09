@@ -102,9 +102,10 @@ class Index:
         self.basedir = corpus.path.with_suffix(self.dir_suffix)
         self.corpus = corpus
         self.template = template
-        basefile : Path = self.basefile()
 
-        self.keypaths = [basefile.with_suffix(f'.{feature.decode()}{pos}') for feature, pos in template]
+        basefile : Path = self.basefile()
+        basefile.parent.mkdir(exist_ok=True)
+        self.keypaths = [basefile.with_suffix(f'.key:{feature.decode()}{pos}') for feature, pos in template]
         self.indexpath = basefile.with_suffix('.index')
         self.setspath = basefile.with_suffix('.sets')
 
@@ -120,7 +121,7 @@ class Index:
         return len(self.index)
 
     def basefile(self) -> Path:
-        return self.basedir / str(self.template)
+        return self.basedir / str(self.template) / str(self.template)
 
     def search(self, instance:Instance) -> 'IndexSet':
         set_start : int = self._lookup_instance(instance)
