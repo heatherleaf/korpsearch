@@ -5,30 +5,17 @@ import sys
 import json
 import math
 from pathlib import Path
-import mmap
+from mmap import mmap
 from array import array
 import itertools
 from functools import total_ordering
 from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable
 
-
-def open_readonly_mmap(file : BinaryIO) -> mmap.mmap:
-    try:
-        return mmap.mmap(file.fileno(), 0, prot=mmap.PROT_READ)
-    except TypeError:
-        # prot is not available on Windows
-        return mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ)
-
-
-def add_suffix(path:Path, suffix:str):
-    # Alternatively: Path(path).with_suffix(path.suffix + suffix)
-    return Path(str(path) + suffix)
+from util import ByteOrder, add_suffix
 
 
 ################################################################################
 ## On-disk arrays of numbers
-
-CONFIG_SUFFIX = '.config.json'
 
 DiskIntArrayType = Union[memoryview, 'SlowDiskIntArray']
 
@@ -36,14 +23,14 @@ def DiskIntArray(path : Path) -> DiskIntArrayType:
     typecodes : Dict[int,str] = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
     for n, c in typecodes.items(): assert array(c).itemsize == n
 
-    # path = Path(path)
-    file : BinaryIO = open(path, 'rb')
-    with open(add_suffix(path, CONFIG_SUFFIX)) as configfile:
+    path = add_suffix(path, SlowDiskIntArray.array_suffix)
+    with open(path.with_suffix(SlowDiskIntArray.config_suffix)) as configfile:
         config = json.load(configfile)
+    file : BinaryIO = open(path, 'r+b')
     elemsize : int = config['elemsize']
-    byteorder : str = config['byteorder']
+    byteorder : ByteOrder = config['byteorder']
 
-    arr : mmap.mmap = open_readonly_mmap(file)
+    arr : mmap = mmap(file.fileno(), 0)
     if elemsize in typecodes and byteorder == sys.byteorder:
         return memoryview(arr).cast(typecodes[elemsize])
     else:
@@ -51,11 +38,19 @@ def DiskIntArray(path : Path) -> DiskIntArrayType:
 
 
 class SlowDiskIntArray:
-    def __init__(self, array:mmap.mmap, elemsize:int, byteorder:str):
-        self._array : mmap.mmap = array
-        self._elemsize : int = elemsize
-        self._byteorder : str = byteorder
-        self._length : int = len(array) // elemsize
+    array_suffix = '.ia'
+    config_suffix = '.ia-cfg'
+
+    _array : mmap
+    _elemsize : int
+    _byteorder : ByteOrder
+    _length : int
+
+    def __init__(self, array:mmap, elemsize:int, byteorder:ByteOrder):
+        self._array = array
+        self._elemsize = elemsize
+        self._byteorder = byteorder
+        self._length = len(array) // elemsize
         assert len(array) % elemsize == 0, f"Array length ({len(array)}) is not divisible by elemsize ({elemsize})"
 
     def __len__(self) -> int:
@@ -72,32 +67,37 @@ class SlowDiskIntArray:
             raise TypeError("SlowDiskIntArray: invalid array index type")
         if i < 0 or i >= len(self):
             raise IndexError("SlowDiskIntArray: array index out of range")
-        start : int = i * self._elemsize
-        return int.from_bytes(self._array[start:start+self._elemsize], byteorder=self._byteorder) # type: ignore
+        start = i * self._elemsize
+        return int.from_bytes(self._array[start:start+self._elemsize], byteorder=self._byteorder)
 
     def _slice(self, slice:slice) -> Iterator[int]:
         start, stop, step = slice.indices(len(self))
-        array : mmap.mmap = self._array
-        elemsize : int = self._elemsize
-        byteorder : str = self._byteorder
+        array = self._array
+        elemsize = self._elemsize
+        byteorder = self._byteorder
 
         start *= elemsize
         stop *= elemsize
         step *= elemsize
         for i in range(start, stop, step):
-            yield int.from_bytes(array[i:i+elemsize], byteorder=byteorder) # type: ignore
+            yield int.from_bytes(array[i:i+elemsize], byteorder=byteorder)
 
     def __iter__(self) -> Iterator[int]:
         return self._slice(slice(None))
 
 
 class DiskIntArrayBuilder:
-    def __init__(self, path:Path, max_value:int=0, byteorder:str=sys.byteorder, use_memoryview:bool=False):
-        if max_value == 0: max_value = 2**32-1
-        self._path : Path = path
-        self._byteorder : str = byteorder
+    _byteorder : ByteOrder
+    _elemsize : int
+    _path : Path
+    _file : BinaryIO
 
-        self._elemsize : int = self._min_bytes_to_store_values(max_value)
+    def __init__(self, path:Path, max_value:int=0, byteorder:ByteOrder=sys.byteorder, use_memoryview:bool=False):
+        self._byteorder = byteorder
+
+        if max_value == 0: max_value = 2**32-1  # default: 4-byte integers
+        self._elemsize = self._min_bytes_to_store_values(max_value)
+
         if use_memoryview:
             if byteorder != sys.byteorder:
                 raise ValueError(f"DiskIntArrayBuilder: memoryview requires byteorder to be '{sys.byteorder}'")
@@ -106,12 +106,14 @@ class DiskIntArrayBuilder:
             if self._elemsize > 8:
                 raise RuntimeError('DiskIntArrayBuilder: memoryview does not support self._elemsize > 8')
 
-        with open(add_suffix(path, CONFIG_SUFFIX), 'w') as configfile:
+        self._path = add_suffix(path, SlowDiskIntArray.array_suffix)
+        self._file : BinaryIO = open(self._path, 'wb')
+
+        with open(self._path.with_suffix(SlowDiskIntArray.config_suffix), 'w') as configfile:
             json.dump({
                 'elemsize': self._elemsize,
                 'byteorder': self._byteorder,
             }, configfile)
-        self._file : BinaryIO = open(path, 'wb')
 
     def append(self, value:int):
         self._file.write(value.to_bytes(self._elemsize, byteorder=self._byteorder)) # type: ignore
@@ -132,7 +134,7 @@ class DiskIntArrayBuilder:
         return math.ceil(math.log(max_value + 1, 2) / 8)
 
     @staticmethod
-    def build(path:Path, values:Iterable[int], max_value:int=0, byteorder:str=sys.byteorder, use_memoryview:bool=False):
+    def build(path:Path, values:Iterable[int], max_value:int=0, byteorder:ByteOrder=sys.byteorder, use_memoryview:bool=False):
         if max_value is None:
             values = list(values)
             max_value = max(values)
@@ -141,27 +143,31 @@ class DiskIntArrayBuilder:
         for value in values: 
             builder.append(value)
         builder.close()
-        return DiskIntArray(path)
 
 
 ################################################################################
 ## String interning
 
-STARTS_SUFFIX  = '.starts'
-
 class StringCollection:
-    strings : mmap.mmap
-    starts : DiskIntArrayType
+    strings_suffix = '.strings'
+    starts_suffix  = '.starts'
+
+    strings : mmap
+
+    _path : Path
+    _stringsfile : BinaryIO
+    _startsarray : DiskIntArrayType
+    _intern : Dict[bytes, int]
 
     def __init__(self, path:Path):
-        self._path : Path = path
-        stringsfile : BinaryIO = open(path, 'rb')
-        self.strings = open_readonly_mmap(stringsfile)
-        self.starts = DiskIntArray(add_suffix(path, STARTS_SUFFIX))
-        self._intern : Dict[bytes, int] = {}
+        self._path = add_suffix(path, self.strings_suffix)
+        self._stringsfile = open(self._path, 'r+b')
+        self.strings = mmap(self._stringsfile.fileno(), 0)
+        self._startsarray = DiskIntArray(self._path.with_suffix(self.starts_suffix))
+        self._intern = {}
 
     def __len__(self) -> int:
-        return len(self.starts)-1
+        return len(self._startsarray)-1
 
     def from_index(self, index:int) -> 'InternedString':
         return InternedString(self, index)
@@ -196,21 +202,20 @@ class StringCollection:
 
 class StringCollectionBuilder:
     @staticmethod
-    def build(path:Path, strings:Iterable[bytes]) -> StringCollection:
+    def build(path:Path, strings:Iterable[bytes]):
         stringlist = sorted(set(strings))
 
+        path = add_suffix(path, StringCollection.strings_suffix)
         with open(path, 'wb') as stringsfile:
             for string in stringlist: 
                 stringsfile.write(string)
 
         stringlist.insert(0, b'')  # this is to emulate the 'initial' keyword in accumulate, which was introduced in Python 3.8
         DiskIntArrayBuilder.build(
-            add_suffix(path, STARTS_SUFFIX),
+            path.with_suffix(StringCollection.starts_suffix),
             itertools.accumulate((len(s) for s in stringlist)),
             use_memoryview = True
         )
-
-        return StringCollection(path)
 
 
 @total_ordering
@@ -224,12 +229,12 @@ class InternedString:
         object.__setattr__(self, "index", index)
 
     def __bytes__(self) -> bytes:
-        start : int = self.db.starts[self.index]
-        nextstart : int = self.db.starts[self.index+1]
+        start : int = self.db._startsarray[self.index]
+        nextstart : int = self.db._startsarray[self.index+1]
         return self.db.strings[start:nextstart]
 
     def __str__(self):
-        return bytes(self).decode('utf-8')
+        return bytes(self).decode()
 
     def __repr__(self):
         return f"InternedString({self})"
@@ -259,14 +264,15 @@ class InternedString:
 ################################################################################
 ## On-disk arrays of interned strings
 
-STRINGS_SUFFIX = '.strings'
-
 class DiskStringArray:
+    strings_suffix = '.sa'
+
     strings : StringCollection
+    _array : DiskIntArrayType
 
     def __init__(self, path:Path):
-        self._array : DiskIntArrayType = DiskIntArray(path)
-        self.strings = StringCollection(add_suffix(path, STRINGS_SUFFIX))
+        self._array = DiskIntArray(path)
+        self.strings = StringCollection(add_suffix(path, self.strings_suffix))
 
     def raw(self) -> DiskIntArrayType:
         return self._array
@@ -296,14 +302,17 @@ class DiskStringArray:
 
 
 class DiskStringArrayBuilder:
+    _path : Path
+    _strings : StringCollection
+    _builder : DiskIntArrayBuilder
+
     def __init__(self, path:Path, strings:Iterable[bytes], use_memoryview:bool=False):
-        self._path : Path = path
-        strings_path : Path = add_suffix(path, STRINGS_SUFFIX)
+        self._path = path
+        strings_path : Path = add_suffix(path, DiskStringArray.strings_suffix)
         StringCollectionBuilder.build(strings_path, strings)
-        self._strings : StringCollection = StringCollection(strings_path)
+        self._strings = StringCollection(strings_path)
         self._strings.preload()
-        self._builder : DiskIntArrayBuilder = \
-            DiskIntArrayBuilder(path, max_value=len(self._strings)-1, use_memoryview=use_memoryview)
+        self._builder = DiskIntArrayBuilder(path, max_value=len(self._strings)-1, use_memoryview=use_memoryview)
 
     def append(self, value:bytes):
         self._builder.append(self._strings.intern(value).index)
@@ -320,5 +329,3 @@ class DiskStringArrayBuilder:
         for value in values:
             builder.append(value)
         builder.close()
-
-        return DiskStringArray(path)

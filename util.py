@@ -1,6 +1,19 @@
 
 import logging
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
+
+
+ByteOrder = Literal['little', 'big']
+
+
+def add_suffix(path:Path, suffix:str):
+    """Add the suffix to the path, unless it's already there."""
+    if path.suffix != suffix:
+        path = Path(str(path) + suffix)
+        # Alternatively: Path(path).with_suffix(path.suffix + suffix)
+    return path
+
 
 
 class RelativeTimeFormatter(logging.Formatter):
