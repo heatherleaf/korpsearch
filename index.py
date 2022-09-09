@@ -68,44 +68,23 @@ class Instance:
 class Index:
     dir_suffix : str = '.indexes'
 
-    basedir : Path
-    corpus : Corpus
     template : Template
-
     keys : List[DiskIntArrayType]
     index : DiskIntArrayType
     sets : DiskIntArrayType
 
-    keypaths : List[Path]
-    indexpath : Path
-    setspath : Path
-
-    def __init__(self, corpus:Corpus, template:Template, mode:str='r'):
-        assert mode in "rw"
-        assert isinstance(template, Template)
-        self.basedir = corpus.path.with_suffix(self.dir_suffix)
-        self.corpus = corpus
+    def __init__(self, corpus:Corpus, template:Template):
         self.template = template
-
-        basefile : Path = self.basefile()
-        basefile.parent.mkdir(exist_ok=True)
-        self.keypaths = [basefile.with_suffix(f'.key:{feature}{pos}') for feature, pos in template]
-        self.indexpath = basefile.with_suffix('.index')
-        self.setspath = basefile.with_suffix('.sets')
-
-        if mode == 'r':
-            self.keys = [DiskIntArray(path) for path in self.keypaths]
-            self.index = DiskIntArray(self.indexpath)
-            self.sets = DiskIntArray(self.setspath)
+        paths = self.indexpaths(corpus, template)
+        self.keys = [DiskIntArray(path) for path in paths['keys']]
+        self.index = DiskIntArray(paths['index'])
+        self.sets = DiskIntArray(paths['sets'])
 
     def __str__(self) -> str:
         return self.__class__.__name__ + ':' + str(self.template) 
 
     def __len__(self) -> int:
         return len(self.index)
-
-    def basefile(self) -> Path:
-        return self.basedir / str(self.template) / str(self.template)
 
     def search(self, instance:Instance) -> 'IndexSet':
         set_start : int = self._lookup_instance(instance)
@@ -126,25 +105,29 @@ class Index:
                 end = mid - 1
         raise KeyError(f'Instance "{instance}" not found')
 
-    def yield_instances(self, sentence:slice) -> Iterator[Instance]:
-        try:
-            for k in range(sentence.start, sentence.stop):
-                instance_values = [self.corpus.words[feat][k+i] for (feat, i) in self.template]
-                yield Instance(*instance_values)
-        except IndexError:
-            pass
+    @staticmethod
+    def indexpaths(corpus, template):
+        basedir = corpus.path.with_suffix(Index.dir_suffix)
+        basepath = basedir / str(template) / str(template)
+        return {
+            'base': basepath,
+            'keys': [basepath.with_suffix(f'.key:{feature}{pos}') for feature, pos in template],
+            'index': basepath.with_suffix('.index'),
+            'sets': basepath.with_suffix('.sets'),
+        }
 
     @staticmethod
     def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0):
-        index = Index(corpus, template, mode='w')
-        logging.debug(f"Building index for {index}...")
+        logging.debug(f"Building index for {template}...")
+        paths = Index.indexpaths(corpus, template)
+        paths['base'].parent.mkdir(exist_ok=True)
 
         unary_indexes : List[Index] = []
-        if min_frequency > 0 and len(index.template) > 1:
-            unary_indexes = [Index(index.corpus, Template((feat,0)))
-                            for (feat, _pos) in index.template]
+        if min_frequency > 0 and len(template) > 1:
+            unary_indexes = [Index(corpus, Template((feat,0)))
+                            for (feat, _pos) in template]
 
-        dbfile : Path = index.basefile().with_suffix('.db.tmp')
+        dbfile : Path = paths['base'].with_suffix('.db.tmp')
         con : sqlite3.Connection = sqlite3.connect(dbfile)
 
         # Switch off journalling etc to speed up database creation
@@ -152,8 +135,8 @@ class Index:
         con.execute('pragma journal_mode = off')
 
         # Create table - one column per feature, plus one column for the sentence
-        features : str = ', '.join(f'feature{i}' for i in range(len(index.template)))
-        feature_types : str = ', '.join(f'feature{i} int' for i in range(len(index.template)))
+        features : str = ', '.join(f'feature{i}' for i in range(len(template)))
+        feature_types : str = ', '.join(f'feature{i} int' for i in range(len(template)))
         con.execute(f'''
             create table features(
                 {feature_types},
@@ -162,11 +145,19 @@ class Index:
             ) without rowid''')
 
         # Add all features
+        def generate_instances(sentence:slice) -> Iterator[Instance]:
+            try:
+                for k in range(sentence.start, sentence.stop):
+                    instance_values = [corpus.words[feat][k+i] for (feat, i) in template]
+                    yield Instance(*instance_values)
+            except IndexError:
+                pass
+
         skipped_instances : int = 0
-        def rows() -> Iterator[Tuple[int, ...]]:
+        def generate_db_rows() -> Iterator[Tuple[int, ...]]:
             nonlocal skipped_instances
-            for n, sentence in enumerate(tqdm(index.corpus.sentences(), "Building database", total=index.corpus.num_sentences()), 1):
-                for instance in index.yield_instances(sentence):
+            for n, sentence in enumerate(tqdm(corpus.sentences(), "Building database", total=corpus.num_sentences()), 1):
+                for instance in generate_instances(sentence):
                     if unary_indexes and any(
                                 len(unary.search(Instance(val))) < min_frequency 
                                 for val, unary in zip(instance, unary_indexes)
@@ -175,25 +166,25 @@ class Index:
                         continue
                     yield tuple(value.index for value in instance.values()) + (n,)
 
-        places : str = ', '.join('?' for _ in range(len(index.template)))
-        con.executemany(f'insert or ignore into features values({places}, ?)', rows())
+        places : str = ', '.join('?' for _ in template)
+        con.executemany(f'insert or ignore into features values({places}, ?)', generate_db_rows())
         if skipped_instances:
             logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
-        nr_sentences : int = index.corpus.num_sentences()
+        nr_sentences : int = corpus.num_sentences()
         nr_instances : int = con.execute(f'select count(*) from (select distinct {features} from features)').fetchone()[0]
         nr_rows : int = con.execute(f'select count(*) from features').fetchone()[0]
         logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences")
 
         # Build keys files, index file and sets file
-        index_keys = [DiskIntArrayBuilder(path, max_value = len(index.corpus.strings(feat)))
-                for (feat, _), path in zip(index.template, index.keypaths)]
-        index_sets = DiskIntArrayBuilder(index.setspath, max_value = nr_sentences+1)
+        index_keys = [DiskIntArrayBuilder(path, max_value = len(corpus.strings(feat)))
+                for (feat, _), path in zip(template, paths['keys'])]
+        index_sets = DiskIntArrayBuilder(paths['sets'], max_value = nr_sentences+1)
         # nr_rows is the sum of all set sizes, but the .sets file also includes the set sizes,
         # so in some cases we get an OverflowError.
         # This happens e.g. for bnc-20M when building lemma0: nr_rows = 16616400 < 2^24 < 16777216 = nr_rows+nr_sets
         # What we need is max_value = nr_rows + nr_sets; this is a simple hack until we have better solution:
-        index_index = DiskIntArrayBuilder(index.indexpath, max_value = nr_rows*2)
+        index_index = DiskIntArrayBuilder(paths['index'], max_value = nr_rows*2)
 
         nr_keys = nr_elements = 0
         current = None
@@ -223,7 +214,7 @@ class Index:
             nr_elements += 1
         # Write the size of the final set at its beginning
         index_sets[set_start] = set_size
-        logging.info(f"Built index for {index}, with {nr_keys} keys, {nr_elements} set elements")
+        logging.info(f"Built index for {template}, with {nr_keys} keys, {nr_elements} set elements")
 
         # Cleanup
         if not keep_tmpfiles:
