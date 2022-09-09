@@ -3,13 +3,14 @@ import shutil
 import argparse
 import itertools
 from pathlib import Path
+from typing import List, Tuple, Iterator
+import logging
+import sqlite3
+
 from index import Index, Instance, Template
 from disk import DiskIntArrayBuilder
 from corpus import Corpus, build_corpus_index_from_csv
 from util import setup_logger
-from typing import List, Tuple, Iterator
-import logging
-import sqlite3
 
 
 ################################################################################

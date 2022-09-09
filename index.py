@@ -1,10 +1,11 @@
 
 import itertools
 from pathlib import Path
-from disk import DiskIntArray, DiskIntArrayType, InternedString
-from corpus import Corpus
 from typing import Tuple, List, Iterator, Union, Callable
 import sys
+
+from disk import DiskIntArray, DiskIntArrayType, InternedString
+from corpus import Corpus
 
 try:
     from fast_intersection import intersection  # type: ignore
@@ -177,8 +178,10 @@ class IndexSet:
         assert not isinstance(self.values, list) \
             and not isinstance(other.values, list)
 
-        self.values = intersection(self.values, self.start, self.size,
-                                   other.values, other.start, other.size)
+        self.values = intersection(
+            self.values, self.start, self.size,
+            other.values, other.start, other.size,
+        )
         self.start = 0
         self.size = len(self.values)
 
