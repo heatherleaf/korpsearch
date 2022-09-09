@@ -1,9 +1,11 @@
 
 import json
 from pathlib import Path
-import disk
-from typing import BinaryIO, List, Tuple, Set, Dict, Iterator
 import logging
+from typing import BinaryIO, List, Tuple, Set, Dict, Iterator
+
+import disk
+from util import tqdm
 
 ################################################################################
 ## Corpus
@@ -11,37 +13,38 @@ import logging
 def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
     logging.debug(f"Building corpus index...")
     corpus : BinaryIO = open(csv_corpusfile, 'rb')
+    corpus.seek(0, 2)
+    csv_filesize = corpus.tell()
 
     # the first line in the CSV should be a header with the names of each column (=features)
-    features : List[str] = corpus.readline().decode('utf-8').split()
+    corpus.seek(0)
+    features : List[str] = corpus.readline().decode().split()
 
     with open(basedir / Corpus.features_file, 'w') as OUT:
         json.dump(features, OUT)
 
-    def words() -> Iterator[Tuple[bool, List[bytes]]]:
+    def iterate_words(description) -> Iterator[Tuple[bool, List[bytes]]]:
         # Skip over the first line
         corpus.seek(0)
         corpus.readline()
 
-        new_sentence : bool = True
-
-        while True:
-            line : bytes = corpus.readline()
-            if not line: return
-
-            line = line.strip()
-            if line.startswith(b"# sentence"):
-                new_sentence = True
-            else:
-                word : List[bytes] = line.split(b'\t')
-                while len(word) < len(features):
-                    word.append(b'')
-                yield new_sentence, word
-                new_sentence = False
+        with tqdm(total=csv_filesize, desc=description, unit_scale=True) as pbar:
+            new_sentence : bool = True
+            for line in corpus:
+                pbar.update(len(line))
+                line = line.strip()
+                if line.startswith(b'# '):
+                    new_sentence = True
+                elif line:
+                    word : List[bytes] = line.split(b'\t')
+                    if len(word) < len(features):
+                        word += [b''] * (len(features) - len(word))
+                    yield new_sentence, word
+                    new_sentence = False
 
     strings : List[Set[bytes]] = [set() for _feature in features]
     count : int = 0
-    for _new_sentence, word in words():
+    for _new_sentence, word in iterate_words("Collecting strings"):
         count += 1
         for i, feat in enumerate(word):
             strings[i].add(feat)
@@ -63,7 +66,7 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
 
     sentence_count : int = 0
     word_count : int = 0
-    for new_sentence, word in words():
+    for new_sentence, word in iterate_words("Building indexes"):
         if new_sentence:
             sentence_builder.append(word_count)
             sentence_count += 1

@@ -10,7 +10,7 @@ import sqlite3
 from index import Index, Instance, Template
 from disk import DiskIntArrayBuilder
 from corpus import Corpus, build_corpus_index_from_csv
-from util import setup_logger
+from util import setup_logger, tqdm
 
 
 ################################################################################
@@ -45,7 +45,7 @@ def build_index(index:Index, keep_tmpfiles:bool=False, min_frequency:int=0):
     skipped_instances : int = 0
     def rows() -> Iterator[Tuple[int, ...]]:
         nonlocal skipped_instances
-        for n, sentence in enumerate(index.corpus.sentences(), 1):
+        for n, sentence in enumerate(tqdm(index.corpus.sentences(), "Building database", total=index.corpus.num_sentences()), 1):
             for instance in yield_instances(index, sentence):
                 if unary_indexes and any(
                             len(unary.search(Instance(val))) < min_frequency 
@@ -81,7 +81,7 @@ def build_index(index:Index, keep_tmpfiles:bool=False, min_frequency:int=0):
     # Dummy sentence to account for null pointers:
     index_sets.append(0)
     nr_elements += 1
-    for row in con.execute(f'select * from features order by {features}, sentence'):
+    for row in tqdm(con.execute(f'select * from features order by {features}, sentence'), "Creating index", total=nr_rows):
         key = row[:-1]
         sent = row[-1]
         if current != key:
