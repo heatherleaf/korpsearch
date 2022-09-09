@@ -3,5 +3,5 @@ from Cython.Build import cythonize
 
 setup(
     name='',
-    ext_modules=cythonize("intersection.pyx")
+    ext_modules=cythonize("fast_intersection.pyx")
 )

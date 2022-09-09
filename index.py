@@ -7,9 +7,33 @@ from typing import Tuple, List, Iterator, Union, Callable
 import sys
 
 try:
-    from intersection import intersection
+    from fast_intersection import intersection  # type: ignore
 except ModuleNotFoundError:
-    sys.exit("Module 'intersection' not found - to install, run: 'python setup.py build_ext --inplace'")
+    print("""
+Module 'fast_intersection' not found. To install, run: 'python setup.py build_ext --inplace'.
+Using a slow internal implementation instead.
+""", file=sys.stderr)
+
+    def intersection(arr1:DiskIntArrayType, start1:int, length1:int, 
+                     arr2:DiskIntArrayType, start2:int, length2:int) -> List[int]:
+        """Take the intersection of two sorted arrays."""
+        result = []
+        k1, k2 = 0, 0
+        x1, x2 = arr1[start1], arr2[start2]
+        while k1 < length1 and k2 < length2:
+            if x1 < x2: 
+                k1 += 1
+                x1 = arr1[start1 + k1]
+            elif x1 > x2:
+                k2 += 1
+                x2 = arr2[start2 + k2]
+            else:
+                result.append(x1)
+                k1 += 1
+                x1 = arr1[start1 + k1]
+                k2 += 1
+                x2 = arr2[start2 + k2]
+        return result
 
 
 ################################################################################
