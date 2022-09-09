@@ -11,33 +11,12 @@ from corpus import Corpus
 from util import tqdm
 
 try:
-    from fast_intersection import intersection  # type: ignore
+    import fast_intersection  # type: ignore
 except ModuleNotFoundError:
-    print("""
-Module 'fast_intersection' not found. To install, run: 'python setup.py build_ext --inplace'.
-Using a slow internal implementation instead.
-""", file=sys.stderr)
-
-    def intersection(arr1:DiskIntArrayType, start1:int, length1:int, 
-                     arr2:DiskIntArrayType, start2:int, length2:int) -> List[int]:
-        """Take the intersection of two sorted arrays."""
-        result = []
-        k1, k2 = 0, 0
-        x1, x2 = arr1[start1], arr2[start2]
-        while k1 < length1 and k2 < length2:
-            if x1 < x2: 
-                k1 += 1
-                x1 = arr1[start1 + k1]
-            elif x1 > x2:
-                k2 += 1
-                x2 = arr2[start2 + k2]
-            else:
-                result.append(x1)
-                k1 += 1
-                x1 = arr1[start1 + k1]
-                k2 += 1
-                x2 = arr2[start2 + k2]
-        return result
+    print("Module 'fast_intersection' not found.\n"
+          "To install, run: 'python setup.py build_ext --inplace'.\n"
+          "Using a slow internal implementation instead.\n", 
+          file=sys.stderr)
 
 
 ################################################################################
@@ -287,12 +266,35 @@ class IndexSet:
         assert not isinstance(self.values, list) \
             and not isinstance(other.values, list)
 
-        self.values = intersection(
-            self.values, self.start, self.size,
-            other.values, other.start, other.size,
-        )
+        self.values = self.intersection(other)
         self.start = 0
         self.size = len(self.values)
+
+    def intersection(self, other:'IndexSet') -> List[int]:
+        """Take the intersection of two sorted arrays."""
+        arr1, start1, length1 = self.values, self.start, self.size
+        arr2, start2, length2 = other.values, other.start, other.size
+        try:
+            return fast_intersection.intersection(arr1, start1, length1, arr2, start2, length2)
+        except NameError:
+            pass
+        result = []
+        k1, k2 = 0, 0
+        x1, x2 = arr1[start1], arr2[start2]
+        while k1 < length1 and k2 < length2:
+            if x1 < x2: 
+                k1 += 1
+                x1 = arr1[start1 + k1]
+            elif x1 > x2:
+                k2 += 1
+                x2 = arr2[start2 + k2]
+            else:
+                result.append(x1)
+                k1 += 1
+                x1 = arr1[start1 + k1]
+                k2 += 1
+                x2 = arr2[start2 + k2]
+        return result
 
     def filter(self, check:Callable[[int],bool]):
         self.values = [elem for elem in self if check(elem)]
