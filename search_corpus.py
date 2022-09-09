@@ -56,14 +56,12 @@ def search_corpus(args:argparse.Namespace):
         logging.debug(f"   {query} --> {result}")
         logging.info(f"After filtering: {result}")
 
-    if args.out:
-        logging.debug("Printing results...")
-        with open(args.out, "w") as OUT:
-            for sent in sorted(result):
-                print(sent, corpus.render_sentence(sent), file=OUT)
-        logging.info(f"{len(result)} sentences written to {args.out}")
-
     logging.info(f"Final result: {result}")
+
+    if args.print:
+        logging.info(f"Printing {len(result)} sentences...")
+        for sent in sorted(result):
+            print(sent, corpus.render_sentence(sent))
 
 
 ################################################################################
@@ -71,11 +69,11 @@ def search_corpus(args:argparse.Namespace):
 
 parser = argparse.ArgumentParser(description='Test things')
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
-parser.add_argument('query', help='the query')
-parser.add_argument('--filter', action='store_true', help='filter the final results (might take time)')
-parser.add_argument('--out', type=Path, help='file to output the result (one sentence per line)')
-parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
+parser.add_argument('query', type=str, help='the query')
+parser.add_argument('--filter', '-f', action='store_true', help='filter the final results (might take time)')
+parser.add_argument('--print', '-p', action='store_true', help='output the result(s), one sentence per line')
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
+parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 
 if __name__ == '__main__':
     args : argparse.Namespace = parser.parse_args()
