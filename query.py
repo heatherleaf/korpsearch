@@ -8,38 +8,36 @@ from typing import List, Tuple, Set, Dict, Iterator
 ################################################################################
 ## Queries
 
-QUEREGEX = re.compile(rb'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
+QUEREGEX = re.compile(r'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 
 class Query:
     corpus : Corpus
-    query : List[List[Tuple[bytes, InternedString]]]
-    featured_query : List[Tuple[bytes, List[Tuple[int, InternedString]]]]
+    query : List[List[Tuple[str, InternedString]]]
+    featured_query : List[Tuple[str, List[Tuple[int, InternedString]]]]
 
-    def __init__(self, corpus:Corpus, querystr:bytes):
+    def __init__(self, corpus:Corpus, querystr:str):
         self.corpus = corpus
-        if isinstance(querystr, str):
-            querystr = querystr.encode() 
-        querystr = querystr.replace(b' ', b'')
+        querystr = querystr.replace(' ', '')
         if not QUEREGEX.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
-        tokens = querystr.split(b'][')
+        tokens = querystr.split('][')
         self.query = []
         for tok in tokens:
             self.query.append([])
-            parts = re.findall(rb'\w+="[^"]+"', tok)
+            parts = re.findall(r'\w+="[^"]+"', tok)
             for part in parts:
-                feat, value = part.split(b'=', 1)
-                value = value.replace(b'"', b'')
-                self.query[-1].append((feat, self.corpus.intern(feat, value)))
-        features : Set[bytes] = {feat for tok in self.query for feat, _val in tok}
-        featured_query : Dict[bytes, List[Tuple[int, InternedString]]] = {f: [] for f in features}
+                feat, value = part.split('=', 1)
+                value = value.replace('"', '')
+                self.query[-1].append((feat, self.corpus.intern(feat, value.encode())))
+        features : Set[str] = {feat for tok in self.query for feat, _val in tok}
+        featured_query : Dict[str, List[Tuple[int, InternedString]]] = {f: [] for f in features}
         for i, tok in enumerate(self.query):
             for feat, val in tok:
                 featured_query[feat].append((i, val))
         self.featured_query = list(featured_query.items())
 
     def __str__(self) -> str:
-        return " ".join("[" + " ".join(f'{feat.decode()}="{bytes(val).decode()}"' for feat, val in subq) + "]"
+        return " ".join("[" + " ".join(f'{feat}="{bytes(val).decode()}"' for feat, val in subq) + "]"
                         for subq in self.query)
 
     def subqueries(self) -> Iterator[Tuple[Template, Instance]]:
@@ -55,12 +53,12 @@ class Query:
             for feat, value in tok:
                 yield (Template((feat, 0)), Instance(value))
 
-    def features(self) -> Set[bytes]:
+    def features(self) -> Set[str]:
         return {feat for tok in self.query for feat, _val in tok}
 
     def check_sentence(self, n:int) -> bool:
         sent : slice = self.corpus.lookup_sentence(n)
-        words : Dict[bytes, DiskStringArray] = self.corpus.words
+        words : Dict[str, DiskStringArray] = self.corpus.words
         for k in range(sent.start, sent.stop - len(self.query) + 1):
             for feat, vals in self.featured_query:
                 fsent : DiskStringArray = words[feat]
@@ -73,7 +71,7 @@ class Query:
     @staticmethod
     def is_subquery(subtemplate:Template, subinstance:Instance, template:Template, instance:Instance):
         positions : List[int] = sorted({pos for _, pos in template})
-        QuerySet = Set[Tuple[bytes, int, InternedString]]
+        QuerySet = Set[Tuple[str, int, InternedString]]
         query : QuerySet = {(feat, pos, val) for ((feat, pos), val) in zip(template, instance)}
         for base in positions:
             subquery : QuerySet = {(feat, base+pos, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}

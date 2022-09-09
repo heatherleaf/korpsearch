@@ -41,16 +41,18 @@ Using a slow internal implementation instead.
 ## Templates and instances
 
 class Template:
-    def __init__(self, *feature_positions:Tuple[bytes,int]):
-        self._feature_positions : Tuple[Tuple[bytes,int],...] = feature_positions
+    def __init__(self, *feature_positions:Tuple[str,int]):
+        assert len(feature_positions) > 0
+        assert feature_positions[0][-1] == 0
+        self._feature_positions : Tuple[Tuple[str,int],...] = feature_positions
 
     def __bytes__(self) -> bytes:
-        return b'-'.join(feat + str(pos).encode() for feat, pos in self._feature_positions)
+        return str(self).encode()
 
     def __str__(self) -> str:
-        return '-'.join(feat.decode() + str(pos) for feat, pos in self._feature_positions)
+        return '+'.join(feat + str(pos) for feat, pos in self._feature_positions)
 
-    def __iter__(self) -> Iterator[Tuple[bytes,int]]:
+    def __iter__(self) -> Iterator[Tuple[str,int]]:
         yield from self._feature_positions
 
     def __len__(self) -> int:
@@ -105,7 +107,7 @@ class Index:
 
         basefile : Path = self.basefile()
         basefile.parent.mkdir(exist_ok=True)
-        self.keypaths = [basefile.with_suffix(f'.key:{feature.decode()}{pos}') for feature, pos in template]
+        self.keypaths = [basefile.with_suffix(f'.key:{feature}{pos}') for feature, pos in template]
         self.indexpath = basefile.with_suffix('.index')
         self.setspath = basefile.with_suffix('.sets')
 

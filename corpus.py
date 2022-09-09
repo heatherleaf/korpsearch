@@ -84,8 +84,8 @@ class Corpus:
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
 
-    features : List[bytes]
-    words : Dict[bytes, disk.DiskStringArray]
+    features : List[str]
+    words : Dict[str, disk.DiskStringArray]
     sentence_pointers : disk.DiskIntArrayType
     path : Path
 
@@ -96,17 +96,17 @@ class Corpus:
             self.features = json.load(IN)
         self.sentence_pointers = disk.DiskIntArray(basedir / self.sentences_path)
         self.words = {
-            feature: disk.DiskStringArray(basedir / (self.feature_prefix + feature.decode()) / feature.decode())
+            feature: disk.DiskStringArray(basedir / (self.feature_prefix + feature) / feature)
             for feature in self.features
         }
         
     def __str__(self) -> str:
         return f"[Corpus: {self.path.stem}]"
 
-    def strings(self, feature:bytes) -> disk.StringCollection:
+    def strings(self, feature:str) -> disk.StringCollection:
         return self.words[feature].strings
 
-    def intern(self, feature:bytes, value:bytes) -> disk.InternedString:
+    def intern(self, feature:str, value:bytes) -> disk.InternedString:
         return self.words[feature].intern(value)
 
     def num_sentences(self) -> int:
@@ -127,7 +127,7 @@ class Corpus:
 
     def render_sentence(self, n:int) -> str:
         # TODO: the feature(s) to show should be configurable
-        feat : bytes = b'word' if b'word' in self.features else self.features[0]
+        feat : str = 'word' if 'word' in self.features else self.features[0]
         words : disk.DiskStringArray = self.words[feat]
         sent : slice = self.lookup_sentence(n)
         return " ".join(map(str, words[sent]))

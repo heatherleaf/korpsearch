@@ -155,18 +155,18 @@ def main(args:argparse.Namespace):
 def parse_template(template_str:str) -> Template:
     template = [tuple(feat_dist.split('.')) for feat_dist in template_str.split('-')]
     try:
-        return Template(*[(feat.encode(), int(dist)) for (feat, dist) in template])
+        return Template(*[(feat, int(dist)) for (feat, dist) in template])
     except ValueError:
         raise ValueError("Ill-formed template: it should be on the form pos.0 or word.0-pos.2")
 
 
 def yield_templates(features:List[str], max_dist:int):
     for feat in features:
-        yield Template((feat.encode(), 0))
+        yield Template((feat, 0))
     for feat in features:
         for feat1 in features:
             for dist in range(1, max_dist+1):
-                yield Template((feat.encode(), 0), (feat1.encode(), dist))
+                yield Template((feat, 0), (feat1, dist))
 
 
 ################################################################################
