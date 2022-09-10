@@ -22,6 +22,8 @@ def add_suffix(path:Path, suffix:str):
 
 class NoProgressBar:
     """A simple progress bar wrapper class, doing nothing at all."""
+    n = 0
+
     def __init__(self, iterable=None, desc=None, **kwargs):
         self._iter = None if iterable is None else iter(iterable)
 
@@ -75,3 +77,45 @@ def setup_logger(format:str, timedivider:int=1000, loglevel:int=logging.WARNING)
     formatter = RelativeTimeFormatter(format, style='{', divider=timedivider)
     logging.basicConfig(level=loglevel)
     logging.root.handlers[0].setFormatter(formatter)
+
+
+
+# from typing import Protocol, Generic
+# from abc import abstractmethod
+# 
+# CT = TypeVar("CT", bound='Comparable', contravariant=True)
+# 
+# class Comparable(Generic[CT], Protocol):
+#     """Protocol for annotating comparable types."""
+#     @abstractmethod
+#     def __lt__(self, other: CT) -> bool: ...
+#     @abstractmethod
+#     def __le__(self, other: CT) -> bool: ...
+#     @abstractmethod
+#     def __gt__(self, other: CT) -> bool: ...
+#     @abstractmethod
+#     def __ge__(self, other: CT) -> bool: ...
+
+class ComparableWithCounter:
+    val : Any
+    ctr : int = 0
+    def __init__(self, n:Any):
+        self.val = n
+    def __lt__(self, other:'ComparableWithCounter') -> bool:
+        ComparableWithCounter.ctr += 1
+        return self.val < other.val
+    def __le__(self, other:'ComparableWithCounter') -> bool:
+        ComparableWithCounter.ctr += 1
+        return self.val <= other.val
+    def __gt__(self, other:'ComparableWithCounter') -> bool:
+        ComparableWithCounter.ctr += 1
+        return self.val > other.val
+    def __ge__(self, other:'ComparableWithCounter') -> bool:
+        ComparableWithCounter.ctr += 1
+        return self.val >= other.val
+    def __eq__(self, other:object) -> bool:
+        ComparableWithCounter.ctr += 1
+        return isinstance(other, ComparableWithCounter) and self.val == other.val
+    def __ne__(self, other:object) -> bool:
+        return not (self == other)
+
