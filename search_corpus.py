@@ -1,12 +1,14 @@
 
 import argparse
 from pathlib import Path
-from index import Index, Instance, IndexSet
+from typing import List, Tuple
+import logging
+
+from index import Index, Instance
+from indexset import IndexSet
 from corpus import Corpus
 from query import Query
 from util import setup_logger
-from typing import List, Tuple
-import logging
 
 # Alternative implementation of filtering, which hopefully is easier to transfer to Cython
 from filter_sentences import filter_sentences
