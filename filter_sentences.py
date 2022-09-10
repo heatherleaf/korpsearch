@@ -12,6 +12,7 @@ def filter_sentences(index_set:IndexSet, query:Query):
     if isinstance(index_set.values, list):
         assert index_set.start == 0
         assert index_set.size == len(index_set.values)
+        assert index_set.offset == 0
         sentences = index_set.values
     else:
         sentences = list(index_set)
@@ -27,6 +28,7 @@ def filter_sentences(index_set:IndexSet, query:Query):
     index_set.values = sentences
     index_set.start = 0
     index_set.size = len(sentences)
+    index_set.offset = 0
 
 
 def runfilter(

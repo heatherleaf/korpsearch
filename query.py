@@ -1,9 +1,10 @@
 
 import re
+from typing import List, Tuple, Set, Dict, Iterator
+
 from index import Template, Instance
 from corpus import Corpus
 from disk import InternedString, DiskStringArray
-from typing import List, Tuple, Set, Dict, Iterator
 
 ################################################################################
 ## Queries
@@ -40,18 +41,18 @@ class Query:
         return " ".join("[" + " ".join(f'{feat}="{bytes(val).decode()}"' for feat, val in subq) + "]"
                         for subq in self.query)
 
-    def subqueries(self) -> Iterator[Tuple[Template, Instance]]:
+    def subqueries(self) -> Iterator[Tuple[Template, Instance, int]]:
         # Pairs of tokens
-        for i, tok in enumerate(self.query):
+        for offset, tok in enumerate(self.query):
             for feat, value in tok:
-                for dist in range(1, len(self.query)-i):
-                    for feat1, value1 in self.query[i+dist]:
+                for dist in range(1, len(self.query)-offset):
+                    for feat1, value1 in self.query[offset+dist]:
                         templ = Template((feat, 0), (feat1, dist))
-                        yield (templ, Instance(value, value1))
+                        yield (templ, Instance(value, value1), offset)
         # Single tokens: yield subqueries after more complex queries!
-        for tok in self.query:
+        for offset, tok in enumerate(self.query):
             for feat, value in tok:
-                yield (Template((feat, 0)), Instance(value))
+                yield (Template((feat, 0)), Instance(value), offset)
 
     def features(self) -> Set[str]:
         return {feat for tok in self.query for feat, _val in tok}
