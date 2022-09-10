@@ -10,6 +10,7 @@ from array import array
 import itertools
 from functools import total_ordering
 from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable
+from types import TracebackType
 
 from util import ByteOrder, add_suffix
 
@@ -34,19 +35,21 @@ def DiskIntArray(path : Path) -> DiskIntArrayType:
     if elemsize in typecodes and byteorder == sys.byteorder:
         return memoryview(arr).cast(typecodes[elemsize])
     else:
-        return SlowDiskIntArray(arr, elemsize, byteorder)
+        return SlowDiskIntArray(file, arr, elemsize, byteorder)
 
 
 class SlowDiskIntArray:
     array_suffix = '.ia'
     config_suffix = '.ia-cfg'
 
+    _file : BinaryIO
     _array : mmap
     _elemsize : int
     _byteorder : ByteOrder
     _length : int
 
-    def __init__(self, array:mmap, elemsize:int, byteorder:ByteOrder):
+    def __init__(self, file:BinaryIO, array:mmap, elemsize:int, byteorder:ByteOrder):
+        self._file = file
         self._array = array
         self._elemsize = elemsize
         self._byteorder = byteorder
@@ -55,6 +58,11 @@ class SlowDiskIntArray:
 
     def __len__(self) -> int:
         return self._length
+
+    def __setitem__(self, i:int, val:int):
+        elemsize = self._elemsize 
+        pos = i * elemsize
+        self._array[pos : pos+elemsize] = val.to_bytes(length=elemsize, byteorder=self._byteorder)
 
     @overload
     def __getitem__(self, i:int) -> int: pass
@@ -84,6 +92,16 @@ class SlowDiskIntArray:
 
     def __iter__(self) -> Iterator[int]:
         return self._slice(slice(None))
+
+    def __enter__(self) -> 'SlowDiskIntArray':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        self._array.close()
+        self._file.close()
 
 
 class DiskIntArrayBuilder:
@@ -126,6 +144,12 @@ class DiskIntArrayBuilder:
     def __len__(self) -> int:
         return self._file.tell() // self._elemsize
 
+    def __enter__(self) -> 'DiskIntArrayBuilder':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
     def close(self):
         self._file.close()
 
@@ -139,10 +163,9 @@ class DiskIntArrayBuilder:
             values = list(values)
             max_value = max(values)
 
-        builder = DiskIntArrayBuilder(path, max_value=max_value, byteorder=byteorder, use_memoryview=use_memoryview)
-        for value in values: 
-            builder.append(value)
-        builder.close()
+        with DiskIntArrayBuilder(path, max_value=max_value, byteorder=byteorder, use_memoryview=use_memoryview) as builder:
+            for value in values: 
+                builder.append(value)
 
 
 ################################################################################
@@ -300,6 +323,16 @@ class DiskStringArray:
     def __iter__(self) -> Iterator[InternedString]:
         yield from self._slice(slice(None))
 
+    def __enter__(self) -> 'DiskStringArray':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        if isinstance(self._array, SlowDiskIntArray):
+            self._array.close()
+
 
 class DiskStringArrayBuilder:
     _path : Path
@@ -317,6 +350,12 @@ class DiskStringArrayBuilder:
     def append(self, value:bytes):
         self._builder.append(self._strings.intern(value).index)
 
+    def __enter__(self) -> 'DiskStringArrayBuilder':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
     def close(self):
         self._builder.close()
 
@@ -325,7 +364,6 @@ class DiskStringArrayBuilder:
         if strings is None:
             values = strings = list(values)
 
-        builder = DiskStringArrayBuilder(path, strings, use_memoryview)
-        for value in values:
-            builder.append(value)
-        builder.close()
+        with DiskStringArrayBuilder(path, strings, use_memoryview) as builder:
+            for value in values:
+                builder.append(value)
