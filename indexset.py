@@ -64,19 +64,22 @@ class IndexSet:
         result = []
         k1, k2 = 0, 0
         x1, x2 = arr1[start1], arr2[start2]
-        while k1 < length1 and k2 < length2:
-            if x1 < x2: 
-                k1 += 1
-                x1 = arr1[start1 + k1]
-            elif x1 > x2:
-                k2 += 1
-                x2 = arr2[start2 + k2]
-            else:
-                result.append(x1)
-                k1 += 1
-                x1 = arr1[start1 + k1]
-                k2 += 1
-                x2 = arr2[start2 + k2]
+        try:
+            while True:
+                if x1 < x2: 
+                    k1 += 1
+                    x1 = arr1[start1 + k1]
+                elif x1 > x2:
+                    k2 += 1
+                    x2 = arr2[start2 + k2]
+                else:
+                    result.append(x1)
+                    k1 += 1
+                    x1 = arr1[start1 + k1]
+                    k2 += 1
+                    x2 = arr2[start2 + k2]
+        except IndexError:
+            pass
         return result
 
     def filter(self, check:Callable[[int],bool]):
