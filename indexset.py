@@ -27,12 +27,11 @@ class IndexSet:
     def __init__(self, values:IndexSetValuesType, start:int=0, size:int=-1):
         self.values = values
         self.start = start
-        if isinstance(values, list):
-            self.size = size if size >= 0 else len(values) - start
+        self.size = size
+        if isinstance(values, list) and size < 0:
+            self.size = len(values) - start
         else:
-            assert size == -1
-            self.size = values[start]
-            self.start += 1
+            assert size > 0
 
     def __len__(self) -> int:
         return self.size

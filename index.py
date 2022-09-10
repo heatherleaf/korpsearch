@@ -79,7 +79,8 @@ class Index:
 
     def search(self, instance:Instance) -> IndexSet:
         set_start : int = self._lookup_instance(instance)
-        return IndexSet(self.sets, set_start)
+        set_size : int = self.sets[set_start]
+        return IndexSet(self.sets, set_start+1, set_size)
 
     def _lookup_instance(self, instance:Instance) -> int:
         # binary search
