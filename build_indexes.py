@@ -15,6 +15,11 @@ from util import setup_logger
 ## Building the corpus index and the query indexes
 
 def main(args:argparse.Namespace):
+    if args.suffix_array:
+        from index import SAIndex as Index
+    else:
+        from index import Index
+
     base = Path(args.corpus)
     corpusdir = base.with_suffix(Corpus.dir_suffix)
     indexdir = base.with_suffix(Index.dir_suffix)
@@ -38,7 +43,7 @@ def main(args:argparse.Namespace):
                             yield_templates(args.features, args.max_dist),
                             map(parse_template, args.templates),
                         ):
-            Index.build(corpus, template, keep_tmpfiles=args.keep_tmpfiles, min_frequency=args.min_frequency)
+            Index.build(corpus, template, min_frequency=args.min_frequency, keep_tmpfiles=args.keep_tmpfiles)
             ctr += 1
         logging.info(f"Created {ctr} query indexes")
 
@@ -81,8 +86,10 @@ parser.add_argument('--min-frequency', type=int, default=0,
                     help='[only for binary indexes] min unary frequency for all values in a binary instance')
 
 parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
-parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
+parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
+
+parser.add_argument('--suffix-array', action='store_true', help='use suffix arrays as indexes (experimental)')
 
 
 if __name__ == '__main__':

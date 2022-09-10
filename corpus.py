@@ -102,9 +102,15 @@ class Corpus:
             feature: disk.DiskStringArray(basedir / (self.feature_prefix + feature) / feature)
             for feature in self.features
         }
+        assert all(
+            len(self) == len(arr) for arr in self.words.values()
+        )
         
     def __str__(self) -> str:
         return f"[Corpus: {self.path.stem}]"
+
+    def __len__(self) -> int:
+        return len(self.words[self.features[0]])
 
     def strings(self, feature:str) -> disk.StringCollection:
         return self.words[feature].strings
@@ -134,4 +140,16 @@ class Corpus:
         words : disk.DiskStringArray = self.words[feat]
         sent : slice = self.lookup_sentence(n)
         return " ".join(map(str, words[sent]))
+
+    def get_sentence_from_token(self, pos:int) -> int:
+        ptrs : disk.DiskIntArrayType = self.sentence_pointers
+        start : int = 0
+        end : int = len(ptrs) - 1
+        while start <= end:
+            mid = (start + end) // 2
+            if ptrs[mid] <= pos:
+                start = mid + 1
+            else:
+                end = mid - 1
+        return end
 
