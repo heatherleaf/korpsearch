@@ -77,7 +77,7 @@ class Index:
     def __len__(self) -> int:
         return len(self.index)
 
-    def search(self, instance:Instance) -> IndexSet:
+    def search(self, instance:Instance, offset:int=0) -> IndexSet:
         set_start : int = self._lookup_instance(instance)
         set_size : int = self.sets[set_start]
         return IndexSet(self.sets, set_start+1, set_size)
@@ -213,4 +213,109 @@ class Index:
         # Cleanup
         if not keep_tmpfiles:
             dbfile.unlink()
+
+
+
+################################################################################
+## Alternative: implemented as a suffix array
+
+class SAIndex(Index):
+    dir_suffix = '.sa-indexes'
+
+    corpus : Corpus
+    template : Template
+    index : DiskIntArrayType
+
+    def __init__(self, corpus:Corpus, template:Template):
+        self.corpus = corpus
+        self.template = template
+        indexpath = self.indexpath(corpus, template)
+        self.index = DiskIntArray(indexpath)
+
+    def search(self, instance:Instance, offset:int) -> IndexSet:
+        set_start, set_end = self._lookup_instance(instance)
+        set_size = set_end - set_start + 1
+        iset = IndexSet(self.index, set_start, set_size, offset=offset)
+        return iset
+
+    def _lookup_instance(self, instance:Instance) -> Tuple[int, int]:
+        searchkey = lambda k: tuple(
+            self.corpus.words[feat][self.index[k] + delta] 
+            for val, (feat, delta) in zip(instance, self.template)
+        )
+        instance_key : Tuple[InternedString,...] = instance.values()
+
+        start : int = 0
+        end : int = len(self) - 1
+        while start <= end:
+            mid : int = (start + end) // 2
+            key : Tuple[InternedString,...] = searchkey(mid)
+            if key < instance_key:
+                start = mid + 1
+            else:
+                end = mid - 1
+        first_index = start
+        if searchkey(first_index) != instance_key:
+            raise KeyError(f'Instance "{instance}" not found')
+
+        end = len(self) - 1
+        while start <= end:
+            mid : int = (start + end) // 2
+            key : Tuple[InternedString,...] = searchkey(mid)
+            if key <= instance_key:
+                start = mid + 1
+            else:
+                end = mid - 1
+        last_index = end
+        assert searchkey(last_index) == instance_key
+
+        return first_index, last_index
+
+
+    @staticmethod
+    def indexpath(corpus:Corpus, template:Template):
+        basepath = corpus.path.with_suffix(Index.dir_suffix)
+        return basepath / str(template) / str(template)
+
+    @staticmethod
+    def build(corpus:Corpus, template:Template, min_frequency:int=0, **kwargs):
+        import sort
+        logging.debug(f"Building index for {template}...")
+
+        maxdelta = max(pos for _feat, pos in template)
+        index_size = len(corpus) - maxdelta
+
+        # all start positions = 0, 1, 2, ..., corpus length
+        index_path = SAIndex.indexpath(corpus, template)
+        index_path.parent.mkdir(exist_ok=True)
+        suffix_array = DiskIntArrayBuilder(index_path, max_value=index_size)
+        for ptr in progress_bar(range(index_size), desc="Collecting positions"):
+            suffix_array.append(ptr)
+        suffix_array.close()
+
+        # sort the suffix array
+        feature_positions = list(template)
+        feat, delta = feature_positions[0]
+        assert delta == 0   # delta for the first feature should always be 0
+        text1 = corpus.words[feat]
+        if len(feature_positions) == 1:
+            sortkey = lambda pos: (text1[pos], pos)
+        elif len(feature_positions) == 2:
+            feat, delta = feature_positions[1]
+            text2 = corpus.words[feat]
+            sortkey = lambda pos: (text1[pos], text2[pos+delta], pos)
+        else:
+            # the provious sortkeys above are just optimisations of this generic one:
+            sortkey = lambda pos: (tuple(corpus.words[feat][pos+delta] for feat, delta in feature_positions), pos)
+
+        suffix_array = DiskIntArray(index_path)
+        sort.quicksort(
+            suffix_array,
+            key = sortkey, 
+            pivotselector = sort.random_pivot, 
+            # pivotselector = sort.median_of_three,
+            # pivotselector = sort.tukey_ninther,
+            cutoff = 100_000,
+        )
+        logging.info(f"Built index for {template}")
 
