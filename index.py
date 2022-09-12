@@ -326,7 +326,7 @@ class SAIndex(Index):
 
     @staticmethod
     def indexpath(corpus:Corpus, template:Template):
-        basepath = corpus.path.with_suffix(Index.dir_suffix)
+        basepath = corpus.path.with_suffix(SAIndex.dir_suffix)
         return basepath / str(template) / str(template)
 
     @staticmethod
