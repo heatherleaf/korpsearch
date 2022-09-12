@@ -1,6 +1,6 @@
 
 from pathlib import Path
-from typing import Tuple, List, Iterator
+from typing import Tuple, List, Iterator, Callable, Union
 import logging
 import sqlite3
 
@@ -63,6 +63,10 @@ class Index:
     keys : List[DiskIntArrayType]
     index : DiskIntArrayType
     sets : DiskIntArrayType
+    search_key : Callable[[int], Union[int, Tuple[int,...]]]
+    # Typing note: as optimisation we use the value (s) instead of a 1-tuple (s,) so the
+    # return type is a union of a value and a tuple. But then Pylance can't infer the correct
+    # type, so we have to write "# type: ignore" on some lines below.
 
     def __init__(self, corpus:Corpus, template:Template):
         self.template = template
@@ -71,6 +75,19 @@ class Index:
         self.index = DiskIntArray(paths['index'])
         self.sets = DiskIntArray(paths['sets'])
 
+        assert len(self.template) == len(self.keys)
+        if len(self.keys) == 1:
+            [keyarr] = self.keys
+            self.search_key = lambda k: keyarr[k]
+        elif len(self.keys) == 2:
+            [keyarr1, keyarr2] = self.keys
+            self.search_key = lambda k: (keyarr1[k], keyarr2[k])
+        else:
+            # The above two are just optimisations of the following generic search key:
+            self.search_key = lambda k: tuple(
+                keyarray[k] for keyarray in self.keys
+            )
+
     def __str__(self) -> str:
         return self.__class__.__name__ + ':' + str(self.template) 
 
@@ -78,20 +95,22 @@ class Index:
         return len(self.index)
 
     def search(self, instance:Instance, offset:int=0) -> IndexSet:
-        set_start : int = self._lookup_instance(instance)
+        set_start : int = self.lookup_instance(instance)
         set_size : int = self.sets[set_start]
         return IndexSet(self.sets, set_start+1, set_size)
 
-    def _lookup_instance(self, instance:Instance) -> int:
-        # binary search
-        instance_key : Tuple[int,...] = tuple(s.index for s in instance)
-        start : int = 0; end : int = len(self)-1
+    def lookup_instance(self, instance:Instance) -> int:
+        search_key = self.search_key
+        instance_key = tuple(s.index for s in instance)
+        if len(instance_key) == 1: instance_key = instance_key[0]
+
+        start, end = 0, len(self)-1
         while start <= end:
-            mid : int = (start + end) // 2
-            key : Tuple[int,...] = tuple(keyarray[mid] for keyarray in self.keys)
+            mid = (start + end) // 2
+            key = search_key(mid)
             if key == instance_key:
                 return self.index[mid]
-            elif key < instance_key:
+            elif key < instance_key:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
@@ -225,52 +244,85 @@ class SAIndex(Index):
     corpus : Corpus
     template : Template
     index : DiskIntArrayType
+    search_key : Callable[[int], Union[InternedString, Tuple[InternedString,...]]]
+    # Typing note: as optimisation we use the value (s) instead of a 1-tuple (s,) so the
+    # return type is a union of a value and a tuple. But then Pylance can't infer the correct
+    # type, so we have to write "# type: ignore" on some lines below.
 
     def __init__(self, corpus:Corpus, template:Template):
         self.corpus = corpus
         self.template = template
         indexpath = self.indexpath(corpus, template)
-        self.index = DiskIntArray(indexpath)
+        self.index = index = DiskIntArray(indexpath)
 
-    def search(self, instance:Instance, offset:int) -> IndexSet:
-        set_start, set_end = self._lookup_instance(instance)
+        if len(self.template) == 1:
+            [(tmpl_feat, tmpl_delta)] = list(template)
+            self.search_key = lambda k: \
+                corpus.words[tmpl_feat][index[k] + tmpl_delta]
+        elif len(self.template) == 2:
+            [(tmpl_feat1, tmpl_delta1), (tmpl_feat2, tmpl_delta2)] = list(template)
+            self.search_key = lambda k: (
+                corpus.words[tmpl_feat1][index[k] + tmpl_delta1],
+                corpus.words[tmpl_feat2][index[k] + tmpl_delta2],
+            )
+        else:
+            # The above two are just optimisations of the following generic search key:
+            self.search_key = lambda k: tuple(
+                corpus.words[feat][index[k] + delta] 
+                for feat, delta in template
+            )
+
+    def search(self, instance:Instance, offset:int=0) -> IndexSet:
+        set_start, set_end = self.lookup_instance(instance)
         set_size = set_end - set_start + 1
         iset = IndexSet(self.index, set_start, set_size, offset=offset)
         return iset
 
-    def _lookup_instance(self, instance:Instance) -> Tuple[int, int]:
-        searchkey = lambda k: tuple(
-            self.corpus.words[feat][self.index[k] + delta] 
-            for val, (feat, delta) in zip(instance, self.template)
-        )
-        instance_key : Tuple[InternedString,...] = instance.values()
+    def lookup_instance(self, instance:Instance) -> Tuple[int, int]:
+        search_key = self.search_key
+        instance_key = instance.values()
+        if len(instance_key) == 1: instance_key = instance_key[0]
 
-        start : int = 0
-        end : int = len(self) - 1
+        start, end = 0, len(self)-1
         while start <= end:
-            mid : int = (start + end) // 2
-            key : Tuple[InternedString,...] = searchkey(mid)
-            if key < instance_key:
+            mid = (start + end) // 2
+            key = search_key(mid)
+            if key < instance_key:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
         first_index = start
-        if searchkey(first_index) != instance_key:
+        if search_key(first_index) != instance_key:
             raise KeyError(f'Instance "{instance}" not found')
 
         end = len(self) - 1
         while start <= end:
-            mid : int = (start + end) // 2
-            key : Tuple[InternedString,...] = searchkey(mid)
-            if key <= instance_key:
+            mid = (start + end) // 2
+            key = search_key(mid)
+            if key <= instance_key:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
         last_index = end
-        assert searchkey(last_index) == instance_key
+        assert search_key(last_index) == instance_key
 
         return first_index, last_index
 
+    def lookup_instance_min_frequency(self, instance:Instance, min_frequency:int) -> bool:
+        searchkey = self.search_key
+        instance_key = instance.values()
+        if len(instance_key) == 1: instance_key = instance_key[0]
+
+        start, end = 0, len(self)-1
+        while start <= end:
+            mid = (start + end) // 2
+            key = searchkey(mid)
+            if key < instance_key:  # type: ignore
+                start = mid + 1
+            else:
+                end = mid - 1
+        end = start + min_frequency - 1
+        return end < len(self.index) and searchkey(end) == instance_key
 
     @staticmethod
     def indexpath(corpus:Corpus, template:Template):
@@ -285,13 +337,27 @@ class SAIndex(Index):
         maxdelta = max(pos for _feat, pos in template)
         index_size = len(corpus) - maxdelta
 
+        unary_indexes : List[SAIndex] = []
+        if min_frequency > 0 and len(template) > 1:
+            unary_indexes = [SAIndex(corpus, Template((feat,0))) for (feat, _pos) in template]
+
         # all start positions = 0, 1, 2, ..., corpus length
         index_path = SAIndex.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
+        skipped_instances : int = 0
         suffix_array = DiskIntArrayBuilder(index_path, max_value=index_size)
         for ptr in progress_bar(range(index_size), desc="Collecting positions"):
+            instance_values = [corpus.words[feat][ptr+i] for (feat, i) in template]
+            if unary_indexes and not all(
+                        unary.lookup_instance_min_frequency(Instance(val), min_frequency)
+                        for val, unary in zip(instance_values, unary_indexes)
+                    ):
+                skipped_instances += 1
+                continue
             suffix_array.append(ptr)
         suffix_array.close()
+        if skipped_instances:
+            logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
         # sort the suffix array
         feature_positions = list(template)
