@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import logging
-from typing import BinaryIO, List, Tuple, Set, Dict, Iterator
+from typing import BinaryIO, List, Tuple, Set, Dict, Iterator, Sequence
 
 import disk
 from util import progress_bar
@@ -134,12 +134,14 @@ class Corpus:
         end : int = sents[n+1] if n+1 < nsents else nsents
         return slice(start, end)
 
-    def render_sentence(self, n:int) -> str:
-        # TODO: the feature(s) to show should be configurable
-        feat : str = 'word' if 'word' in self.features else self.features[0]
-        words : disk.DiskStringArray = self.words[feat]
-        sent : slice = self.lookup_sentence(n)
-        return " ".join(map(str, words[sent]))
+    def render_sentence(self, sent:int, features_to_show:Sequence[str]=()) -> str:
+        if not features_to_show:
+            features_to_show = self.features[:1]
+        positions = self.lookup_sentence(sent)
+        return ' '.join(
+            '/'.join(str(self.words[feat][pos]) for feat in features_to_show) 
+            for pos in range(positions.start, positions.stop)
+        )
 
     def get_sentence_from_token(self, pos:int) -> int:
         ptrs : disk.DiskIntArrayType = self.sentence_pointers
