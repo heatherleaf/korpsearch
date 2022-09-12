@@ -20,11 +20,11 @@ def search_corpus(args:argparse.Namespace):
 
     corpus = Corpus(args.corpus)
     query = Query(corpus, args.query)
-    logging.info(f"Query: {args.query} --> {query}")
+    logging.info(f"Query: {query}")
 
-    debug_result = lambda index, instance, results: f"{index.template}[{instance}]={len(results)}"        
+    debug_result = lambda index, instance: f"{index.template}[{instance}]"
 
-    logging.debug("Searching...")
+    logging.debug("Searching:")
     search_results : List[Tuple[Index, Instance, IndexSet]] = [] 
     for template, instance, offset in query.subqueries():
         if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
@@ -38,24 +38,23 @@ def search_corpus(args:argparse.Namespace):
             results : IndexSet = index.search(instance, offset=offset)
         except KeyError:
             continue
-        sresult = (index, instance, results)
-        search_results.append(sresult)
-        logging.debug(f"   {debug_result(*sresult)} --> {results}")
-    logging.info(f"Searched {len(search_results)} indexes")
+        search_results.append((index, instance, results))
+        logging.debug(f"   {debug_result(index, instance)} = {results}")
+    logging.info(f"Searched {len(search_results)} indexes: " + 
+        ", ".join(f"{debug_result(index, instance)}" for index, instance, _ in search_results))
 
-    logging.debug("Determining intersection order...")
     search_results.sort(key=lambda r: len(r[-1]))
-    logging.debug("   --> " + ", ".join(f"{debug_result(*sresult)}" for sresult in search_results))
+    logging.debug("Intersection order: " + 
+        ", ".join(f"{debug_result(index, instance)}" for index, instance, _ in search_results))
 
-    logging.debug("Intersecting...")
-    intersection = IndexSet([])
-    for sresult in search_results:
-        index, instance, results = sresult
+    index, instance, intersection = search_results[0]
+    logging.debug(f"Intersecting: {debug_result(index, instance)}")
+    for index, instance, results in search_results[1:]:
         if not intersection:
             intersection = results
         else:
             intersection.intersection_update(results)
-        logging.debug(f"   {debug_result(*sresult)} --> {intersection}")
+        logging.debug(f"           /\\ {debug_result(index, instance)} = {intersection}")
     logging.info(f"After intersection: {intersection}")
 
     if args.suffix_array:
@@ -64,22 +63,21 @@ def search_corpus(args:argparse.Namespace):
                 corpus.get_sentence_from_token(pos) for pos in intersection
             )
         ])
-        logging.debug(f"   to sentences --> {sentences}")
+        logging.info(f"Converting to sentences: {sentences}")
     else:
         sentences = intersection
 
     if args.filter:
-        logging.debug("Filtering...")
         sentences.filter(query.check_sentence)
-        logging.debug(f"   {query} --> {sentences}")
-        logging.info(f"After filtering: {sentences}")
+        logging.info(f"Filtering sentences: {sentences}")
 
     logging.info(f"Final result: {sentences}")
 
     if args.print:
         logging.info(f"Printing {len(sentences)} sentences...")
         for sent in sorted(sentences):
-            print(sent, corpus.render_sentence(sent))
+            features_to_show = [feat for feat in corpus.features if feat in query.features]
+            print(f"[{sent}]", corpus.render_sentence(sent, features_to_show))
 
 
 ################################################################################
