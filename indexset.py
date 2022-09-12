@@ -86,10 +86,22 @@ class IndexSet:
             return result
 
     def filter(self, check:Callable[[int],bool]):
-        self.values = [elem for elem in self if check(elem)]
+        if isinstance(self.values, list):
+            self._filter_values_in_place(self.values, check)
+        else:
+            self.values = [elem for elem in self if check(elem)]
         self.start = 0
         self.size = len(self.values)
         self.offset = 0
+
+    @staticmethod
+    def _filter_values_in_place(values:List[int], check:Callable[[int],bool]):
+        filtered = 0
+        for val in values:
+            if check(val):
+                values[filtered] = val
+                filtered += 1
+        del values[filtered:]
 
     def __contains__(self, elem:int) -> bool:
         values = self.values

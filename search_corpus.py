@@ -11,9 +11,6 @@ from corpus import Corpus
 from query import Query
 from util import setup_logger
 
-# Alternative implementation of filtering, which hopefully is easier to transfer to Cython
-from filter_sentences import filter_sentences
-
 
 def search_corpus(args:argparse.Namespace):
     if args.suffix_array:
@@ -73,8 +70,7 @@ def search_corpus(args:argparse.Namespace):
 
     if args.filter:
         logging.debug("Filtering...")
-        filter_sentences(sentences, query)
-        # result.filter(query.check_sentence)
+        sentences.filter(query.check_sentence)
         logging.debug(f"   {query} --> {sentences}")
         logging.info(f"After filtering: {sentences}")
 
