@@ -35,21 +35,19 @@ def DiskIntArray(path : Path) -> DiskIntArrayType:
     if elemsize in typecodes and byteorder == sys.byteorder:
         return memoryview(arr).cast(typecodes[elemsize])
     else:
-        return SlowDiskIntArray(file, arr, elemsize, byteorder)
+        return SlowDiskIntArray(arr, elemsize, byteorder)
 
 
 class SlowDiskIntArray:
     array_suffix = '.ia'
     config_suffix = '.ia-cfg'
 
-    _file : BinaryIO
     _array : mmap
     _elemsize : int
     _byteorder : ByteOrder
     _length : int
 
-    def __init__(self, file:BinaryIO, array:mmap, elemsize:int, byteorder:ByteOrder):
-        self._file = file
+    def __init__(self, array:mmap, elemsize:int, byteorder:ByteOrder):
         self._array = array
         self._elemsize = elemsize
         self._byteorder = byteorder
@@ -101,7 +99,6 @@ class SlowDiskIntArray:
 
     def close(self):
         self._array.close()
-        self._file.close()
 
 
 class DiskIntArrayBuilder:
