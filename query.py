@@ -1,10 +1,10 @@
 
 import re
-from typing import List, Tuple, Set, Dict, Iterator
+from typing import List, Tuple, Set, Iterator
 
 from index import Template, Instance
 from corpus import Corpus
-from disk import InternedString, DiskStringArray
+from disk import InternedString
 
 ################################################################################
 ## Queries
@@ -14,7 +14,8 @@ QUEREGEX = re.compile(r'^(\[ ([a-z]+ = "[^"]+")* \])+$', re.X)
 class Query:
     corpus : Corpus
     query : List[List[Tuple[str, InternedString]]]
-    featured_query : List[Tuple[str, List[Tuple[int, InternedString]]]]
+    features : Set[str]
+    _featured_query : List[Tuple[str, List[Tuple[int, InternedString]]]]
 
     def __init__(self, corpus:Corpus, querystr:str):
         self.corpus = corpus
@@ -30,12 +31,15 @@ class Query:
                 feat, value = part.split('=', 1)
                 value = value.replace('"', '')
                 self.query[-1].append((feat, self.corpus.intern(feat, value.encode())))
-        features : Set[str] = {feat for tok in self.query for feat, _val in tok}
-        featured_query : Dict[str, List[Tuple[int, InternedString]]] = {f: [] for f in features}
+
+        self.features = {feat for tok in self.query for feat, _val in tok}
+
+        # This is a variant of self.query, optimised for checking a query at a corpus position:
+        featured_query = {f: [] for f in self.features}
         for i, tok in enumerate(self.query):
             for feat, val in tok:
                 featured_query[feat].append((i, val))
-        self.featured_query = list(featured_query.items())
+        self._featured_query = list(featured_query.items())
 
     def __str__(self) -> str:
         return " ".join("[" + " ".join(f'{feat}="{bytes(val).decode()}"' for feat, val in subq) + "]"
@@ -54,20 +58,26 @@ class Query:
             for feat, value in tok:
                 yield (Template((feat, 0)), Instance(value), offset)
 
-    def features(self) -> Set[str]:
-        return {feat for tok in self.query for feat, _val in tok}
+    def check_sentence(self, sent:int) -> bool:
+        positions = self.corpus.lookup_sentence(sent)
+        return any(
+            self.check_position(pos)
+            for pos in range(positions.start, positions.stop - len(self.query) + 1)
+        )
 
-    def check_sentence(self, n:int) -> bool:
-        sent : slice = self.corpus.lookup_sentence(n)
-        words : Dict[str, DiskStringArray] = self.corpus.words
-        for k in range(sent.start, sent.stop - len(self.query) + 1):
-            for feat, vals in self.featured_query:
-                fsent : DiskStringArray = words[feat]
-                if not all(fsent[k+i] == v for i, v in vals):
-                    break
-            else:
-                return True
-        return False
+    def check_position(self, pos:int) -> bool:
+        # return all(
+        #     self.corpus.words[feat][pos+i] == val
+        #     for i, token in enumerate(self.query)
+        #     for feat, val in token
+        # )
+        # This is an optimised (but less readable) version of the code above:
+        for feat, values in self._featured_query:
+            fsent = self.corpus.words[feat]
+            if not all(fsent[pos+i] == val for i, val in values):
+                return False
+        else:
+            return True
 
     @staticmethod
     def is_subquery(subtemplate:Template, subinstance:Instance, template:Template, instance:Instance):

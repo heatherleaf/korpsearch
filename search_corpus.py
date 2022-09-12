@@ -58,6 +58,11 @@ def search_corpus(args:argparse.Namespace):
     logging.info(f"After intersection: {intersection}")
 
     if args.suffix_array:
+        # Filter found positions (off by default):
+        # if args.filter:
+        #     intersection.filter(query.check_position)
+        #     logging.info(f"Filtering positions: {intersection}")
+
         sentences = IndexSet([
             sent for sent, _group in itertools.groupby(
                 corpus.get_sentence_from_token(pos) for pos in intersection
