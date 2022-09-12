@@ -57,38 +57,33 @@ class IndexSet:
 
     def intersection(self, other:'IndexSet') -> List[int]:
         """Take the intersection of two sorted arrays."""
-        arr1, start1, length1, offset1 = self.values, self.start, self.size, self.offset
-        arr2, start2, length2, offset2 = other.values, other.start, other.size, other.offset
-        if not (isinstance(self.values, list) or offset1 > 0 or 
-                isinstance(other.values, list) or offset2 > 0):
+        if not (isinstance(self.values, list) or self.offset > 0 or 
+                isinstance(other.values, list) or other.offset > 0):
             try:
                 return fast_intersection.intersection(
-                    arr1, start1, length1, # offset1,
-                    arr2, start2, length2, # offset2,
+                    self.values, self.start, self.size, # self.offset,
+                    other.values, other.start, other.size, # other.offset,
                 )
             except NameError:
                 pass
 
         result = []
-        k1, k2 = 0, 0
-        x1, x2 = arr1[start1] - offset1, arr2[start2] - offset2
+        xiter = iter(self)
+        yiter = iter(other)
         try:
+            x = next(xiter)
+            y = next(yiter)
             while True:
-                if x1 < x2: 
-                    k1 += 1
-                    x1 = arr1[start1 + k1] - offset1
-                elif x1 > x2:
-                    k2 += 1
-                    x2 = arr2[start2 + k2] - offset2
+                if x < y:
+                    x = next(xiter)
+                elif x > y:
+                    y = next(yiter)
                 else:
-                    result.append(x1)
-                    k1 += 1
-                    x1 = arr1[start1 + k1] - offset1
-                    k2 += 1
-                    x2 = arr2[start2 + k2] - offset2
-        except IndexError:
-            pass
-        return result
+                    result.append(x)
+                    x = next(xiter)
+                    y = next(yiter)
+        except StopIteration:
+            return result
 
     def filter(self, check:Callable[[int],bool]):
         self.values = [elem for elem in self if check(elem)]
