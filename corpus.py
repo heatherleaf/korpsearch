@@ -125,7 +125,7 @@ class Corpus:
         sents = self.sentence_pointers
         for start, end in zip(sents[1:], sents[2:]):
             yield slice(start, end)
-        yield slice(sents[-1], len(self))
+        yield slice(sents[len(sents)-1], len(self))
 
     def lookup_sentence(self, n:int) -> slice:
         sents = self.sentence_pointers

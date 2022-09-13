@@ -61,8 +61,6 @@ class DiskIntArray:
             self._view[i] = val
         except AttributeError:
             elemsize = self._elemsize 
-        elemsize = self._elemsize 
-            elemsize = self._elemsize 
             pos = i * elemsize
             self._mmap[pos : pos+elemsize] = val.to_bytes(length=elemsize, byteorder=self._byteorder)
 
