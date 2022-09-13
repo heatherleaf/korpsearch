@@ -80,12 +80,12 @@ class Query:
             return True
 
     @staticmethod
-    def is_subquery(subtemplate:Template, subinstance:Instance, template:Template, instance:Instance):
+    def is_subquery(subtemplate:Template, subinstance:Instance, suboffset:int, template:Template, instance:Instance, offset:int):
         positions : List[int] = sorted({pos for _, pos in template})
         QuerySet = Set[Tuple[str, int, InternedString]]
-        query : QuerySet = {(feat, pos, val) for ((feat, pos), val) in zip(template, instance)}
+        query : QuerySet = {(feat, pos+offset, val) for ((feat, pos), val) in zip(template, instance)}
         for base in positions:
-            subquery : QuerySet = {(feat, base+pos, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
+            subquery : QuerySet = {(feat, base+pos+suboffset, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
             if subquery.issubset(query):
                 return True
         return False

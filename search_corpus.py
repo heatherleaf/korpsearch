@@ -21,13 +21,13 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
     query = Query(corpus, args.query)
     logging.info(f"Query: {query}")
 
-    debug_result = lambda index, instance: f"{index.template}[{instance}]"
+    debug_result = lambda index, instance, offset: f"{index.template}[{instance}]-{offset}"
 
     logging.debug("Searching:")
-    search_results : List[Tuple[Index, Instance, IndexSet]] = [] 
+    search_results : List[Tuple[Index, Instance, int, IndexSet]] = []
     for template, instance, offset in query.subqueries():
-        if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
-            for (prev_index, prev_instance, _) in search_results):
+        if any(Query.is_subquery(template, instance, offset, prev_index.template, prev_instance, prev_offset)
+            for (prev_index, prev_instance, prev_offset, _) in search_results):
             continue
         try:
             index = Index(corpus, template)
@@ -37,23 +37,23 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
             results : IndexSet = index.search(instance, offset=offset)
         except KeyError:
             continue
-        search_results.append((index, instance, results))
-        logging.debug(f"   {debug_result(index, instance)} = {results}")
+        search_results.append((index, instance, offset, results))
+        logging.debug(f"   {debug_result(index, instance, offset)} = {results}")
     logging.info(f"Searched {len(search_results)} indexes: " + 
-        ", ".join(f"{debug_result(index, instance)}" for index, instance, _ in search_results))
+        ", ".join(f"{debug_result(index, instance, offset)}" for index, instance, offset, _ in search_results))
 
     search_results.sort(key=lambda r: len(r[-1]))
     logging.debug("Intersection order: " + 
-        ", ".join(f"{debug_result(index, instance)}" for index, instance, _ in search_results))
+        ", ".join(f"{debug_result(index, instance, offset)}" for index, instance, offset, _ in search_results))
 
-    index, instance, intersection = search_results[0]
-    logging.debug(f"Intersecting: {debug_result(index, instance)}")
-    for index, instance, results in search_results[1:]:
+    index, instance, offset, intersection = search_results[0]
+    logging.debug(f"Intersecting: {debug_result(index, instance, offset)}")
+    for index, instance, offset, results in search_results[1:]:
         if not intersection:
             intersection = results
         else:
             intersection.intersection_update(results)
-        logging.debug(f"           /\\ {debug_result(index, instance)} = {intersection}")
+        logging.debug(f"           /\\ {debug_result(index, instance, offset)} = {intersection}")
     logging.info(f"After intersection: {intersection}")
 
     if args.suffix_array:
