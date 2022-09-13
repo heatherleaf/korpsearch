@@ -57,12 +57,15 @@ class IndexSet:
 
     def intersection(self, other:'IndexSet') -> List[int]:
         """Take the intersection of two sorted arrays."""
-        if not (isinstance(self.values, list) or self.offset > 0 or 
-                isinstance(other.values, list) or other.offset > 0):
+        if (isinstance(self.values, DiskIntArray) and 
+            isinstance(other.values, DiskIntArray) and 
+            self.values._byteorder == other.values._byteorder == sys.byteorder and
+            self.values._elemsize == other.values._elemsize
+            ):
             try:
                 return fast_intersection.intersection(
-                    self.values, self.start, self.size, # self.offset,
-                    other.values, other.start, other.size, # other.offset,
+                    self.values, self.start, self.size, self.offset,
+                    other.values, other.start, other.size, other.offset,
                 )
             except NameError:
                 pass

@@ -16,7 +16,7 @@ cdef buffer to_buffer(array, start, length):
     return array._mmap[start : start+length]
 
 
-def intersection(arr1, start1, length1, arr2, start2, length2):
+def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2):
     """Take the intersection of two sorted arrays."""
     assert arr1._elemsize == arr2._elemsize
     cdef int size = arr1._elemsize
@@ -36,8 +36,8 @@ def intersection(arr1, start1, length1, arr2, start2, length2):
     cdef size_t k = 0
 
     while i < len1 and j < len2:
-        x = read_bytes(in1+i, size)
-        y = read_bytes(in2+j, size)
+        x = read_bytes(in1+i, size) - offset1
+        y = read_bytes(in2+j, size) - offset2
 
         if x < y: 
             i += size
