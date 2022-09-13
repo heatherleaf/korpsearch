@@ -3,7 +3,7 @@ import sys
 import itertools
 from typing import List, Iterator, Union, Callable
 
-from disk import DiskIntArrayType
+from disk import DiskIntArray
 
 try:
     import fast_intersection  # type: ignore
@@ -17,7 +17,7 @@ except ModuleNotFoundError:
 ################################################################################
 ## Index set
 
-IndexSetValuesType = Union[DiskIntArrayType, List[int]]
+IndexSetValuesType = Union[DiskIntArray, List[int]]
 
 class IndexSet:
     start : int

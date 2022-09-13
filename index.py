@@ -4,7 +4,7 @@ from typing import Tuple, List, Iterator, Callable, Union
 from types import TracebackType
 import logging
 
-from disk import DiskIntArray, DiskIntArrayBuilder, DiskIntArrayType, InternedString
+from disk import DiskIntArray, DiskIntArrayBuilder, InternedString
 from corpus import Corpus
 from indexset import IndexSet
 from util import progress_bar
@@ -63,9 +63,9 @@ class Index:
     dir_suffix : str = '.indexes'
 
     template : Template
-    keys : List[DiskIntArrayType]
-    index : DiskIntArrayType
-    sets : DiskIntArrayType
+    keys : List[DiskIntArray]
+    index : DiskIntArray
+    sets : DiskIntArray
     search_key : Callable[[int], Union[int, Tuple[int,...]]]
     # Typing note: as optimisation we use the value (s) instead of a 1-tuple (s,) so the
     # return type is a union of a value and a tuple. But then Pylance can't infer the correct
@@ -218,7 +218,7 @@ class SAIndex(Index):
 
     corpus : Corpus
     template : Template
-    index : DiskIntArrayType
+    index : DiskIntArray
     search_key : Callable[[int], Union[InternedString, Tuple[InternedString,...]]]
     # Typing note: as optimisation we use the value (s) instead of a 1-tuple (s,) so the
     # return type is a union of a value and a tuple. But then Pylance can't infer the correct

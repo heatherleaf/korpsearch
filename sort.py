@@ -6,10 +6,10 @@ from pathlib import Path
 import logging
 from typing import List, Callable, Any, MutableSequence, Union
 
-from disk import DiskIntArrayType, DiskIntArray, DiskIntArrayBuilder
+from disk import DiskIntArray, DiskIntArrayBuilder
 from util import ComparableWithCounter, progress_bar, setup_logger
 
-SortableSequence = Union[DiskIntArrayType, MutableSequence[Any]]
+SortableSequence = Union[memoryview, DiskIntArray, MutableSequence[Any]]
 SortKey = Callable[[Any], Any]
 PivotSelector = Callable[[SortableSequence, int, int, SortKey], int]
 

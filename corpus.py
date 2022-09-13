@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 from typing import BinaryIO, List, Tuple, Set, Dict, Iterator, Sequence
 
-from disk import DiskIntArray, DiskIntArrayType, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
+from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
 from util import progress_bar
 
 ################################################################################
@@ -89,7 +89,7 @@ class Corpus:
 
     features : List[str]
     words : Dict[str, DiskStringArray]
-    sentence_pointers : DiskIntArrayType
+    sentence_pointers : DiskIntArray
     path : Path
 
     def __init__(self, corpus:Path):
@@ -122,16 +122,16 @@ class Corpus:
         return len(self.sentence_pointers)-1
 
     def sentences(self) -> Iterator[slice]:
-        sents : DiskIntArrayType = self.sentence_pointers
+        sents = self.sentence_pointers
         for start, end in zip(sents[1:], sents[2:]):
             yield slice(start, end)
         yield slice(sents[-1], len(self))
 
     def lookup_sentence(self, n:int) -> slice:
-        sents : DiskIntArrayType = self.sentence_pointers
-        start : int = sents[n]
-        nsents : int = len(sents)
-        end : int = sents[n+1] if n+1 < nsents else nsents
+        sents = self.sentence_pointers
+        start = sents[n]
+        nsents = len(sents)
+        end = sents[n+1] if n+1 < nsents else nsents
         return slice(start, end)
 
     def render_sentence(self, sent:int, features_to_show:Sequence[str]=()) -> str:
@@ -144,9 +144,8 @@ class Corpus:
         )
 
     def get_sentence_from_token(self, pos:int) -> int:
-        ptrs : DiskIntArrayType = self.sentence_pointers
-        start : int = 0
-        end : int = len(ptrs) - 1
+        ptrs = self.sentence_pointers
+        start, end = 0, len(ptrs)-1
         while start <= end:
             mid = (start + end) // 2
             if ptrs[mid] <= pos:
