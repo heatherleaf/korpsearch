@@ -43,7 +43,12 @@ def main(args:argparse.Namespace):
                             yield_templates(args.features, args.max_dist),
                             map(parse_template, args.templates),
                         ):
-            Index.build(corpus, template, min_frequency=args.min_frequency, keep_tmpfiles=args.keep_tmpfiles)
+            Index.build(
+                corpus, template, 
+                min_frequency=args.min_frequency, 
+                keep_tmpfiles=args.keep_tmpfiles, 
+                use_sqlite=not args.no_sqlite,
+            )
             ctr += 1
         logging.info(f"Created {ctr} query indexes")
 
@@ -90,6 +95,7 @@ parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", co
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 
 parser.add_argument('--suffix-array', action='store_true', help='use suffix arrays as indexes (experimental)')
+parser.add_argument('--no-sqlite', action='store_true', help="don't use sqlite to build suffix arrays (experimental)")
 
 
 if __name__ == '__main__':

@@ -1,8 +1,8 @@
 
 from pathlib import Path
 from typing import Tuple, List, Iterator, Callable, Union
+from types import TracebackType
 import logging
-import sqlite3
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskIntArrayType, InternedString
 from corpus import Corpus
@@ -18,6 +18,9 @@ class Template:
         assert len(feature_positions) > 0
         assert feature_positions[0][-1] == 0
         self._feature_positions : Tuple[Tuple[str,int],...] = feature_positions
+
+    def maxdelta(self):
+        return max(pos for _feat, pos in self)
 
     def __bytes__(self) -> bytes:
         return str(self).encode()
@@ -128,111 +131,83 @@ class Index:
         }
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0):
+    def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0, use_sqlite:bool=True):
         logging.debug(f"Building index for {template}...")
         paths = Index.indexpaths(corpus, template)
         paths['base'].parent.mkdir(exist_ok=True)
 
         unary_indexes : List[Index] = []
         if min_frequency > 0 and len(template) > 1:
-            unary_indexes = [Index(corpus, Template((feat,0)))
-                            for (feat, _pos) in template]
+            unary_indexes = [Index(corpus, Template((feat,0))) for (feat, _pos) in template]
 
         dbfile : Path = paths['base'].with_suffix('.db.tmp')
-        con : sqlite3.Connection = sqlite3.connect(dbfile)
+        with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
+            skipped_instances : int = 0
+            def generate_db_rows() -> Iterator[Tuple[int, ...]]:
+                nonlocal skipped_instances
+                with progress_bar(corpus.sentences(), "Building database", total=corpus.num_sentences()) as pbar_sentences:
+                    for n, sentence in enumerate(pbar_sentences, 1):
+                        for pos in range(sentence.start, sentence.stop - template.maxdelta()):
+                            instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
+                            if unary_indexes and any(
+                                        len(unary.search(Instance(val))) < min_frequency 
+                                        for val, unary in zip(instance_values, unary_indexes)
+                                    ):
+                                skipped_instances += 1
+                            else:
+                                yield tuple(value.index for value in instance_values) + (n,)
 
-        # Switch off journalling etc to speed up database creation
-        con.execute('pragma synchronous = off')
-        con.execute('pragma journal_mode = off')
+            con.insert_rows(generate_db_rows())
+            if skipped_instances:
+                logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
-        # Create table - one column per feature, plus one column for the sentence
-        features : str = ', '.join(f'feature{i}' for i in range(len(template)))
-        feature_types : str = ', '.join(f'feature{i} int' for i in range(len(template)))
-        con.execute(f'''
-            create table features(
-                {feature_types},
-                sentence int,
-                primary key ({features}, sentence)
-            ) without rowid''')
+            nr_sentences = corpus.num_sentences()
+            nr_rows, nr_instances = con.count_rows_and_instances()
+            logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences")
 
-        # Add all features
-        def generate_instances(sentence:slice) -> Iterator[Instance]:
-            try:
-                for k in range(sentence.start, sentence.stop):
-                    instance_values = [corpus.words[feat][k+i] for (feat, i) in template]
-                    yield Instance(*instance_values)
-            except IndexError:
-                pass
+            # Build keys files, index file and sets file
+            index_keys = [DiskIntArrayBuilder(path, max_value = len(corpus.strings(feat)))
+                    for (feat, _), path in zip(template, paths['keys'])]
+            index_sets = DiskIntArrayBuilder(paths['sets'], max_value = nr_sentences+1)
+            # nr_rows is the sum of all set sizes, but the .sets file also includes the set sizes,
+            # so in some cases we get an OverflowError.
+            # This happens e.g. for bnc-20M when building lemma0: nr_rows = 16616400 < 2^24 < 16777216 = nr_rows+nr_sets
+            # What we need is max_value = nr_rows + nr_sets; this is a simple hack until we have better solution:
+            index_index = DiskIntArrayBuilder(paths['index'], max_value = nr_rows*2)
 
-        skipped_instances : int = 0
-        def generate_db_rows() -> Iterator[Tuple[int, ...]]:
-            nonlocal skipped_instances
-            with progress_bar(corpus.sentences(), "Building database", total=corpus.num_sentences()) as pbar_sentences:
-                for n, sentence in enumerate(pbar_sentences, 1):
-                    for instance in generate_instances(sentence):
-                        if unary_indexes and any(
-                                    len(unary.search(Instance(val))) < min_frequency 
-                                    for val, unary in zip(instance, unary_indexes)
-                                ):
-                            skipped_instances += 1
-                            continue
-                        yield tuple(value.index for value in instance.values()) + (n,)
-
-        places : str = ', '.join('?' for _ in template)
-        con.executemany(f'insert or ignore into features values({places}, ?)', generate_db_rows())
-        if skipped_instances:
-            logging.debug(f"Skipped {skipped_instances} low-frequency instances")
-
-        nr_sentences : int = corpus.num_sentences()
-        nr_instances : int = con.execute(f'select count(*) from (select distinct {features} from features)').fetchone()[0]
-        nr_rows : int = con.execute(f'select count(*) from features').fetchone()[0]
-        logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences")
-
-        # Build keys files, index file and sets file
-        index_keys = [DiskIntArrayBuilder(path, max_value = len(corpus.strings(feat)))
-                for (feat, _), path in zip(template, paths['keys'])]
-        index_sets = DiskIntArrayBuilder(paths['sets'], max_value = nr_sentences+1)
-        # nr_rows is the sum of all set sizes, but the .sets file also includes the set sizes,
-        # so in some cases we get an OverflowError.
-        # This happens e.g. for bnc-20M when building lemma0: nr_rows = 16616400 < 2^24 < 16777216 = nr_rows+nr_sets
-        # What we need is max_value = nr_rows + nr_sets; this is a simple hack until we have better solution:
-        index_index = DiskIntArrayBuilder(paths['index'], max_value = nr_rows*2)
-
-        nr_keys = nr_elements = 0
-        current = None
-        set_start = set_size = -1
-        # Dummy sentence to account for null pointers:
-        index_sets.append(0)
-        nr_elements += 1
-        db_row_iterator = con.execute(f'select * from features order by {features}, sentence')
-        for row in progress_bar(db_row_iterator, "Creating index", total=nr_rows):
-            key = row[:-1]
-            sent = row[-1]
-            if current != key:
-                if set_start >= 0:
-                    assert set_size > 0
-                    # Now the set is full, and we can write the size of the set at its beginning
-                    index_sets[set_start] = set_size
-                for builder, k in zip(index_keys, key):
-                    builder.append(k)
-                # Add a placeholder for the size of the set
-                set_start, set_size = len(index_sets), 0
-                index_sets.append(set_size)
-                index_index.append(set_start)
-                nr_elements += 1
-                current = key
-                nr_keys += 1
-            index_sets.append(sent)
-            set_size += 1
+            nr_keys = nr_elements = 0
+            current = None
+            set_start = set_size = -1
+            # Dummy sentence to account for null pointers:
+            index_sets.append(0)
             nr_elements += 1
-        # Write the size of the final set at its beginning
-        index_sets[set_start] = set_size
-        logging.info(f"Built index for {template}, with {nr_keys} keys, {nr_elements} set elements")
+            for row in progress_bar(con.row_iterator(), "Creating index", total=nr_rows):
+                key = row[:-1]
+                sent = row[-1]
+                if current != key:
+                    if set_start >= 0:
+                        assert set_size > 0
+                        # Now the set is full, and we can write the size of the set at its beginning
+                        index_sets[set_start] = set_size
+                    for builder, k in zip(index_keys, key):
+                        builder.append(k)
+                    # Add a placeholder for the size of the set
+                    set_start, set_size = len(index_sets), 0
+                    index_sets.append(set_size)
+                    index_index.append(set_start)
+                    nr_elements += 1
+                    current = key
+                    nr_keys += 1
+                index_sets.append(sent)
+                set_size += 1
+                nr_elements += 1
+            # Write the size of the final set at its beginning
+            index_sets[set_start] = set_size
+            logging.info(f"Built index for {template}, with {nr_keys} keys, {nr_elements} set elements")
 
-        # Cleanup
-        if not keep_tmpfiles:
-            dbfile.unlink()
-
+            for k in index_keys: k.close()
+            index_sets.close()
+            index_index.close()
 
 
 ################################################################################
@@ -308,80 +283,164 @@ class SAIndex(Index):
 
         return first_index, last_index
 
-    def lookup_instance_min_frequency(self, instance:Instance, min_frequency:int) -> bool:
-        searchkey = self.search_key
-        instance_key = instance.values()
-        if len(instance_key) == 1: instance_key = instance_key[0]
-
-        start, end = 0, len(self)-1
-        while start <= end:
-            mid = (start + end) // 2
-            key = searchkey(mid)
-            if key < instance_key:  # type: ignore
-                start = mid + 1
-            else:
-                end = mid - 1
-        end = start + min_frequency - 1
-        return end < len(self.index) and searchkey(end) == instance_key
-
     @staticmethod
     def indexpath(corpus:Corpus, template:Template):
         basepath = corpus.path.with_suffix(SAIndex.dir_suffix)
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, min_frequency:int=0, **kwargs):
-        import sort
+    def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0, use_sqlite:bool=False):
         logging.debug(f"Building index for {template}...")
+        index_path = SAIndex.indexpath(corpus, template)
+        index_path.parent.mkdir(exist_ok=True)
 
-        maxdelta = max(pos for _feat, pos in template)
-        index_size = len(corpus) - maxdelta
+        index_size = len(corpus) - template.maxdelta()
 
         unary_indexes : List[SAIndex] = []
         if min_frequency > 0 and len(template) > 1:
             unary_indexes = [SAIndex(corpus, Template((feat,0))) for (feat, _pos) in template]
 
-        # all start positions = 0, 1, 2, ..., corpus length
-        index_path = SAIndex.indexpath(corpus, template)
-        index_path.parent.mkdir(exist_ok=True)
-        skipped_instances : int = 0
-        suffix_array = DiskIntArrayBuilder(index_path, max_value=index_size)
-        for ptr in progress_bar(range(index_size), desc="Collecting positions"):
-            instance_values = [corpus.words[feat][ptr+i] for (feat, i) in template]
-            if unary_indexes and not all(
-                        unary.lookup_instance_min_frequency(Instance(val), min_frequency)
-                        for val, unary in zip(instance_values, unary_indexes)
-                    ):
-                skipped_instances += 1
-                continue
-            suffix_array.append(ptr)
-        suffix_array.close()
-        if skipped_instances:
-            logging.debug(f"Skipped {skipped_instances} low-frequency instances")
+        def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
+            searchkey = unary.search_key
+            start, end = 0, len(unary)-1
+            while start <= end:
+                mid = (start + end) // 2
+                key = searchkey(mid)
+                if key < unary_key: 
+                    start = mid + 1
+                else:
+                    end = mid - 1
+            end = start + min_frequency - 1
+            return end < len(unary.index) and searchkey(end) == unary_key
 
-        # sort the suffix array
-        feature_positions = list(template)
-        feat, delta = feature_positions[0]
-        assert delta == 0   # delta for the first feature should always be 0
-        text1 = corpus.words[feat]
-        if len(feature_positions) == 1:
-            sortkey = lambda pos: (text1[pos], pos)
-        elif len(feature_positions) == 2:
-            feat, delta = feature_positions[1]
-            text2 = corpus.words[feat]
-            sortkey = lambda pos: (text1[pos], text2[pos+delta], pos)
+        def all_unary_min_frequency(instance_values) -> bool:
+            return all(
+                unary_min_frequency(unary, val, min_frequency)
+                for val, unary in zip(instance_values, unary_indexes)
+            )
+
+        if use_sqlite:
+            dbfile = index_path.parent / 'index.db.tmp'
+            with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
+                skipped_instances : int = 0
+                def generate_db_rows() -> Iterator[Tuple[int, ...]]:
+                    nonlocal skipped_instances
+                    for ptr in progress_bar(range(index_size), desc="Building database"):
+                        instance_values = [corpus.words[feat][ptr+i] for (feat, i) in template]
+                        if unary_indexes and not all_unary_min_frequency(instance_values):
+                            skipped_instances += 1
+                        else:
+                            yield tuple(value.index for value in instance_values) + (ptr,)
+
+                con.insert_rows(generate_db_rows())
+                if skipped_instances:
+                    logging.debug(f"Skipped {skipped_instances} low-frequency instances")
+
+                nr_rows, nr_instances = con.count_rows_and_instances()
+                logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {index_size} positions")
+
+                with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+                    for row in progress_bar(con.row_iterator(), "Creating index", total=nr_rows):
+                        pos = row[-1]
+                        suffix_array.append(pos)
+
         else:
-            # the provious sortkeys above are just optimisations of this generic one:
-            sortkey = lambda pos: (tuple(corpus.words[feat][pos+delta] for feat, delta in feature_positions), pos)
+            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+                if unary_indexes:
+                    skipped_instances : int = 0
+                    for ptr in progress_bar(range(index_size), desc="Collecting positions"):
+                        instance_values = [corpus.words[feat][ptr+i] for (feat, i) in template]
+                        if unary_indexes and not all_unary_min_frequency(instance_values):
+                            skipped_instances += 1
+                        else:
+                            suffix_array.append(ptr)
+                    if skipped_instances:
+                        logging.debug(f"Skipped {skipped_instances} low-frequency instances")
+                else:
+                    for ptr in progress_bar(range(index_size), desc="Collecting positions"):
+                        suffix_array.append(ptr)
+                nr_rows = len(suffix_array)
 
-        suffix_array = DiskIntArray(index_path)
-        sort.quicksort(
-            suffix_array,
-            key = sortkey, 
-            pivotselector = sort.random_pivot, 
-            # pivotselector = sort.median_of_three,
-            # pivotselector = sort.tukey_ninther,
-            cutoff = 100_000,
-        )
-        logging.info(f"Built index for {template}")
+            # sort the suffix array
+            feature_positions = list(template)
+            feat, delta = feature_positions[0]
+            assert delta == 0   # delta for the first feature should always be 0
+            text1 = corpus.words[feat]
+            if len(feature_positions) == 1:
+                sortkey = lambda pos: (text1[pos], pos)
+            elif len(feature_positions) == 2:
+                feat, delta = feature_positions[1]
+                text2 = corpus.words[feat]
+                sortkey = lambda pos: (text1[pos], text2[pos+delta], pos)
+            else:
+                # the provious sortkeys above are just optimisations of this generic one:
+                sortkey = lambda pos: (tuple(corpus.words[feat][pos+delta] for feat, delta in feature_positions), pos)
+
+            with DiskIntArray(index_path) as suffix_array:
+                import sort
+                sort.quicksort(
+                    suffix_array,
+                    key = sortkey, 
+                    pivotselector = sort.random_pivot, 
+                    # pivotselector = sort.median_of_three,
+                    # pivotselector = sort.tukey_ninther,
+                    cutoff = 100_000,
+                )
+
+        logging.info(f"Built index for {template}, with {nr_rows} rows")
+
+
+################################################################################
+## SQLite database for building the index
+
+import sqlite3
+
+class IndexBuilderDB:
+    dbfile : Path
+    keep_dbfile : bool
+    con : sqlite3.Connection
+    template : Template
+    columns : List[str]
+
+    def __init__(self, dbfile:Path, width:int, keep_dbfile:bool=False):
+        self.dbfile = dbfile
+        self.keep_dbfile = keep_dbfile
+        self.con = sqlite3.connect(dbfile)
+
+        # Switch off journalling etc to speed up database creation
+        self.con.execute('pragma synchronous = off')
+        self.con.execute('pragma journal_mode = off')
+
+        # Create a table with `width` columns
+        self.columns = [f"c{i}" for i in range(width)]
+        column_types = [c + ' int' for c in self.columns]
+        self.con.execute(f"""
+            create table builder(
+                {','.join(column_types)},
+                primary key ({','.join(self.columns)})
+            ) without rowid
+        """)
+
+    def insert_rows(self, row_iterator):
+        places = ['?' for _ in self.columns]
+        self.con.executemany(f"insert or ignore into builder values({','.join(places)})", row_iterator)
+
+    def row_iterator(self) -> Iterator[Tuple[int,...]]:
+        return self.con.execute(f"select * from builder order by {','.join(self.columns)}")
+
+    def count_rows_and_instances(self) -> Tuple[int, int]:
+        nr_rows = self.con.execute(f"select count(*) from builder").fetchone()[0]
+        nr_instances = self.con.execute(f"select count(*) from (select distinct {','.join(self.columns)} from builder)").fetchone()[0]
+        return nr_rows, nr_instances
+
+    def close(self):
+        self.con.close()
+        if not self.keep_dbfile:
+            self.dbfile.unlink()
+
+    def __enter__(self) -> 'IndexBuilderDB':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
 
