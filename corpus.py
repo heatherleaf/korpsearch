@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 from typing import BinaryIO, List, Tuple, Set, Dict, Iterator, Sequence
 
-import disk
+from disk import DiskIntArray, DiskIntArrayType, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
 from util import progress_bar
 
 ################################################################################
@@ -50,16 +50,16 @@ def build_corpus_index_from_csv(basedir:Path, csv_corpusfile:Path):
             strings[i].add(feat)
     logging.debug(f" --> read {sum(map(len, strings))} distinct strings")
 
-    sentence_builder = disk.DiskIntArrayBuilder(
+    sentence_builder = DiskIntArrayBuilder(
         basedir / Corpus.sentences_path, 
         max_value=count-1, 
         use_memoryview=True,
     )
-    feature_builders : List[disk.DiskStringArrayBuilder] = []
+    feature_builders : List[DiskStringArrayBuilder] = []
     for i, feature in enumerate(features):
         path = basedir / (Corpus.feature_prefix + feature) / feature
         path.parent.mkdir(exist_ok=True)
-        builder = disk.DiskStringArrayBuilder(path, strings[i])
+        builder = DiskStringArrayBuilder(path, strings[i])
         feature_builders.append(builder)
 
     sentence_builder.append(0) # sentence 0 doesn't exist
@@ -88,8 +88,8 @@ class Corpus:
     sentences_path = 'sentences'
 
     features : List[str]
-    words : Dict[str, disk.DiskStringArray]
-    sentence_pointers : disk.DiskIntArrayType
+    words : Dict[str, DiskStringArray]
+    sentence_pointers : DiskIntArrayType
     path : Path
 
     def __init__(self, corpus:Path):
@@ -97,9 +97,9 @@ class Corpus:
         self.path = corpus
         with open(basedir / self.features_file, 'r') as IN:
             self.features = json.load(IN)
-        self.sentence_pointers = disk.DiskIntArray(basedir / self.sentences_path)
+        self.sentence_pointers = DiskIntArray(basedir / self.sentences_path)
         self.words = {
-            feature: disk.DiskStringArray(basedir / (self.feature_prefix + feature) / feature)
+            feature: DiskStringArray(basedir / (self.feature_prefix + feature) / feature)
             for feature in self.features
         }
         assert all(
@@ -112,23 +112,23 @@ class Corpus:
     def __len__(self) -> int:
         return len(self.words[self.features[0]])
 
-    def strings(self, feature:str) -> disk.StringCollection:
+    def strings(self, feature:str) -> StringCollection:
         return self.words[feature].strings
 
-    def intern(self, feature:str, value:bytes) -> disk.InternedString:
+    def intern(self, feature:str, value:bytes) -> InternedString:
         return self.words[feature].intern(value)
 
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
 
     def sentences(self) -> Iterator[slice]:
-        sents : disk.DiskIntArrayType = self.sentence_pointers
+        sents : DiskIntArrayType = self.sentence_pointers
         for start, end in zip(sents[1:], sents[2:]):
             yield slice(start, end)
         yield slice(sents[-1], len(self))
 
     def lookup_sentence(self, n:int) -> slice:
-        sents : disk.DiskIntArrayType = self.sentence_pointers
+        sents : DiskIntArrayType = self.sentence_pointers
         start : int = sents[n]
         nsents : int = len(sents)
         end : int = sents[n+1] if n+1 < nsents else nsents
@@ -144,7 +144,7 @@ class Corpus:
         )
 
     def get_sentence_from_token(self, pos:int) -> int:
-        ptrs : disk.DiskIntArrayType = self.sentence_pointers
+        ptrs : DiskIntArrayType = self.sentence_pointers
         start : int = 0
         end : int = len(ptrs) - 1
         while start <= end:
