@@ -314,7 +314,8 @@ class SAIndex(Index):
         index_path = SAIndex.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
 
-        index_size = len(corpus) - template.maxdelta()
+        maxdelta = template.maxdelta()
+        index_size = len(corpus) - maxdelta
 
         unary_indexes : List[SAIndex] = []
         if min_frequency > 0 and len(template) > 1:
@@ -339,18 +340,34 @@ class SAIndex(Index):
                 for val, unary in zip(instance_values, unary_indexes)
             )
 
+        def generate_positions():
+            with progress_bar(range(index_size), desc="Collecting positions") as pbar:
+                if maxdelta == 0:
+                    yield from pbar
+                else:
+                    # Don't generate instances that cross sentence borders
+                    sentences = corpus.sentences()
+                    sent = next(sentences)
+                    start, stop = sent.start, sent.stop-maxdelta
+                    for pos in pbar:
+                        if pos >= stop:
+                            sent = next(sentences)
+                            start, stop = sent.start, sent.stop-maxdelta
+                        if start <= pos:
+                            yield pos
+
         if use_sqlite:
             dbfile = index_path.parent / 'index.db.tmp'
             with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
                 skipped_instances : int = 0
                 def generate_db_rows() -> Iterator[Tuple[int, ...]]:
                     nonlocal skipped_instances
-                    for ptr in progress_bar(range(index_size), desc="Building database"):
-                        instance_values = [corpus.words[feat][ptr+i] for (feat, i) in template]
+                    for pos in generate_positions():
+                        instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
                         if unary_indexes and not all_unary_min_frequency(instance_values):
                             skipped_instances += 1
                         else:
-                            yield tuple(value.index for value in instance_values) + (ptr,)
+                            yield tuple(value.index for value in instance_values) + (pos,)
 
                 con.insert_rows(generate_db_rows())
                 if skipped_instances:
@@ -368,17 +385,17 @@ class SAIndex(Index):
             with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
                 if unary_indexes:
                     skipped_instances : int = 0
-                    for ptr in progress_bar(range(index_size), desc="Collecting positions"):
-                        instance_values = [corpus.words[feat][ptr+i] for (feat, i) in template]
+                    for pos in generate_positions():
+                        instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
                         if unary_indexes and not all_unary_min_frequency(instance_values):
                             skipped_instances += 1
                         else:
-                            suffix_array.append(ptr)
+                            suffix_array.append(pos)
                     if skipped_instances:
                         logging.debug(f"Skipped {skipped_instances} low-frequency instances")
                 else:
-                    for ptr in progress_bar(range(index_size), desc="Collecting positions"):
-                        suffix_array.append(ptr)
+                    for pos in generate_positions():
+                        suffix_array.append(pos)
                 nr_rows = len(suffix_array)
 
             # sort the suffix array
