@@ -125,7 +125,7 @@ class Corpus:
         sents : disk.DiskIntArrayType = self.sentence_pointers
         for start, end in zip(sents[1:], sents[2:]):
             yield slice(start, end)
-        yield slice(sents[-1], len(sents))
+        yield slice(sents[-1], len(self))
 
     def lookup_sentence(self, n:int) -> slice:
         sents : disk.DiskIntArrayType = self.sentence_pointers
