@@ -374,12 +374,14 @@ class SAIndex(Index):
                     logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
                 nr_rows, nr_instances = con.count_rows_and_instances()
-                logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {index_size} positions")
+                logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances")
 
                 with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
                     for row in progress_bar(con.row_iterator(), "Creating index", total=nr_rows):
                         pos = row[-1]
                         suffix_array.append(pos)
+
+                logging.info(f"Built index for {template}, with {nr_rows} rows, {nr_instances} instances")
 
         else:
             with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
@@ -424,7 +426,7 @@ class SAIndex(Index):
                     cutoff = 100_000,
                 )
 
-        logging.info(f"Built index for {template}, with {nr_rows} rows")
+            logging.info(f"Built index for {template}, with {nr_rows} rows")
 
 
 ################################################################################

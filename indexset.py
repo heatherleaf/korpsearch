@@ -8,9 +8,9 @@ from disk import DiskIntArray
 try:
     import fast_intersection  # type: ignore
 except ModuleNotFoundError:
-    print("Module 'fast_intersection' not found.\n"
-          "To install, run: 'python setup.py build_ext --inplace'.\n"
-          "Using a slow internal implementation instead.\n", 
+    print("Module 'fast_intersection' not found. "
+          "To install, run: 'python setup.py build_ext --inplace'. "
+          "Defaulting to a slow internal implementation.\n", 
           file=sys.stderr)
 
 
