@@ -36,21 +36,21 @@ def main(args:argparse.Namespace):
         logging.info(f"Created the corpus index")
 
     if args.features or args.templates:
-        corpus = Corpus(base)
-        indexdir.mkdir(exist_ok=True)
-        ctr = 0
-        for template in itertools.chain(
-                            yield_templates(args.features, args.max_dist),
-                            map(parse_template, args.templates),
-                        ):
-            Index.build(
-                corpus, template, 
-                min_frequency=args.min_frequency, 
-                keep_tmpfiles=args.keep_tmpfiles, 
-                use_sqlite=not args.no_sqlite,
-            )
-            ctr += 1
-        logging.info(f"Created {ctr} query indexes")
+        with Corpus(base) as corpus:
+            indexdir.mkdir(exist_ok=True)
+            ctr = 0
+            for template in itertools.chain(
+                                yield_templates(args.features, args.max_dist),
+                                map(parse_template, args.templates),
+                            ):
+                Index.build(
+                    corpus, template, 
+                    min_frequency=args.min_frequency, 
+                    keep_tmpfiles=args.keep_tmpfiles, 
+                    use_sqlite=not args.no_sqlite,
+                )
+                ctr += 1
+            logging.info(f"Created {ctr} query indexes")
 
 
 def parse_template(template_str:str) -> Template:

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import logging
 from typing import BinaryIO, List, Tuple, Set, Dict, Iterator, Sequence
+from types import TracebackType
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
 from util import progress_bar
@@ -153,4 +154,14 @@ class Corpus:
             else:
                 end = mid - 1
         return end
+
+    def __enter__(self) -> 'Corpus':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        for sa in self.words.values(): sa.close()
+        self.sentence_pointers.close()
 

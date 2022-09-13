@@ -227,6 +227,17 @@ class StringCollection:
                 return self.from_index(mid)
         raise KeyError(f"StringCollection: string '{str(string)}' not found in database")
 
+    def __enter__(self) -> 'StringCollection':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        self.strings.close()
+        self._stringsfile.close()
+        self._startsarray.close()
+
 
 class StringCollectionBuilder:
     @staticmethod
@@ -336,6 +347,7 @@ class DiskStringArray:
 
     def close(self):
         self._array.close()
+        self.strings.close()
 
 
 class DiskStringArrayBuilder:
@@ -362,6 +374,7 @@ class DiskStringArrayBuilder:
 
     def close(self):
         self._builder.close()
+        self._strings.close()
 
     @staticmethod
     def build(path:Path, values:Iterable[bytes], strings:Optional[Iterable[bytes]]=None, use_memoryview:bool=False):

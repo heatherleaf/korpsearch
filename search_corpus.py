@@ -12,13 +12,12 @@ from query import Query
 from util import setup_logger
 
 
-def search_corpus(args:argparse.Namespace):
+def search_corpus(corpus:Corpus, args:argparse.Namespace):
     if args.suffix_array:
         from index import SAIndex as Index
     else:
         from index import Index
 
-    corpus = Corpus(args.corpus)
     query = Query(corpus, args.query)
     logging.info(f"Query: {query}")
 
@@ -28,7 +27,7 @@ def search_corpus(args:argparse.Namespace):
     search_results : List[Tuple[Index, Instance, IndexSet]] = [] 
     for template, instance, offset in query.subqueries():
         if any(Query.is_subquery(template, instance, prev_index.template, prev_instance)
-               for (prev_index, prev_instance, _) in search_results):
+            for (prev_index, prev_instance, _) in search_results):
             continue
         try:
             index = Index(corpus, template)
@@ -102,4 +101,5 @@ parser.add_argument('--suffix-array', action='store_true', help='use suffix arra
 if __name__ == '__main__':
     args : argparse.Namespace = parser.parse_args()
     setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=args.loglevel)
-    search_corpus(args)
+    with Corpus(args.corpus) as corpus:
+        search_corpus(corpus, args)

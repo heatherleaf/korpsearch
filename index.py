@@ -119,6 +119,17 @@ class Index:
                 end = mid - 1
         raise KeyError(f'Instance "{instance}" not found')
 
+    def __enter__(self) -> 'Index':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        for k in self.keys: k.close()
+        self.sets.close()
+        self.index.close()
+
     @staticmethod
     def indexpaths(corpus, template):
         basedir = corpus.path.with_suffix(Index.dir_suffix)
@@ -282,6 +293,15 @@ class SAIndex(Index):
         assert search_key(last_index) == instance_key
 
         return first_index, last_index
+
+    def __enter__(self) -> 'Index':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        self.index.close()
 
     @staticmethod
     def indexpath(corpus:Corpus, template:Template):
