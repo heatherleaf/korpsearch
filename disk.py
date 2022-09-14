@@ -245,6 +245,7 @@ class StringCollection:
         self._startsarray = DiskIntArray(self._path.with_suffix(self.starts_suffix))
         self.starts = self._startsarray.array
         self._intern = {}
+        assert self.starts[0] == self.starts[1]
 
     def __len__(self) -> int:
         return len(self.starts)-1
@@ -294,7 +295,10 @@ class StringCollection:
 class StringCollectionBuilder:
     @staticmethod
     def build(path:Path, strings:Iterable[bytes]):
-        stringlist = sorted(set(strings))
+        stringset = set(strings)
+        stringset.add(b'')
+        stringlist = sorted(stringset)
+        assert not stringlist[0]
 
         path = add_suffix(path, StringCollection.strings_suffix)
         with open(path, 'wb') as stringsfile:
@@ -340,6 +344,9 @@ class InternedString:
             return self.index < other.index
         else:
             raise TypeError(f"Comparing InternedString against {type(other)}")
+
+    def __bool__(self) -> bool:
+        return self.db.starts[self.index] < self.db.starts[self.index+1]
 
     def __hash__(self) -> int:
         return hash(self.index)
