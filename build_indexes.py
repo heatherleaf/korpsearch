@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 import logging
 
-from index import Index, Template
+from index import Template, InvertedIndex, SAIndex
 from corpus import Corpus
 from util import setup_logger
 
@@ -16,9 +16,9 @@ from util import setup_logger
 
 def main(args:argparse.Namespace):
     if args.suffix_array:
-        from index import SAIndex as Index
+        Index = SAIndex
     else:
-        from index import Index
+        Index = InvertedIndex
 
     base = Path(args.corpus)
     corpusdir = base.with_suffix(Corpus.dir_suffix)
@@ -26,7 +26,8 @@ def main(args:argparse.Namespace):
 
     if args.clean:
         shutil.rmtree(corpusdir, ignore_errors=True)
-        shutil.rmtree(indexdir, ignore_errors=True)
+        for i in (InvertedIndex, SAIndex):
+            shutil.rmtree(base.with_suffix(i.dir_suffix), ignore_errors=True)
         logging.info(f"Removed all indexes")
 
     if args.corpus_index:

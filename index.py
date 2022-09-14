@@ -73,7 +73,7 @@ class Instance:
 ## Inverted sentence index
 ## Implemented as a sorted array of interned strings
 
-class Index:
+class InvertedIndex:
     dir_suffix : str = '.indexes'
 
     template : Template
@@ -133,7 +133,7 @@ class Index:
                 end = mid - 1
         raise KeyError(f'Instance "{instance}" not found')
 
-    def __enter__(self) -> 'Index':
+    def __enter__(self) -> 'InvertedIndex':
         return self
 
     def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
@@ -146,7 +146,7 @@ class Index:
 
     @staticmethod
     def indexpaths(corpus, template):
-        basedir = corpus.path.with_suffix(Index.dir_suffix)
+        basedir = corpus.path.with_suffix(InvertedIndex.dir_suffix)
         basepath = basedir / str(template) / str(template)
         return {
             'base': basepath,
@@ -158,13 +158,13 @@ class Index:
     @staticmethod
     def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0, use_sqlite:bool=True):
         logging.debug(f"Building index for {template}...")
-        paths = Index.indexpaths(corpus, template)
+        paths = InvertedIndex.indexpaths(corpus, template)
         paths['base'].parent.mkdir(exist_ok=True)
 
-        unary_indexes : List[Index] = []
+        unary_indexes : List[InvertedIndex] = []
         if min_frequency > 0 and len(template) > 1:
             unary_indexes = [
-                Index(corpus, Template([(feat, 0)])) 
+                InvertedIndex(corpus, Template([(feat, 0)])) 
                 for (feat, _pos) in template
             ]
 
@@ -241,7 +241,7 @@ class Index:
 ################################################################################
 ## Alternative: implemented as a suffix array
 
-class SAIndex(Index):
+class SAIndex(InvertedIndex):
     dir_suffix = '.sa-indexes'
 
     corpus : Corpus
@@ -311,7 +311,7 @@ class SAIndex(Index):
 
         return first_index, last_index
 
-    def __enter__(self) -> 'Index':
+    def __enter__(self) -> InvertedIndex:
         return self
 
     def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):

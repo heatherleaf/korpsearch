@@ -5,7 +5,7 @@ from typing import List, Tuple
 import itertools
 import logging
 
-from index import Instance
+from index import Instance, InvertedIndex, SAIndex
 from indexset import IndexSet
 from corpus import Corpus
 from query import Query
@@ -14,9 +14,9 @@ from util import setup_logger
 
 def search_corpus(corpus:Corpus, args:argparse.Namespace):
     if args.suffix_array:
-        from index import SAIndex as Index
+        Index = SAIndex
     else:
-        from index import Index
+        Index = InvertedIndex
 
     query = Query(corpus, args.query)
     logging.info(f"Query: {query}")
@@ -25,7 +25,7 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         ('' if positive else '!') + f"{index.template}[{instance}]-{offset}"
 
     logging.debug("Searching:")
-    search_results : List[Tuple[Index, Instance, int, bool, IndexSet]] = []
+    search_results = []
     for template, instance, offset, positive in query.subqueries():
         try:
             index = Index(corpus, template)
