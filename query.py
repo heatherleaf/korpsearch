@@ -1,6 +1,6 @@
 
 import re
-from typing import List, Tuple, Set, Iterator
+from typing import List, Dict, Tuple, Set, Iterator
 
 from index import Template, Instance
 from corpus import Corpus
@@ -15,7 +15,7 @@ class Query:
     corpus : Corpus
     query : List[List[Tuple[str, InternedString, bool]]]
     features : Set[str]
-    _featured_query : List[Tuple[str, List[Tuple[int, InternedString]]]]
+    featured_query : Dict[str, List[Tuple[int, InternedString, bool]]]
 
     def __init__(self, corpus:Corpus, querystr:str):
         self.corpus = corpus
