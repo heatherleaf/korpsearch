@@ -94,26 +94,27 @@ class IndexSet:
         except StopIteration:
             return result
 
-    def difference_update(self, other:'IndexSet'):
-        self.values = self.difference(other)
+    def difference_update(self, other:'IndexSet', use_internal:bool=False):
+        self.values = self.difference(other, use_internal=use_internal)
         self.start = 0
         self.size = len(self.values)
         self.offset = 0
 
-    def difference(self, other:'IndexSet') -> List[int]:
+    def difference(self, other:'IndexSet', use_internal:bool=False) -> List[int]:
         """Take the difference between this set and another."""
-        # if (isinstance(self.values, DiskIntArray) and 
-        #     isinstance(other.values, DiskIntArray) and 
-        #     self.values._byteorder == other.values._byteorder == sys.byteorder and
-        #     self.values._elemsize == other.values._elemsize
-        #     ):
-        #     try:
-        #         return fast_intersection.difference(
-        #             self.values, self.start, self.size, self.offset,
-        #             other.values, other.start, other.size, other.offset,
-        #         )
-        #     except NameError:
-        #         pass
+        if (isinstance(self.values, DiskIntArray) and 
+            isinstance(other.values, DiskIntArray) and 
+            self.values._byteorder == other.values._byteorder == sys.byteorder and
+            self.values._elemsize == other.values._elemsize and
+            not use_internal
+            ):
+            try:
+                return fast_intersection.difference(
+                    self.values, self.start, self.size, self.offset,
+                    other.values, other.start, other.size, other.offset,
+                )
+            except NameError:
+                pass
 
         result = []
         xiter = iter(self)

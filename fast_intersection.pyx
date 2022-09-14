@@ -54,6 +54,44 @@ def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2)
     return result
 
 
+def difference(arr1, start1, length1, offset1, arr2, start2, length2, offset2):
+    """Take the difference between one sorted array and another."""
+    assert arr1._elemsize == arr2._elemsize
+    cdef int size = arr1._elemsize
+
+    cdef buffer buf1 = to_buffer(arr1, start1, length1)
+    cdef buffer buf2 = to_buffer(arr2, start2, length2)
+
+    cdef const unsigned char* in1 = &buf1[0]
+    cdef const unsigned char* in2 = &buf2[0]
+    cdef size_t len1 = buf1.nbytes
+    cdef size_t len2 = buf2.nbytes
+
+    out = <char*>malloc(max(len1, len2))
+
+    cdef size_t i = 0
+    cdef size_t j = 0
+    cdef size_t k = 0
+
+    while i < len1 and j < len2:
+        x = read_bytes(in1+i, size) - offset1
+        y = read_bytes(in2+j, size) - offset2
+
+        if x < y: 
+            write_bytes(out+k, x, size)
+            i += size
+            k += size
+        elif x > y: 
+            j += size
+        else:
+            i += size
+            j += size
+
+    result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
+    free(out)
+    return result
+
+
 cdef extern from "string.h":
     void *memcpy(void *dest, const void *src, size_t len)
 
