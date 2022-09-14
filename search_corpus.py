@@ -21,7 +21,7 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
     query = Query(corpus, args.query)
     logging.info(f"Query: {query}")
 
-    debug_result = lambda index, instance, offset: f"{index.template}[{instance}]-{offset}"
+    debug_query = lambda index, instance, offset: f"{index.template}[{instance}]-{offset}"
 
     logging.debug("Searching:")
     search_results : List[Tuple[Index, Instance, int, IndexSet]] = []
@@ -38,22 +38,26 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         except KeyError:
             continue
         search_results.append((index, instance, offset, results))
-        logging.debug(f"   {debug_result(index, instance, offset)} = {results}")
-    logging.info(f"Searched {len(search_results)} indexes: " + 
-        ", ".join(f"{debug_result(index, instance, offset)}" for index, instance, offset, _ in search_results))
+        logging.debug(f"   {debug_query(index, instance, offset)} = {results}")
+    logging.info(f"Searched {len(search_results)} indexes: " + ', '.join(
+                    f"{debug_query(index, instance, offset)}" 
+                    for index, instance, offset, _ in search_results
+                ))
 
     search_results.sort(key=lambda r: len(r[-1]))
-    logging.debug("Intersection order: " + 
-        ", ".join(f"{debug_result(index, instance, offset)}" for index, instance, offset, _ in search_results))
+    logging.debug("Intersection order: " + ', '.join(
+                    f"{debug_query(index, instance, offset)}" 
+                    for index, instance, offset, _ in search_results
+                ))
 
     index, instance, offset, intersection = search_results[0]
-    logging.debug(f"Intersecting: {debug_result(index, instance, offset)}")
+    logging.debug(f"Intersecting: {debug_query(index, instance, offset)}")
     for index, instance, offset, results in search_results[1:]:
         # TODO: check for subsumption
         # e.g.: if we have intersected pos:0+pos:1 and pos:1+pos:2, 
         # then we don't need to intersect with pos:0+pos:2
         intersection.intersection_update(results, use_internal=args.internal_intersection)
-        logging.debug(f"           /\\ {debug_result(index, instance, offset)} = {intersection}")
+        logging.debug(f"           /\\ {debug_query(index, instance, offset)} = {intersection}")
     logging.info(f"After intersection: {intersection}")
 
     if args.suffix_array:
