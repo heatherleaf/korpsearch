@@ -55,11 +55,11 @@ def main(args:argparse.Namespace):
 
 def yield_templates(features:List[str], max_dist:int):
     for feat in features:
-        yield Template((feat, 0))
+        yield Template([(feat, 0)])
     for feat in features:
         for feat1 in features:
             for dist in range(1, max_dist+1):
-                yield Template((feat, 0), (feat1, dist))
+                yield Template([(feat, 0), (feat1, dist)])
 
 
 ################################################################################

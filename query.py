@@ -51,12 +51,19 @@ class Query:
             for feat, value in tok:
                 for dist in range(1, len(self.query)-offset):
                     for feat1, value1 in self.query[offset+dist]:
-                        templ = Template((feat, 0), (feat1, dist))
-                        yield (templ, Instance(value, value1), offset)
+                        yield (
+                            Template([(feat, 0), (feat1, dist)]),
+                            Instance([value, value1]),
+                            offset,
+                        )
         # Single tokens: yield subqueries after more complex queries!
         for offset, tok in enumerate(self.query):
             for feat, value in tok:
-                yield (Template((feat, 0)), Instance(value), offset)
+                yield (
+                    Template([(feat, 0)]),
+                    Instance([value]),
+                    offset,
+                )
 
     def check_sentence(self, sent:int) -> bool:
         positions = self.corpus.lookup_sentence(sent)
@@ -76,8 +83,7 @@ class Query:
             fsent = self.corpus.words[feat]
             if not all(fsent[pos+i] == val for i, val in values):
                 return False
-        else:
-            return True
+        return True
 
     @staticmethod
     def is_subquery(subtemplate:Template, subinstance:Instance, suboffset:int, template:Template, instance:Instance, offset:int):

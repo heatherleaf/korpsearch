@@ -1,6 +1,6 @@
 
 from pathlib import Path
-from typing import Tuple, List, Iterator, Callable, Union
+from typing import Tuple, List, Iterator, Callable, Union, Sequence
 from types import TracebackType
 import logging
 
@@ -14,10 +14,13 @@ from util import progress_bar
 ## Templates and instances
 
 class Template:
-    def __init__(self, *feature_positions:Tuple[str,int]):
+    _feature_positions : Tuple[Tuple[str,int],...]
+
+    def __init__(self, feature_positions:Sequence[Tuple[str,int]]):
         assert len(feature_positions) > 0
         assert feature_positions[0][-1] == 0
-        self._feature_positions : Tuple[Tuple[str,int],...] = feature_positions
+        assert all(pos >= 0 for _, pos in feature_positions)
+        self._feature_positions = tuple(feature_positions)
 
     def maxdelta(self):
         return max(pos for _feat, pos in self)
@@ -38,14 +41,17 @@ class Template:
     def parse(template_str:str) -> 'Template':
         template = [tuple(feat_dist.split(':')) for feat_dist in template_str.split('+')]
         try:
-            return Template(*[(feat, int(dist)) for (feat, dist) in template])
+            return Template([(feat, int(dist)) for (feat, dist) in template])
         except (ValueError, AssertionError):
             raise ValueError("Ill-formed template: it should be on the form pos:0 or word:0+pos:2")
 
 
 class Instance:
-    def __init__(self, *values : InternedString):
-        self._values : Tuple[InternedString,...] = values
+    _values : Tuple[InternedString,...]
+
+    def __init__(self, values : Sequence[InternedString]):
+        assert len(values) > 0
+        self._values = tuple(values)
 
     def values(self) -> Tuple[InternedString,...]:
         return self._values
@@ -157,7 +163,10 @@ class Index:
 
         unary_indexes : List[Index] = []
         if min_frequency > 0 and len(template) > 1:
-            unary_indexes = [Index(corpus, Template((feat,0))) for (feat, _pos) in template]
+            unary_indexes = [
+                Index(corpus, Template([(feat, 0)])) 
+                for (feat, _pos) in template
+            ]
 
         dbfile : Path = paths['base'].with_suffix('.db.tmp')
         with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
@@ -169,7 +178,7 @@ class Index:
                         for pos in range(sentence.start, sentence.stop - template.maxdelta()):
                             instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
                             if unary_indexes and any(
-                                        len(unary.search(Instance(val))) < min_frequency 
+                                        len(unary.search(Instance([val]))) < min_frequency 
                                         for val, unary in zip(instance_values, unary_indexes)
                                     ):
                                 skipped_instances += 1
@@ -327,7 +336,10 @@ class SAIndex(Index):
 
         unary_indexes : List[SAIndex] = []
         if min_frequency > 0 and len(template) > 1:
-            unary_indexes = [SAIndex(corpus, Template((feat,0))) for (feat, _pos) in template]
+            unary_indexes = [
+                SAIndex(corpus, Template([(feat, 0)])) 
+                for (feat, _pos) in template
+            ]
 
         def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
             searchkey = unary.search_key
