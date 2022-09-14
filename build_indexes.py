@@ -7,7 +7,7 @@ from typing import List
 import logging
 
 from index import Index, Template
-from corpus import Corpus, build_corpus_index_from_csv
+from corpus import Corpus
 from util import setup_logger
 
 
@@ -32,7 +32,7 @@ def main(args:argparse.Namespace):
     if args.corpus_index:
         corpusdir.mkdir(exist_ok=True)
         corpusfile = base.with_suffix('.csv')
-        build_corpus_index_from_csv(corpusdir, corpusfile)
+        Corpus.build_from_csv(corpusdir, corpusfile)
         logging.info(f"Created the corpus index")
 
     if args.features or args.templates:
