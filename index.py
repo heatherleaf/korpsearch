@@ -363,7 +363,10 @@ class SAIndex(InvertedIndex):
         def generate_positions():
             with progress_bar(range(index_size), desc="Collecting positions") as pbar:
                 if maxdelta == 0:
-                    yield from pbar
+                    for pos in pbar:
+                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
+                        if all(instance_values):
+                            yield pos, instance_values
                 else:
                     # Don't generate instances that cross sentence borders
                     sentences = corpus.sentences()
@@ -374,7 +377,9 @@ class SAIndex(InvertedIndex):
                             sent = next(sentences)
                             start, stop = sent.start, sent.stop-maxdelta
                         if start <= pos:
-                            yield pos
+                            instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
+                            if all(instance_values):
+                                yield pos, instance_values
 
         if use_sqlite:
             dbfile = index_path.parent / 'index.db.tmp'
@@ -382,8 +387,7 @@ class SAIndex(InvertedIndex):
                 skipped_instances : int = 0
                 def generate_db_rows() -> Iterator[Tuple[int, ...]]:
                     nonlocal skipped_instances
-                    for pos in generate_positions():
-                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
+                    for pos, instance_values in generate_positions():
                         if unary_indexes and not all_unary_min_frequency(instance_values):
                             skipped_instances += 1
                         else:
@@ -407,8 +411,7 @@ class SAIndex(InvertedIndex):
             with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
                 if unary_indexes:
                     skipped_instances : int = 0
-                    for pos in generate_positions():
-                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
+                    for pos, instance_values in generate_positions():
                         if unary_indexes and not all_unary_min_frequency(instance_values):
                             skipped_instances += 1
                         else:
@@ -416,7 +419,7 @@ class SAIndex(InvertedIndex):
                     if skipped_instances:
                         logging.debug(f"Skipped {skipped_instances} low-frequency instances")
                 else:
-                    for pos in generate_positions():
+                    for pos, _ in generate_positions():
                         suffix_array.append(pos)
                 nr_rows = len(suffix_array)
 
