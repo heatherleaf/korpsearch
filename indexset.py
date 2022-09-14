@@ -35,8 +35,10 @@ class IndexSet:
         self.size = size
         if isinstance(values, list) and size < 0:
             self.size = len(values) - start
-        else:
-            assert size > 0
+        while self.values[self.start] < self.offset:
+            self.start += 1
+            self.size -= 1
+        assert self.size > 0
 
     def __len__(self) -> int:
         return self.size
