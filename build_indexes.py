@@ -83,10 +83,10 @@ parser.add_argument('--max-dist', type=int, default=2,
 parser.add_argument('--min-frequency', type=int, default=0,
                     help='[only for binary indexes] min unary frequency for all values in a binary instance')
 
-parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
-parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
-parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
+parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.DEBUG, help='verbose output')
+parser.add_argument('--silent', action="store_const", dest="loglevel", const=logging.WARNING, default=logging.INFO, help='silent (no output)')
 
+parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
 parser.add_argument('--suffix-array', action='store_true', help='use suffix arrays as indexes (experimental)')
 parser.add_argument('--no-sqlite', action='store_true', help="don't use sqlite to build suffix arrays (experimental)")
 

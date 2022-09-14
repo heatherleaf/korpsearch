@@ -91,13 +91,13 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         sentences.filter(query.check_sentence)
         logging.info(f"Filtering sentences: {sentences}")
 
-    logging.info(f"Final result: {sentences}")
-
     if args.print:
         logging.info(f"Printing {len(sentences)} sentences...")
         for sent in sorted(sentences):
             features_to_show = [feat for feat in corpus.features if feat in query.features]
             print(f"[{sent}]", corpus.render_sentence(sent, features_to_show))
+    else:
+        print(sentences)
 
 
 ################################################################################
