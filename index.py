@@ -150,7 +150,7 @@ class Index:
         basepath = basedir / str(template) / str(template)
         return {
             'base': basepath,
-            'keys': [basepath.with_suffix(f'.key:{feature}{pos}') for feature, pos in template],
+            'keys': [basepath.with_suffix(f'.{feature}:{pos}') for feature, pos in template],
             'index': basepath.with_suffix('.index'),
             'sets': basepath.with_suffix('.sets'),
         }
@@ -176,7 +176,7 @@ class Index:
                 with progress_bar(corpus.sentences(), "Building database", total=corpus.num_sentences()) as pbar_sentences:
                     for n, sentence in enumerate(pbar_sentences, 1):
                         for pos in range(sentence.start, sentence.stop - template.maxdelta()):
-                            instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
+                            instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
                             if unary_indexes and any(
                                         len(unary.search(Instance([val]))) < min_frequency 
                                         for val, unary in zip(instance_values, unary_indexes)
@@ -187,7 +187,7 @@ class Index:
 
             con.insert_rows(generate_db_rows())
             if skipped_instances:
-                logging.debug(f"Skipped {skipped_instances} low-frequency instances")
+                logging.info(f"Skipped {skipped_instances} low-frequency instances")
 
             nr_sentences = corpus.num_sentences()
             nr_rows, nr_instances = con.count_rows_and_instances()
@@ -261,17 +261,17 @@ class SAIndex(Index):
         if len(self.template) == 1:
             [(tmpl_feat, tmpl_delta)] = list(template)
             self.search_key = lambda k: \
-                corpus.words[tmpl_feat][index[k] + tmpl_delta]
+                corpus.tokens[tmpl_feat][index[k] + tmpl_delta]
         elif len(self.template) == 2:
             [(tmpl_feat1, tmpl_delta1), (tmpl_feat2, tmpl_delta2)] = list(template)
             self.search_key = lambda k: (
-                corpus.words[tmpl_feat1][index[k] + tmpl_delta1],
-                corpus.words[tmpl_feat2][index[k] + tmpl_delta2],
+                corpus.tokens[tmpl_feat1][index[k] + tmpl_delta1],
+                corpus.tokens[tmpl_feat2][index[k] + tmpl_delta2],
             )
         else:
             # The above two are just optimisations of the following generic search key:
             self.search_key = lambda k: tuple(
-                corpus.words[feat][index[k] + delta] 
+                corpus.tokens[feat][index[k] + delta] 
                 for feat, delta in template
             )
 
@@ -383,7 +383,7 @@ class SAIndex(Index):
                 def generate_db_rows() -> Iterator[Tuple[int, ...]]:
                     nonlocal skipped_instances
                     for pos in generate_positions():
-                        instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
+                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
                         if unary_indexes and not all_unary_min_frequency(instance_values):
                             skipped_instances += 1
                         else:
@@ -391,7 +391,7 @@ class SAIndex(Index):
 
                 con.insert_rows(generate_db_rows())
                 if skipped_instances:
-                    logging.debug(f"Skipped {skipped_instances} low-frequency instances")
+                    logging.info(f"Skipped {skipped_instances} low-frequency instances")
 
                 nr_rows, nr_instances = con.count_rows_and_instances()
                 logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances")
@@ -408,7 +408,7 @@ class SAIndex(Index):
                 if unary_indexes:
                     skipped_instances : int = 0
                     for pos in generate_positions():
-                        instance_values = [corpus.words[feat][pos+i] for (feat, i) in template]
+                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
                         if unary_indexes and not all_unary_min_frequency(instance_values):
                             skipped_instances += 1
                         else:
@@ -424,16 +424,16 @@ class SAIndex(Index):
             feature_positions = list(template)
             feat, delta = feature_positions[0]
             assert delta == 0   # delta for the first feature should always be 0
-            text1 = corpus.words[feat]
+            text1 = corpus.tokens[feat]
             if len(feature_positions) == 1:
                 sortkey = lambda pos: (text1[pos], pos)
             elif len(feature_positions) == 2:
                 feat, delta = feature_positions[1]
-                text2 = corpus.words[feat]
+                text2 = corpus.tokens[feat]
                 sortkey = lambda pos: (text1[pos], text2[pos+delta], pos)
             else:
                 # the provious sortkeys above are just optimisations of this generic one:
-                sortkey = lambda pos: (tuple(corpus.words[feat][pos+delta] for feat, delta in feature_positions), pos)
+                sortkey = lambda pos: (tuple(corpus.tokens[feat][pos+delta] for feat, delta in feature_positions), pos)
 
             with DiskIntArray(index_path) as suffix_array:
                 import sort
@@ -489,7 +489,7 @@ class IndexBuilderDB:
 
     def count_rows_and_instances(self) -> Tuple[int, int]:
         nr_rows = self.con.execute(f"select count(*) from builder").fetchone()[0]
-        nr_instances = self.con.execute(f"select count(*) from (select distinct {','.join(self.columns)} from builder)").fetchone()[0]
+        nr_instances = self.con.execute(f"select count(*) from (select distinct {','.join(self.columns[:-1])} from builder)").fetchone()[0]
         return nr_rows, nr_instances
 
     def close(self):

@@ -19,7 +19,7 @@ class Corpus:
     sentences_path = 'sentences'
 
     features : List[str]
-    words : Dict[str, DiskStringArray]
+    tokens : Dict[str, DiskStringArray]
     sentence_pointers : DiskIntArray
     path : Path
 
@@ -29,25 +29,25 @@ class Corpus:
         with open(basedir / self.features_file, 'r') as IN:
             self.features = json.load(IN)
         self.sentence_pointers = DiskIntArray(basedir / self.sentences_path)
-        self.words = {
+        self.tokens = {
             feature: DiskStringArray(basedir / (self.feature_prefix + feature) / feature)
             for feature in self.features
         }
         assert all(
-            len(self) == len(arr) for arr in self.words.values()
+            len(self) == len(arr) for arr in self.tokens.values()
         )
         
     def __str__(self) -> str:
         return f"[Corpus: {self.path.stem}]"
 
     def __len__(self) -> int:
-        return len(self.words[self.features[0]])
+        return len(self.tokens[self.features[0]])
 
     def strings(self, feature:str) -> StringCollection:
-        return self.words[feature].strings
+        return self.tokens[feature].strings
 
     def intern(self, feature:str, value:bytes) -> InternedString:
-        return self.words[feature].intern(value)
+        return self.tokens[feature].intern(value)
 
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
@@ -70,7 +70,7 @@ class Corpus:
             features_to_show = self.features[:1]
         positions = self.lookup_sentence(sent)
         return ' '.join(
-            '/'.join(str(self.words[feat][pos]) for feat in features_to_show) 
+            '/'.join(str(self.tokens[feat][pos]) for feat in features_to_show) 
             for pos in range(positions.start, positions.stop)
         )
 
@@ -92,7 +92,7 @@ class Corpus:
         self.close()
 
     def close(self):
-        for sa in self.words.values(): sa.close()
+        for sa in self.tokens.values(): sa.close()
         self.sentence_pointers.close()
 
     @staticmethod
