@@ -49,10 +49,10 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
     index, instance, offset, intersection = search_results[0]
     logging.debug(f"Intersecting: {debug_result(index, instance, offset)}")
     for index, instance, offset, results in search_results[1:]:
-        if not intersection:
-            intersection = results
-        else:
-            intersection.intersection_update(results, use_internal=args.internal_intersection)
+        # TODO: check for subsumption
+        # e.g.: if we have intersected pos:0+pos:1 and pos:1+pos:2, 
+        # then we don't need to intersect with pos:0+pos:2
+        intersection.intersection_update(results, use_internal=args.internal_intersection)
         logging.debug(f"           /\\ {debug_result(index, instance, offset)} = {intersection}")
     logging.info(f"After intersection: {intersection}")
 
