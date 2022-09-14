@@ -114,39 +114,45 @@ class Corpus:
         with open(basedir / Corpus.features_file, 'w') as OUT:
             json.dump(features, OUT)
 
-        def iterate_words(description) -> Iterator[Tuple[bool, List[bytes]]]:
-            # Skip over the first line
+        def iterate_sentences(description:str) -> Iterator[List[List[bytes]]]:
+            # Skip over the header line
             corpus.seek(0)
             corpus.readline()
-
             with progress_bar(total=csv_filesize, desc=description) as pbar:
-                new_sentence : bool = True
+                sentence = []
                 for line in corpus:
                     pbar.update(len(line))
                     line = line.strip()
                     if line.startswith(b'# '):
-                        new_sentence = True
+                        if sentence: 
+                            yield sentence
+                            sentence = []
                     elif line:
                         token : List[bytes] = line.split(b'\t')
-                        token.insert(0, Corpus.sentence_start_value if new_sentence else Corpus.empty_value)
+                        token.insert(0, Corpus.empty_value if sentence else Corpus.sentence_start_value)
                         if len(token) < len(features):
                             token += [Corpus.empty_value] * (len(features) - len(token))
-                        yield new_sentence, token
-                        new_sentence = False
+                        sentence.append(token)
+                if sentence: 
+                    yield sentence
 
         strings : List[Set[bytes]] = [set() for _feature in features]
-        count : int = 0
-        for _new_sentence, word in iterate_words("Collecting strings"):
-            count += 1
-            for i, feat in enumerate(word):
-                strings[i].add(feat)
-        logging.debug(f" --> read {sum(map(len, strings))} distinct strings")
+        n_sentences = n_tokens = 0
+        for sentence in iterate_sentences("Collecting strings"):
+            n_sentences += 1
+            for token in sentence:
+                n_tokens += 1
+                for i, feat in enumerate(token):
+                    strings[i].add(feat)
+        logging.debug(f" --> read {sum(map(len, strings))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
 
         sentence_builder = DiskIntArrayBuilder(
             basedir / Corpus.sentences_path, 
-            max_value=count-1, 
-            use_memoryview=True,
+            max_value = n_tokens, 
+            use_memoryview = True,
         )
+        sentence_builder.append(0) # sentence 0 doesn't exist
+
         feature_builders : List[DiskStringArrayBuilder] = []
         for i, feature in enumerate(features):
             path = basedir / (Corpus.feature_prefix + feature) / feature
@@ -154,20 +160,17 @@ class Corpus:
             builder = DiskStringArrayBuilder(path, strings[i])
             feature_builders.append(builder)
 
-        sentence_builder.append(0) # sentence 0 doesn't exist
-
-        sentence_count : int = 0
-        word_count : int = 0
-        for new_sentence, word in iterate_words("Building indexes"):
-            if new_sentence:
-                sentence_builder.append(word_count)
-                sentence_count += 1
-            for i, feat in enumerate(word):
-                feature_builders[i].append(feat)
-            word_count += 1
+        ctr = 0
+        for sentence in iterate_sentences("Building indexes"):
+            sentence_builder.append(ctr)
+            for token in sentence:
+                ctr += 1
+                for i, feat in enumerate(token):
+                    feature_builders[i].append(feat)
+        assert ctr == n_tokens
 
         sentence_builder.close()
         for builder in feature_builders: 
             builder.close()
 
-        logging.info(f"Built corpus index, {word_count} words, {sentence_count} sentences")
+        logging.info(f"Built corpus index, {n_tokens} tokens, {n_sentences} sentences")
