@@ -6,11 +6,14 @@ from typing import List, Iterator, Union, Callable
 from disk import DiskIntArray
 
 try:
-    import fast_intersection  # type: ignore
+    import platform
+    if platform.python_implementation() == 'CPython':
+        # fast_intersection is NOT faster in PyPy!
+        import fast_intersection  # type: ignore
 except ModuleNotFoundError:
     print("Module 'fast_intersection' not found. "
           "To install, run: 'python setup.py build_ext --inplace'. "
-          "Defaulting to a slow internal implementation.\n", 
+          "Defaulting to an internal implementation.\n", 
           file=sys.stderr)
 
 
@@ -49,18 +52,19 @@ class IndexSet:
         for val in self.values[self.start:self.start+self.size]:
             yield val - offset
 
-    def intersection_update(self, other:'IndexSet'):
-        self.values = self.intersection(other)
+    def intersection_update(self, other:'IndexSet', use_internal:bool=False):
+        self.values = self.intersection(other, use_internal=use_internal)
         self.start = 0
         self.size = len(self.values)
         self.offset = 0
 
-    def intersection(self, other:'IndexSet') -> List[int]:
+    def intersection(self, other:'IndexSet', use_internal:bool=False) -> List[int]:
         """Take the intersection of two sorted arrays."""
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
             self.values._byteorder == other.values._byteorder == sys.byteorder and
-            self.values._elemsize == other.values._elemsize
+            self.values._elemsize == other.values._elemsize and
+            not use_internal
             ):
             try:
                 return fast_intersection.intersection(

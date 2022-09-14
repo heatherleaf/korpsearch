@@ -52,7 +52,7 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         if not intersection:
             intersection = results
         else:
-            intersection.intersection_update(results)
+            intersection.intersection_update(results, use_internal=args.internal_intersection)
         logging.debug(f"           /\\ {debug_result(index, instance, offset)} = {intersection}")
     logging.info(f"After intersection: {intersection}")
 
@@ -92,6 +92,7 @@ parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", co
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 
 parser.add_argument('--suffix-array', action='store_true', help='use suffix arrays as indexes (experimental)')
+parser.add_argument('--internal-intersection', action='store_true', help='use internal (slow) intersection implementation')
 
 if __name__ == '__main__':
     args : argparse.Namespace = parser.parse_args()
