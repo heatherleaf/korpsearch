@@ -301,10 +301,9 @@ class StringCollectionBuilder:
             for string in stringlist: 
                 stringsfile.write(string)
 
-        stringlist.insert(0, b'')  # this is to emulate the 'initial' keyword in accumulate, which was introduced in Python 3.8
         DiskIntArrayBuilder.build(
             path.with_suffix(StringCollection.starts_suffix),
-            itertools.accumulate((len(s) for s in stringlist)),
+            itertools.accumulate((len(s) for s in stringlist), initial=0),
             use_memoryview = True
         )
 
