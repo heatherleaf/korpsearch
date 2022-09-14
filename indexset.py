@@ -94,6 +94,45 @@ class IndexSet:
         except StopIteration:
             return result
 
+    def difference_update(self, other:'IndexSet'):
+        self.values = self.difference(other)
+        self.start = 0
+        self.size = len(self.values)
+        self.offset = 0
+
+    def difference(self, other:'IndexSet') -> List[int]:
+        """Take the difference between this set and another."""
+        # if (isinstance(self.values, DiskIntArray) and 
+        #     isinstance(other.values, DiskIntArray) and 
+        #     self.values._byteorder == other.values._byteorder == sys.byteorder and
+        #     self.values._elemsize == other.values._elemsize
+        #     ):
+        #     try:
+        #         return fast_intersection.difference(
+        #             self.values, self.start, self.size, self.offset,
+        #             other.values, other.start, other.size, other.offset,
+        #         )
+        #     except NameError:
+        #         pass
+
+        result = []
+        xiter = iter(self)
+        yiter = iter(other)
+        try:
+            x = next(xiter)
+            y = next(yiter)
+            while True:
+                if x < y:
+                    result.append(x)
+                    x = next(xiter)
+                elif x > y:
+                    y = next(yiter)
+                else:
+                    x = next(xiter)
+                    y = next(yiter)
+        except StopIteration:
+            return result
+
     def filter(self, check:Callable[[int],bool]):
         if isinstance(self.values, list):
             self._filter_values_in_place(self.values, check)
