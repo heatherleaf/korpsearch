@@ -52,8 +52,11 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
                 ))
 
     search_results.sort(key=lambda r: len(r[-1]))
-    if len(search_results) > 1 and not search_results[0][-2]:
-        search_results[:2] = reversed(search_results[:2])
+    if not search_results[0][-2]:
+        first_positive = [r[-2] for r in search_results].index(True)
+        first_result = search_results[first_positive]
+        del search_results[first_positive]
+        search_results.insert(0, first_result)
     logging.debug("Intersection order: " + ', '.join(
                     f"{debug_query(index, instance, offset, positive)}" 
                     for index, instance, offset, positive, _ in search_results
