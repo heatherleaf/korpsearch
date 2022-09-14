@@ -17,6 +17,9 @@ class Corpus:
     features_file = 'features.cfg'
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
+    sentence_feature = 'sentence'
+    sentence_start_value = b'S'
+    empty_value = b''
 
     features : List[str]
     tokens : Dict[str, DiskStringArray]
@@ -105,6 +108,8 @@ class Corpus:
         # the first line in the CSV should be a header with the names of each column (=features)
         corpus.seek(0)
         features : List[str] = corpus.readline().decode().split()
+        assert Corpus.sentence_feature not in features
+        features.insert(0, Corpus.sentence_feature)
 
         with open(basedir / Corpus.features_file, 'w') as OUT:
             json.dump(features, OUT)
@@ -122,10 +127,11 @@ class Corpus:
                     if line.startswith(b'# '):
                         new_sentence = True
                     elif line:
-                        word : List[bytes] = line.split(b'\t')
-                        if len(word) < len(features):
-                            word += [b''] * (len(features) - len(word))
-                        yield new_sentence, word
+                        token : List[bytes] = line.split(b'\t')
+                        token.insert(0, Corpus.sentence_start_value if new_sentence else Corpus.empty_value)
+                        if len(token) < len(features):
+                            token += [Corpus.empty_value] * (len(features) - len(token))
+                        yield new_sentence, token
                         new_sentence = False
 
         strings : List[Set[bytes]] = [set() for _feature in features]
