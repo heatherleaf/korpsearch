@@ -9,9 +9,11 @@ from disk import InternedString
 ################################################################################
 ## Queries
 
-QUEREGEX = re.compile(r'^(\[ ([a-z]+ !? = "[^"]+")* \])+$', re.X)
 
 class Query:
+    query_regex = re.compile(r'^ (\[ ( [a-z]+   !?  = " [^"]+ " )* \])+ $', re.X)
+    token_regex = re.compile(r'       ([a-z]+) (!?) = "([^"]+)"          ', re.X)
+
     corpus : Corpus
     query : List[List[Tuple[str, InternedString, bool]]]
     features : Set[str]
@@ -19,28 +21,34 @@ class Query:
 
     def __init__(self, corpus:Corpus, querystr:str):
         self.corpus = corpus
-        querystr = querystr.replace(' ', '')
-        if not QUEREGEX.match(querystr):
-            raise ValueError(f"Error in query: {querystr!r}")
-        tokens = querystr.split('][')
-        self.query = []
-        for tok in tokens:
-            self.query.append([])
-            parts = re.findall(r'\w+ !? = "[^"]+"', tok, re.X)
-            for part in parts:
-                feat, value = part.split('=', 1)
-                positive = not feat.endswith('!')
-                feat = feat.rstrip('!')
-                value = value.replace('"', '')
-                self.query[-1].append((feat, self.corpus.intern(feat, value.encode()), positive))
-
-        self.features = {feat for tok in self.query for feat, _, _ in tok}
+        self.query = [[
+                (feat, self.corpus.intern(feat, value), positive)
+                for feat, value, positive in token
+            ]
+            for token in Query.parse(querystr)
+        ]
+        self.features = {feat for token in self.query for feat, _, _ in token}
 
         # This is a variant of self.query, optimised for checking a query at a corpus position:
         self.featured_query = {f: [] for f in self.features}
-        for i, tok in enumerate(self.query):
-            for feat, val, positive in tok:
-                self.featured_query[feat].append((i, val, positive))
+        for offset, tok in enumerate(self.query):
+            for feat, value, positive in tok:
+                self.featured_query[feat].append((offset, value, positive))
+
+    @staticmethod
+    def parse(querystr:str) -> List[List[Tuple[str, bytes, bool]]]:
+        querystr = querystr.replace(' ', '')
+        if not Query.query_regex.match(querystr):
+            raise ValueError(f"Error in query: {querystr!r}")
+        tokens = querystr.split('][')
+        query = []
+        for tok in tokens:
+            query.append([])
+            for match in Query.token_regex.finditer(tok):
+                feat, excl, value = match.groups()
+                positive = excl != '!'
+                query[-1].append((feat, value.encode(), positive))
+        return query
 
     def __str__(self) -> str:
         return ' '.join(
