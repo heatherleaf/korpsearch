@@ -18,7 +18,7 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
     else:
         Index = InvertedIndex
 
-    query = Query(corpus, args.query)
+    query = Query(corpus, args.query, no_sentence_break=args.suffix_array)
     logging.info(f"Query: {query}")
 
     debug_query = lambda index, instance, offset, positive: \
@@ -69,6 +69,7 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         # TODO: check for subsumption
         # e.g.: if we have intersected pos:0+pos:1 and pos:1+pos:2, 
         # then we don't need to intersect with pos:0+pos:2
+        # also: pos:0+pos:k implies that there's no sentence break between 0 and k
         if positive:
             intersection.intersection_update(results, use_internal=args.internal_intersection)
         else:

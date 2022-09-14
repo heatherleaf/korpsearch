@@ -19,13 +19,13 @@ class Query:
     features : Set[str]
     featured_query : Dict[str, List[Tuple[int, InternedString, bool]]]
 
-    def __init__(self, corpus:Corpus, querystr:str):
+    def __init__(self, corpus:Corpus, querystr:str, no_sentence_break:bool=False):
         self.corpus = corpus
         self.query = [[
                 (feat, self.corpus.intern(feat, value), positive)
                 for feat, value, positive in token
             ]
-            for token in Query.parse(querystr)
+            for token in Query.parse(querystr, no_sentence_break=no_sentence_break)
         ]
         self.features = {feat for token in self.query for feat, _, _ in token}
 
@@ -36,18 +36,20 @@ class Query:
                 self.featured_query[feat].append((offset, value, positive))
 
     @staticmethod
-    def parse(querystr:str) -> List[List[Tuple[str, bytes, bool]]]:
+    def parse(querystr:str, no_sentence_break:bool=False) -> List[List[Tuple[str, bytes, bool]]]:
         querystr = querystr.replace(' ', '')
         if not Query.query_regex.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
         tokens = querystr.split('][')
         query = []
-        for tok in tokens:
+        for offset, tok in enumerate(tokens):
             query.append([])
             for match in Query.token_regex.finditer(tok):
                 feat, excl, value = match.groups()
                 positive = excl != '!'
                 query[-1].append((feat, value.encode(), positive))
+            if no_sentence_break and offset > 0:
+                query[-1].append((Corpus.sentence_feature, Corpus.sentence_start_value, False))
         return query
 
     def __str__(self) -> str:
