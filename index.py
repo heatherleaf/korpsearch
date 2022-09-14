@@ -26,13 +26,21 @@ class Template:
         return str(self).encode()
 
     def __str__(self) -> str:
-        return '+'.join(feat + str(pos) for feat, pos in self._feature_positions)
+        return '+'.join(f"{feat}:{pos}" for feat, pos in self)
 
     def __iter__(self) -> Iterator[Tuple[str,int]]:
         yield from self._feature_positions
 
     def __len__(self) -> int:
         return len(self._feature_positions)
+
+    @staticmethod
+    def parse(template_str:str) -> 'Template':
+        template = [tuple(feat_dist.split(':')) for feat_dist in template_str.split('+')]
+        try:
+            return Template(*[(feat, int(dist)) for (feat, dist) in template])
+        except (ValueError, AssertionError):
+            raise ValueError("Ill-formed template: it should be on the form pos:0 or word:0+pos:2")
 
 
 class Instance:
@@ -46,7 +54,7 @@ class Instance:
         return b' '.join(map(bytes, self._values))
 
     def __str__(self) -> str:
-        return ' '.join(map(str, self._values))
+        return '+'.join(map(str, self._values))
 
     def __iter__(self) -> Iterator[InternedString]:
         yield from self._values

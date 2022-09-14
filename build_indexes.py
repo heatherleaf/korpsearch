@@ -41,7 +41,7 @@ def main(args:argparse.Namespace):
             ctr = 0
             for template in itertools.chain(
                                 yield_templates(args.features, args.max_dist),
-                                map(parse_template, args.templates),
+                                map(Template.parse, args.templates),
                             ):
                 Index.build(
                     corpus, template, 
@@ -51,14 +51,6 @@ def main(args:argparse.Namespace):
                 )
                 ctr += 1
             logging.info(f"Created {ctr} query indexes")
-
-
-def parse_template(template_str:str) -> Template:
-    template = [tuple(feat_dist.split('.')) for feat_dist in template_str.split('-')]
-    try:
-        return Template(*[(feat, int(dist)) for (feat, dist) in template])
-    except ValueError:
-        raise ValueError("Ill-formed template: it should be on the form pos.0 or word.0-pos.2")
 
 
 def yield_templates(features:List[str], max_dist:int):
