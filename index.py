@@ -72,179 +72,11 @@ class Instance:
 ################################################################################
 ## Inverted sentence index
 ## Implemented as a sorted array of interned strings
+## This is a kind of modified suffix array - a "pruned" SA if you like
 
-class InvertedIndex:
+class Index:
     dir_suffix : str = '.indexes'
 
-    template : Template
-    keys : List[DiskIntArray]
-    index : DiskIntArray
-    sets : DiskIntArray
-    search_key : Callable[[int], Union[int, Tuple[int,...]]]
-    # Typing note: as optimisation we use the value (s) instead of a 1-tuple (s,) so the
-    # return type is a union of a value and a tuple. But then Pylance can't infer the correct
-    # type, so we have to write "# type: ignore" on some lines below.
-
-    def __init__(self, corpus:Corpus, template:Template):
-        self.template = template
-        paths = self.indexpaths(corpus, template)
-        self.keys = [DiskIntArray(path) for path in paths['keys']]
-        self.index = DiskIntArray(paths['index'])
-        self.sets = DiskIntArray(paths['sets'])
-
-        assert len(self.template) == len(self.keys)
-        if len(self.keys) == 1:
-            [keyarr] = self.keys
-            self.search_key = lambda k: keyarr[k]
-        elif len(self.keys) == 2:
-            [keyarr1, keyarr2] = self.keys
-            self.search_key = lambda k: (keyarr1[k], keyarr2[k])
-        else:
-            # The above two are just optimisations of the following generic search key:
-            self.search_key = lambda k: tuple(
-                keyarray[k] for keyarray in self.keys
-            )
-
-    def __str__(self) -> str:
-        return self.__class__.__name__ + ':' + str(self.template) 
-
-    def __len__(self) -> int:
-        return len(self.index)
-
-    def search(self, instance:Instance, offset:int=0) -> IndexSet:
-        set_start : int = self.lookup_instance(instance)
-        set_size : int = self.sets[set_start]
-        return IndexSet(self.sets, set_start+1, set_size)
-
-    def lookup_instance(self, instance:Instance) -> int:
-        search_key = self.search_key
-        instance_key = tuple(s.index for s in instance)
-        if len(instance_key) == 1: instance_key = instance_key[0]
-
-        start, end = 0, len(self)-1
-        while start <= end:
-            mid = (start + end) // 2
-            key = search_key(mid)
-            if key == instance_key:
-                return self.index[mid]
-            elif key < instance_key:  # type: ignore
-                start = mid + 1
-            else:
-                end = mid - 1
-        raise KeyError(f'Instance "{instance}" not found')
-
-    def __enter__(self) -> 'InvertedIndex':
-        return self
-
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
-        self.close()
-
-    def close(self):
-        for k in self.keys: k.close()
-        self.sets.close()
-        self.index.close()
-
-    @staticmethod
-    def indexpaths(corpus, template):
-        basedir = corpus.path.with_suffix(InvertedIndex.dir_suffix)
-        basepath = basedir / str(template) / str(template)
-        return {
-            'base': basepath,
-            'keys': [basepath.with_suffix(f'.{feature}:{pos}') for feature, pos in template],
-            'index': basepath.with_suffix('.index'),
-            'sets': basepath.with_suffix('.sets'),
-        }
-
-    @staticmethod
-    def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0, use_sqlite:bool=True):
-        logging.debug(f"Building index for {template}...")
-        paths = InvertedIndex.indexpaths(corpus, template)
-        paths['base'].parent.mkdir(exist_ok=True)
-
-        unary_indexes : List[InvertedIndex] = []
-        if min_frequency > 0 and len(template) > 1:
-            unary_indexes = [
-                InvertedIndex(corpus, Template([(feat, 0)])) 
-                for (feat, _pos) in template
-            ]
-
-        dbfile : Path = paths['base'].with_suffix('.db.tmp')
-        with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
-            skipped_instances : int = 0
-            def generate_db_rows() -> Iterator[Tuple[int, ...]]:
-                nonlocal skipped_instances
-                with progress_bar(corpus.sentences(), "Building database", total=corpus.num_sentences()) as pbar_sentences:
-                    for n, sentence in enumerate(pbar_sentences, 1):
-                        for pos in range(sentence.start, sentence.stop - template.maxdelta()):
-                            instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
-                            if unary_indexes and any(
-                                        len(unary.search(Instance([val]))) < min_frequency 
-                                        for val, unary in zip(instance_values, unary_indexes)
-                                    ):
-                                skipped_instances += 1
-                            else:
-                                yield tuple(value.index for value in instance_values) + (n,)
-
-            con.insert_rows(generate_db_rows())
-            if skipped_instances:
-                logging.info(f"Skipped {skipped_instances} low-frequency instances")
-
-            nr_sentences = corpus.num_sentences()
-            nr_rows, nr_instances = con.count_rows_and_instances()
-            logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances, {nr_sentences} sentences")
-
-            # Build keys files, index file and sets file
-            index_keys = [DiskIntArrayBuilder(path, max_value = len(corpus.strings(feat)))
-                    for (feat, _), path in zip(template, paths['keys'])]
-            index_sets = DiskIntArrayBuilder(paths['sets'], max_value = nr_sentences+1)
-            # nr_rows is the sum of all set sizes, but the .sets file also includes the set sizes,
-            # so in some cases we get an OverflowError.
-            # This happens e.g. for bnc-20M when building lemma0: nr_rows = 16616400 < 2^24 < 16777216 = nr_rows+nr_sets
-            # What we need is max_value = nr_rows + nr_sets; this is a simple hack until we have better solution:
-            index_index = DiskIntArrayBuilder(paths['index'], max_value = nr_rows*2)
-
-            nr_keys = nr_elements = 0
-            current = None
-            set_start = set_size = -1
-            # Dummy sentence to account for null pointers:
-            index_sets.append(0)
-            nr_elements += 1
-            for row in progress_bar(con.row_iterator(), "Creating index", total=nr_rows):
-                key = row[:-1]
-                sent = row[-1]
-                if current != key:
-                    if set_start >= 0:
-                        assert set_size > 0
-                        # Now the set is full, and we can write the size of the set at its beginning
-                        index_sets[set_start] = set_size
-                    for builder, k in zip(index_keys, key):
-                        builder.append(k)
-                    # Add a placeholder for the size of the set
-                    set_start, set_size = len(index_sets), 0
-                    index_sets.append(set_size)
-                    index_index.append(set_start)
-                    nr_elements += 1
-                    current = key
-                    nr_keys += 1
-                index_sets.append(sent)
-                set_size += 1
-                nr_elements += 1
-            # Write the size of the final set at its beginning
-            index_sets[set_start] = set_size
-            logging.info(f"Built index for {template}, with {nr_keys} keys, {nr_elements} set elements")
-
-            for k in index_keys: k.close()
-            index_sets.close()
-            index_index.close()
-
-
-################################################################################
-## Alternative: implemented as a suffix array
-
-class SAIndex(InvertedIndex):
-    dir_suffix = '.sa-indexes'
-
-    corpus : Corpus
     template : Template
     index : DiskIntArray
     search_key : Callable[[int], Union[InternedString, Tuple[InternedString,...]]]
@@ -274,6 +106,12 @@ class SAIndex(InvertedIndex):
                 corpus.tokens[feat][index[k] + delta] 
                 for feat, delta in template
             )
+
+    def __str__(self) -> str:
+        return self.__class__.__name__ + ':' + str(self.template) 
+
+    def __len__(self) -> int:
+        return len(self.index)
 
     def search(self, instance:Instance, offset:int=0) -> IndexSet:
         set_start, set_end = self.lookup_instance(instance)
@@ -311,7 +149,7 @@ class SAIndex(InvertedIndex):
 
         return first_index, last_index
 
-    def __enter__(self) -> InvertedIndex:
+    def __enter__(self) -> 'Index':
         return self
 
     def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
@@ -322,22 +160,22 @@ class SAIndex(InvertedIndex):
 
     @staticmethod
     def indexpath(corpus:Corpus, template:Template):
-        basepath = corpus.path.with_suffix(SAIndex.dir_suffix)
+        basepath = corpus.path.with_suffix(Index.dir_suffix)
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, keep_tmpfiles:bool=False, min_frequency:int=0, use_sqlite:bool=False):
+    def build(corpus:Corpus, template:Template, min_frequency:int=0, no_sentence_break:bool=True, use_sqlite:bool=False, keep_tmpfiles:bool=False):
         logging.debug(f"Building index for {template}...")
-        index_path = SAIndex.indexpath(corpus, template)
+        index_path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
 
         maxdelta = template.maxdelta()
         index_size = len(corpus) - maxdelta
 
-        unary_indexes : List[SAIndex] = []
+        unary_indexes : List[Index] = []
         if min_frequency > 0 and len(template) > 1:
             unary_indexes = [
-                SAIndex(corpus, Template([(feat, 0)])) 
+                Index(corpus, Template([(feat, 0)])) 
                 for (feat, _pos) in template
             ]
 
@@ -362,12 +200,7 @@ class SAIndex(InvertedIndex):
 
         def generate_positions():
             with progress_bar(range(index_size), desc="Collecting positions") as pbar:
-                if maxdelta == 0:
-                    for pos in pbar:
-                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
-                        if all(instance_values):
-                            yield pos, instance_values
-                else:
+                if no_sentence_break and maxdelta > 0:
                     # Don't generate instances that cross sentence borders
                     sentences = corpus.sentences()
                     sent = next(sentences)
@@ -380,6 +213,11 @@ class SAIndex(InvertedIndex):
                             instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
                             if all(instance_values):
                                 yield pos, instance_values
+                else:
+                    for pos in pbar:
+                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
+                        if all(instance_values):
+                            yield pos, instance_values
 
         if use_sqlite:
             dbfile = index_path.parent / 'index.db.tmp'

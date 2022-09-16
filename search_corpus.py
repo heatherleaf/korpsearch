@@ -1,11 +1,10 @@
 
 import argparse
 from pathlib import Path
-from typing import List, Tuple
 import itertools
 import logging
 
-from index import Instance, InvertedIndex, SAIndex
+from index import Index
 from indexset import IndexSet
 from corpus import Corpus
 from query import Query
@@ -13,12 +12,7 @@ from util import setup_logger
 
 
 def search_corpus(corpus:Corpus, args:argparse.Namespace):
-    if args.suffix_array:
-        Index = SAIndex
-    else:
-        Index = InvertedIndex
-
-    query = Query(corpus, args.query, no_sentence_break=args.suffix_array)
+    query = Query(corpus, args.query)
     logging.info(f"Query: {query}")
 
     debug_query = lambda index, instance, offset, positive: \
@@ -31,8 +25,6 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
             index = Index(corpus, template)
         except FileNotFoundError:
             continue
-        if index.dir_suffix == '.indexes':
-            assert positive, "only --suffix-array can use negative queries"
         if any(Query.is_subquery(
                     index.template, instance, offset, positive,
                     prev_index.template, prev_instance, prev_offset, prev_positive,
@@ -77,15 +69,12 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         logging.debug(f"           /\\ {debug_query(index, instance, offset, positive)} = {intersection}")
     logging.info(f"After intersection: {intersection}")
 
-    if args.suffix_array:
-        sentences = IndexSet([
-            sent for sent, _group in itertools.groupby(
-                corpus.get_sentence_from_token(pos) for pos in intersection
-            )
-        ])
-        logging.info(f"Converting to sentences: {sentences}")
-    else:
-        sentences = intersection
+    sentences = IndexSet([
+        sent for sent, _group in itertools.groupby(
+            corpus.get_sentence_from_token(pos) for pos in intersection
+        )
+    ])
+    logging.info(f"Converting to sentences: {sentences}")
 
     if args.filter:
         sentences.filter(query.check_sentence)
@@ -106,13 +95,12 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
 parser = argparse.ArgumentParser(description='Test things')
 parser.add_argument('corpus', type=Path, help='corpus file in .csv format')
 parser.add_argument('query', type=str, help='the query')
-parser.add_argument('--filter', '-f', action='store_true', help='filter the final results (might take time)')
+parser.add_argument('--filter', '-f', action='store_true', help='filter the final results (might take time, but should not be necessary)')
 parser.add_argument('--print', '-p', action='store_true', help='output the result(s), one sentence per line')
 
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, help='verbose output')
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, help='debugging output')
 
-parser.add_argument('--suffix-array', action='store_true', help='use suffix arrays as indexes (experimental)')
 parser.add_argument('--internal-intersection', action='store_true', help='use internal (slow) intersection implementation')
 
 if __name__ == '__main__':

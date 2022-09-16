@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 import logging
 
-from index import Template, InvertedIndex, SAIndex
+from index import Template, Index
 from corpus import Corpus
 from util import setup_logger
 
@@ -15,19 +15,13 @@ from util import setup_logger
 ## Building the corpus index and the query indexes
 
 def main(args:argparse.Namespace):
-    if args.suffix_array:
-        Index = SAIndex
-    else:
-        Index = InvertedIndex
-
     base = Path(args.corpus)
     corpusdir = base.with_suffix(Corpus.dir_suffix)
     indexdir = base.with_suffix(Index.dir_suffix)
 
     if args.clean:
         shutil.rmtree(corpusdir, ignore_errors=True)
-        for i in (InvertedIndex, SAIndex):
-            shutil.rmtree(base.with_suffix(i.dir_suffix), ignore_errors=True)
+        shutil.rmtree(base.with_suffix(Index.dir_suffix), ignore_errors=True)
         logging.info(f"Removed all indexes")
 
     if args.corpus_index:
@@ -86,9 +80,8 @@ parser.add_argument('--min-frequency', type=int, default=0,
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.DEBUG, help='verbose output')
 parser.add_argument('--silent', action="store_const", dest="loglevel", const=logging.WARNING, default=logging.INFO, help='silent (no output)')
 
-parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary files')
-parser.add_argument('--suffix-array', action='store_true', help='use suffix arrays as indexes (experimental)')
-parser.add_argument('--no-sqlite', action='store_true', help="don't use sqlite to build suffix arrays (experimental)")
+parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary database files')
+parser.add_argument('--no-sqlite', action='store_true', help="don't use sqlite to build suffix arrays (probably slower)")
 
 
 if __name__ == '__main__':

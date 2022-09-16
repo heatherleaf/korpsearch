@@ -19,7 +19,7 @@ class Query:
     features : Set[str]
     featured_query : Dict[str, List[Tuple[int, InternedString, bool]]]
 
-    def __init__(self, corpus:Corpus, querystr:str, no_sentence_break:bool=False):
+    def __init__(self, corpus:Corpus, querystr:str, no_sentence_break:bool=True):
         self.corpus = corpus
         self.query = [[
                 (feat, self.corpus.intern(feat, value), positive)
