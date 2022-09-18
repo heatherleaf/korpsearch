@@ -19,13 +19,11 @@ class Query:
     literals : List[Literal]
     features : Set[str]
     featured_query : Dict[str, List[Tuple[bool, int, InternedString]]]
-    # no_sentence_breaks : bool
 
     def __init__(self, corpus:Corpus, literals:Sequence[Literal], no_sentence_breaks=True):
         self.corpus = corpus
         self.literals = sorted(set(literals))
         self.features = {lit.feature for lit in self.literals}
-        # self.no_sentence_breaks = no_sentence_breaks
 
         # We cannot handle non-atomic querues with only negative literals
         # -A & -B == -(A v B), since we cannot handle union (yet)

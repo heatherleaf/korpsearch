@@ -22,7 +22,6 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         try:
             subqueries.append((subq, subq.index()))
         except FileNotFoundError:
-            # logging.debug(f"    -- index not found: {subq}")
             continue
 
     logging.info(f"Searching {len(subqueries)} indexes:")
