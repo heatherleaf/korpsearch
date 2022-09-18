@@ -12,8 +12,8 @@ from disk import InternedString
 ## Queries
 
 class Query:
-    query_regex = re.compile(r'^ (\[ ( [a-z]+   !?  = " [^"]+ " )* \])+ $', re.X)
-    token_regex = re.compile(r'       ([a-z]+) (!?) = "([^"]+)"          ', re.X)
+    query_regex = re.compile(r'^ (\[ ( [\w_]+   !?  = " [^"]+ " )* \])+ $', re.X)
+    token_regex = re.compile(r'       ([\w_]+) (!?) = "([^"]+)"          ', re.X)
 
     corpus : Corpus
     literals : List[Literal]
@@ -23,7 +23,7 @@ class Query:
 
     def __init__(self, corpus:Corpus, literals:Sequence[Literal], no_sentence_breaks=True):
         self.corpus = corpus
-        self.literals = sorted(literals)
+        self.literals = sorted(set(literals))
         self.features = {lit.feature for lit in self.literals}
         # self.no_sentence_breaks = no_sentence_breaks
 
@@ -124,6 +124,7 @@ class Query:
         for offset, token in enumerate(tokens):
             for match in Query.token_regex.finditer(token):
                 feature, negated, value = match.groups()
+                feature = feature.lower()
                 negative = (negated == '!')
                 value = corpus.intern(feature, value.encode())
                 query.append(Literal(negative, offset, feature, value))

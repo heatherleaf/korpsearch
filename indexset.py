@@ -64,6 +64,7 @@ class IndexSet:
         """Take the intersection of two sorted arrays."""
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
+            len(self.values) > 0 and len(other.values) > 0 and
             self.values._byteorder == other.values._byteorder == sys.byteorder and
             self.values._elemsize == other.values._elemsize and
             not use_internal
@@ -104,6 +105,7 @@ class IndexSet:
         """Take the difference between this set and another."""
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
+            len(self.values) > 0 and len(other.values) > 0 and
             self.values._byteorder == other.values._byteorder == sys.byteorder and
             self.values._elemsize == other.values._elemsize and
             not use_internal

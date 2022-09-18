@@ -26,13 +26,14 @@ class Literal(NamedTuple):
     def parse(corpus:Corpus, litstr:str) -> 'Literal':
         try:
             feature, rest = litstr.split(':')
+            assert feature.replace('_','').isalnum()
             try:
                 offset, value = rest.split('=')
-                return Literal(False, int(offset), feature, corpus.intern(feature, value.encode()))
+                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
             except ValueError:
                 offset, value = rest.split('#')
-                return Literal(True, int(offset), feature, corpus.intern(feature, value.encode()))
-        except ValueError:
+                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+        except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
 
@@ -47,8 +48,9 @@ class TemplateLiteral(NamedTuple):
     def parse(litstr:str) -> 'TemplateLiteral':
         try:
             feature, offset = litstr.split(':')
-            return TemplateLiteral(int(offset), feature)
-        except ValueError:
+            assert feature.replace('_','').isalnum()
+            return TemplateLiteral(int(offset), feature.lower())
+        except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed template literal: {litstr}")
 
 
@@ -59,9 +61,10 @@ class Template:
     def __init__(self, template:Sequence[TemplateLiteral], literals:Sequence[Literal]=[]):
         self.template = tuple(sorted(template))
         self.literals = tuple(sorted(literals))
-        assert len(template) > 0, str(self)
-        assert template[0].offset == 0, str(self)
-        assert all(0 <= t.offset for t in template), str(self)
+        assert all(sorted(x) == sorted(set(x)) for x in (template, literals)), f"Duplicate literal(s): {self}"
+        assert len(template) > 0,                                              f"Empty template: {self}"
+        assert min(t.offset for t in template) == 0,                           f"Minimum offset must be 0: {self}"
+        assert all(lit.negative for lit in literals),                          f"Positive template literal(s): {self}"
 
     def maxdelta(self):
         return max(t.offset for t in self.template)
@@ -88,8 +91,8 @@ class Template:
             return Template(template, literals)
         except (ValueError, AssertionError):
             raise ValueError(
-                "Ill-formed template: it should be on the form pos:0 or word:0+pos:2 "
-                "or pos:0+lemma:1+sentence:1#S"
+                "Ill-formed template - it should be on the form pos:0 or word:0+pos:2 "
+                "or pos:0+lemma:1+sentence:1#S: " + template_str
             )
 
 
@@ -239,22 +242,18 @@ class Index:
                 for val, unary in zip(instance_values, unary_indexes)
             )
 
+        assert all(lit.negative for lit in template.literals), \
+            f"Cannot handle positive template literals: {template}"
+
         def generate_positions():
             with progress_bar(range(index_size), desc="Collecting positions") as pbar:
-                if template.literals:
-                    for pos in pbar:
-                        instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
-                        if all(instance_values) and all(
-                                    (corpus.tokens[lit.feature][pos+lit.offset] == lit.value) != lit.negative
-                                    for lit in template.literals
-                                ):
-                            yield pos, instance_values
-
-                else:
-                    for pos in pbar:
-                        instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
-                        if all(instance_values):
-                            yield pos, instance_values
+                for pos in pbar:
+                    instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
+                    if all(instance_values) and all(
+                                corpus.tokens[lit.feature][pos+lit.offset] != lit.value
+                                for lit in template.literals
+                            ):
+                        yield pos, instance_values
 
         if use_sqlite:
             dbfile = index_path.parent / 'index.db.tmp'
