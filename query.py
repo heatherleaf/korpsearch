@@ -51,6 +51,12 @@ class Query:
         else:
             return min(lit.offset for lit in self.positive_literals())
 
+    def min_offset(self) -> int:
+        return min(lit.offset for lit in self.literals)
+
+    def max_offset(self) -> int:
+        return max(lit.offset for lit in self.literals)
+
     def is_negative(self) -> bool:
         return not self.positive_literals()
 
@@ -94,9 +100,9 @@ class Query:
         return set(self.literals).issubset(other_literals)
 
     def check_sentence(self, sent:int) -> bool:
-        positions = self.corpus.lookup_sentence(sent)
-        min_offset = min(lit.offset for lit in self.literals)
-        max_offset = max(lit.offset for lit in self.literals)
+        positions = self.corpus.sentence_positions(sent)
+        min_offset = self.min_offset()
+        max_offset = self.max_offset()
         return any(
             self.check_position(pos)
             for pos in range(positions.start - min_offset, positions.stop - max_offset)

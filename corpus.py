@@ -55,39 +55,44 @@ class Corpus:
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
 
-    def sentences(self) -> Iterator[slice]:
+    def sentences(self) -> Iterator[range]:
         sents = self.sentence_pointers
         for start, end in zip(sents[1:], sents[2:]):
-            yield slice(start, end)
-        yield slice(sents[len(sents)-1], len(self))
+            yield range(start, end)
+        yield range(sents[len(sents)-1], len(self))
 
-    def lookup_sentence(self, n:int) -> slice:
+    def sentence_positions(self, n:int) -> range:
         sents = self.sentence_pointers
         start = sents[n]
         nsents = len(sents)
         end = sents[n+1] if n+1 < nsents else nsents
-        return slice(start, end)
+        return range(start, end)
 
-    def render_position(self, pos:int, features_to_show:Sequence[str]=(), context:int=10) -> str:
-        if not features_to_show:
-            features_to_show = self.features[:1]
-        # positions = range(pos-context, pos+context+1)
-        positions = range(pos, pos+context)
-        return ' '.join(
-            '/'.join(str(self.tokens[feat][pos]) for feat in features_to_show) 
-            for pos in positions
-        )
+    def render_sentence(self, sent:int, pos:int=-1, offset:int=-1, features:Sequence[str]=(), context:int=-1) -> str:
+        if not features:
+            features = self.features[:1]
+        tokens = []
+        positions = self.sentence_positions(sent)
+        for p in positions:
+            if p < 0 or p >= len(self):
+                continue
+            if context >= 0:
+                if p < pos-context:
+                    continue
+                if p == pos-context and p > positions.start:
+                    tokens.append('...')
+            if p == pos:
+                tokens.append('[')
+            tokens.append('/'.join(str(self.tokens[feat][p]) for feat in features))
+            if p == pos+offset:
+                tokens.append(']')
+            if context >= 0:
+                if p == pos+offset+context and p < positions.stop:
+                    tokens.append('...')
+                    break
+        return ' '.join(tokens)
 
-    def render_sentence(self, sent:int, features_to_show:Sequence[str]=()) -> str:
-        if not features_to_show:
-            features_to_show = self.features[:1]
-        positions = self.lookup_sentence(sent)
-        return ' '.join(
-            '/'.join(str(self.tokens[feat][pos]) for feat in features_to_show) 
-            for pos in range(positions.start, positions.stop)
-        )
-
-    def get_sentence_from_token(self, pos:int) -> int:
+    def get_sentence_from_position(self, pos:int) -> int:
         ptrs = self.sentence_pointers
         start, end = 0, len(ptrs)-1
         while start <= end:

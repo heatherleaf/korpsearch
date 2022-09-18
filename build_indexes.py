@@ -91,9 +91,9 @@ parser.add_argument('--min-frequency', type=int, default=0,
 parser.add_argument('--no-sentence-breaks', action='store_true', 
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 
-parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, 
+parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
     help='verbose output')
-parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO, 
+parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
     help='silent (no output)')
 
 parser.add_argument('--keep-tmpfiles', action='store_true', 
