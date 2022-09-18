@@ -1,6 +1,6 @@
 
 from pathlib import Path
-from typing import Tuple, List, Iterator, Callable, Union, Sequence
+from typing import Tuple, List, Iterator, Callable, Union, Sequence, NamedTuple
 from types import TracebackType
 import logging
 
@@ -11,62 +11,103 @@ from util import progress_bar
 
 
 ################################################################################
-## Templates and instances
+## Literals, templates and instances
 
-class Template:
-    _feature_positions : Tuple[Tuple[str,int],...]
+class Literal(NamedTuple):
+    negative : bool
+    offset : int
+    feature : str
+    value : InternedString
 
-    def __init__(self, feature_positions:Sequence[Tuple[str,int]]):
-        assert len(feature_positions) > 0
-        assert feature_positions[0][-1] == 0
-        assert all(pos >= 0 for _, pos in feature_positions)
-        self._feature_positions = tuple(feature_positions)
-
-    def maxdelta(self):
-        return max(pos for _feat, pos in self)
-
-    def __bytes__(self) -> bytes:
-        return str(self).encode()
-
-    def __str__(self) -> str:
-        return '+'.join(f"{feat}:{pos}" for feat, pos in self)
-
-    def __iter__(self) -> Iterator[Tuple[str,int]]:
-        yield from self._feature_positions
-
-    def __len__(self) -> int:
-        return len(self._feature_positions)
+    def __str__(self):
+        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
 
     @staticmethod
-    def parse(template_str:str) -> 'Template':
-        template = [tuple(feat_dist.split(':')) for feat_dist in template_str.split('+')]
+    def parse(corpus:Corpus, litstr:str) -> 'Literal':
         try:
-            return Template([(feat, int(dist)) for (feat, dist) in template])
+            feature, rest = litstr.split(':')
+            try:
+                offset, value = rest.split('=')
+                return Literal(False, int(offset), feature, corpus.intern(feature, value.encode()))
+            except ValueError:
+                offset, value = rest.split('#')
+                return Literal(True, int(offset), feature, corpus.intern(feature, value.encode()))
+        except ValueError:
+            raise ValueError(f"Ill-formed literal: {litstr}")
+
+
+class TemplateLiteral(NamedTuple):
+    offset : int
+    feature : str
+
+    def __str__(self):
+        return f"{self.feature}:{self.offset}"
+
+    @staticmethod
+    def parse(litstr:str) -> 'TemplateLiteral':
+        try:
+            feature, offset = litstr.split(':')
+            return TemplateLiteral(int(offset), feature)
+        except ValueError:
+            raise ValueError(f"Ill-formed template literal: {litstr}")
+
+
+class Template:
+    template : Tuple[TemplateLiteral,...]
+    literals : Tuple[Literal,...]
+
+    def __init__(self, template:Sequence[TemplateLiteral], literals:Sequence[Literal]=[]):
+        self.template = tuple(sorted(template))
+        self.literals = tuple(sorted(literals))
+        assert len(template) > 0, str(self)
+        assert template[0].offset == 0, str(self)
+        assert all(0 <= t.offset for t in template), str(self)
+
+    def maxdelta(self):
+        return max(t.offset for t in self.template)
+
+    def __str__(self) -> str:
+        return '+'.join(map(str, self.template + self.literals))
+
+    def __iter__(self) -> Iterator[TemplateLiteral]:
+        return iter(self.template)
+
+    def __len__(self) -> int:
+        return len(self.template)
+
+    @staticmethod
+    def parse(corpus:Corpus, template_str:str) -> 'Template':
+        try:
+            template = []
+            literals = []
+            for litstr in template_str.split('+'):
+                try:
+                    literals.append(Literal.parse(corpus, litstr))
+                except ValueError:
+                    template.append(TemplateLiteral.parse(litstr))
+            return Template(template, literals)
         except (ValueError, AssertionError):
-            raise ValueError("Ill-formed template: it should be on the form pos:0 or word:0+pos:2")
+            raise ValueError(
+                "Ill-formed template: it should be on the form pos:0 or word:0+pos:2 "
+                "or pos:0+lemma:1+sentence:1#S"
+            )
 
 
 class Instance:
-    _values : Tuple[InternedString,...]
+    values : Tuple[InternedString,...]
 
     def __init__(self, values : Sequence[InternedString]):
         assert len(values) > 0
-        self._values = tuple(values)
-
-    def values(self) -> Tuple[InternedString,...]:
-        return self._values
-
-    def __bytes__(self) -> bytes:
-        return b' '.join(map(bytes, self._values))
+        self.values = tuple(values)
 
     def __str__(self) -> str:
-        return '+'.join(map(str, self._values))
+        return '+'.join(map(str, self.values))
 
     def __iter__(self) -> Iterator[InternedString]:
-        yield from self._values
+        yield from self.values
 
     def __len__(self) -> int:
-        return len(self._values)
+        return len(self.values)
 
 
 ################################################################################
@@ -91,20 +132,20 @@ class Index:
         self.index = index = DiskIntArray(indexpath)
 
         if len(self.template) == 1:
-            [(tmpl_feat, tmpl_delta)] = list(template)
+            [tmpl] = list(template)
             self.search_key = lambda k: \
-                corpus.tokens[tmpl_feat][index[k] + tmpl_delta]
+                corpus.tokens[tmpl.feature][index[k] + tmpl.offset]
         elif len(self.template) == 2:
-            [(tmpl_feat1, tmpl_delta1), (tmpl_feat2, tmpl_delta2)] = list(template)
+            [tmpl1, tmpl2] = list(template)
             self.search_key = lambda k: (
-                corpus.tokens[tmpl_feat1][index[k] + tmpl_delta1],
-                corpus.tokens[tmpl_feat2][index[k] + tmpl_delta2],
+                corpus.tokens[tmpl1.feature][index[k] + tmpl1.offset],
+                corpus.tokens[tmpl2.feature][index[k] + tmpl2.offset],
             )
         else:
             # The above two are just optimisations of the following generic search key:
             self.search_key = lambda k: tuple(
-                corpus.tokens[feat][index[k] + delta] 
-                for feat, delta in template
+                corpus.tokens[tmpl.feature][index[k] + tmpl.offset] 
+                for tmpl in template
             )
 
     def __str__(self) -> str:
@@ -121,7 +162,7 @@ class Index:
 
     def lookup_instance(self, instance:Instance) -> Tuple[int, int]:
         search_key = self.search_key
-        instance_key = instance.values()
+        instance_key = instance.values
         if len(instance_key) == 1: instance_key = instance_key[0]
 
         start, end = 0, len(self)-1
@@ -164,8 +205,8 @@ class Index:
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, min_frequency:int=0, no_sentence_break:bool=True, use_sqlite:bool=False, keep_tmpfiles:bool=False):
-        logging.debug(f"Building index for {template}...")
+    def build(corpus:Corpus, template:Template, min_frequency:int=0, use_sqlite:bool=False, keep_tmpfiles:bool=False):
+        logging.debug(f"Building index for {template}")
         index_path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
 
@@ -175,8 +216,8 @@ class Index:
         unary_indexes : List[Index] = []
         if min_frequency > 0 and len(template) > 1:
             unary_indexes = [
-                Index(corpus, Template([(feat, 0)])) 
-                for (feat, _pos) in template
+                Index(corpus, Template([TemplateLiteral(0, tmpl.feature)])) 
+                for tmpl in template
             ]
 
         def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
@@ -200,22 +241,18 @@ class Index:
 
         def generate_positions():
             with progress_bar(range(index_size), desc="Collecting positions") as pbar:
-                if no_sentence_break and maxdelta > 0:
-                    # Don't generate instances that cross sentence borders
-                    sentences = corpus.sentences()
-                    sent = next(sentences)
-                    start, stop = sent.start, sent.stop-maxdelta
+                if template.literals:
                     for pos in pbar:
-                        if pos >= stop:
-                            sent = next(sentences)
-                            start, stop = sent.start, sent.stop-maxdelta
-                        if start <= pos:
-                            instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
-                            if all(instance_values):
-                                yield pos, instance_values
+                        instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
+                        if all(instance_values) and all(
+                                    (corpus.tokens[lit.feature][pos+lit.offset] == lit.value) != lit.negative
+                                    for lit in template.literals
+                                ):
+                            yield pos, instance_values
+
                 else:
                     for pos in pbar:
-                        instance_values = [corpus.tokens[feat][pos+i] for (feat, i) in template]
+                        instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
                         if all(instance_values):
                             yield pos, instance_values
 
@@ -223,7 +260,7 @@ class Index:
             dbfile = index_path.parent / 'index.db.tmp'
             with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
                 skipped_instances : int = 0
-                def generate_db_rows() -> Iterator[Tuple[int, ...]]:
+                def generate_db_rows() -> Iterator[Tuple[int,...]]:
                     nonlocal skipped_instances
                     for pos, instance_values in generate_positions():
                         if unary_indexes and not all_unary_min_frequency(instance_values):
@@ -262,19 +299,18 @@ class Index:
                 nr_rows = len(suffix_array)
 
             # sort the suffix array
-            feature_positions = list(template)
-            feat, delta = feature_positions[0]
-            assert delta == 0   # delta for the first feature should always be 0
-            text1 = corpus.tokens[feat]
-            if len(feature_positions) == 1:
-                sortkey = lambda pos: (text1[pos], pos)
-            elif len(feature_positions) == 2:
-                feat, delta = feature_positions[1]
-                text2 = corpus.tokens[feat]
-                sortkey = lambda pos: (text1[pos], text2[pos+delta], pos)
+            lookups = [(corpus.tokens[tmpl.feature], tmpl.offset) for tmpl in template]
+            if len(template) == 1:
+                [(lookup1, offset1)] = lookups
+                assert offset1 == 0   # delta for the first feature should always be 0
+                sortkey = lambda pos: (lookup1[pos], pos)
+            elif len(template) == 2:
+                [(lookup1, offset1), (lookup2, offset2)] = lookups
+                assert offset1 == 0   # delta for the first feature should always be 0
+                sortkey = lambda pos: (lookup1[pos], lookup2[pos+offset2], pos)
             else:
                 # the provious sortkeys above are just optimisations of this generic one:
-                sortkey = lambda pos: (tuple(corpus.tokens[feat][pos+delta] for feat, delta in feature_positions), pos)
+                sortkey = lambda pos: (tuple(lookup[pos+offset] for lookup, offset in lookups), pos)
 
             with DiskIntArray(index_path) as suffix_array:
                 import sort

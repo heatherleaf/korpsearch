@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import logging
-from typing import BinaryIO, List, Tuple, Set, Dict, Iterator, Sequence
+from typing import BinaryIO, List, Set, Dict, Iterator, Sequence
 from types import TracebackType
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
@@ -17,7 +17,7 @@ class Corpus:
     features_file = 'features.cfg'
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
-    sentence_feature = 'sentence'
+    sentence_feature = 's'
     sentence_start_value = b'S'
     empty_value = b''
 
@@ -68,6 +68,16 @@ class Corpus:
         end = sents[n+1] if n+1 < nsents else nsents
         return slice(start, end)
 
+    def render_position(self, pos:int, features_to_show:Sequence[str]=(), context:int=10) -> str:
+        if not features_to_show:
+            features_to_show = self.features[:1]
+        # positions = range(pos-context, pos+context+1)
+        positions = range(pos, pos+context)
+        return ' '.join(
+            '/'.join(str(self.tokens[feat][pos]) for feat in features_to_show) 
+            for pos in positions
+        )
+
     def render_sentence(self, sent:int, features_to_show:Sequence[str]=()) -> str:
         if not features_to_show:
             features_to_show = self.features[:1]
@@ -100,7 +110,7 @@ class Corpus:
 
     @staticmethod
     def build_from_csv(basedir:Path, csv_corpusfile:Path):
-        logging.debug(f"Building corpus index...")
+        logging.debug(f"Building corpus index")
         corpus : BinaryIO = open(csv_corpusfile, 'rb')
         corpus.seek(0, 2)
         csv_filesize = corpus.tell()

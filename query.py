@@ -1,122 +1,135 @@
 
 import re
-from typing import List, Dict, Tuple, Set, Iterator
+import itertools
+from typing import List, Dict, Tuple, Set, Iterator, Sequence
 
-from index import Template, Instance
+from index import Literal, TemplateLiteral, Template, Instance, Index
 from corpus import Corpus
 from disk import InternedString
 
+
 ################################################################################
 ## Queries
-
 
 class Query:
     query_regex = re.compile(r'^ (\[ ( [a-z]+   !?  = " [^"]+ " )* \])+ $', re.X)
     token_regex = re.compile(r'       ([a-z]+) (!?) = "([^"]+)"          ', re.X)
 
     corpus : Corpus
-    query : List[List[Tuple[str, InternedString, bool]]]
+    literals : List[Literal]
     features : Set[str]
-    featured_query : Dict[str, List[Tuple[int, InternedString, bool]]]
+    featured_query : Dict[str, List[Tuple[bool, int, InternedString]]]
+    # no_sentence_breaks : bool
 
-    def __init__(self, corpus:Corpus, querystr:str, no_sentence_break:bool=True):
+    def __init__(self, corpus:Corpus, literals:Sequence[Literal], no_sentence_breaks=True):
         self.corpus = corpus
-        self.query = [[
-                (feat, self.corpus.intern(feat, value), positive)
-                for feat, value, positive in token
-            ]
-            for token in Query.parse(querystr, no_sentence_break=no_sentence_break)
-        ]
-        self.features = {feat for token in self.query for feat, _, _ in token}
+        self.literals = sorted(literals)
+        self.features = {lit.feature for lit in self.literals}
+        # self.no_sentence_breaks = no_sentence_breaks
+
+        # We cannot handle non-atomic querues with only negative literals
+        # -A & -B == -(A v B), since we cannot handle union (yet)
+        if len(self) > 1 and self.is_negative():
+            raise ValueError(f"Cannot handle non-atomic queries with no positive literals: {self}")
 
         # This is a variant of self.query, optimised for checking a query at a corpus position:
         self.featured_query = {f: [] for f in self.features}
-        for offset, tok in enumerate(self.query):
-            for feat, value, positive in tok:
-                self.featured_query[feat].append((offset, value, positive))
-
-    @staticmethod
-    def parse(querystr:str, no_sentence_break:bool=False) -> List[List[Tuple[str, bytes, bool]]]:
-        querystr = querystr.replace(' ', '')
-        if not Query.query_regex.match(querystr):
-            raise ValueError(f"Error in query: {querystr!r}")
-        tokens = querystr.split('][')
-        query = []
-        for offset, tok in enumerate(tokens):
-            query.append([])
-            for match in Query.token_regex.finditer(tok):
-                feat, excl, value = match.groups()
-                positive = excl != '!'
-                query[-1].append((feat, value.encode(), positive))
-            if no_sentence_break and offset > 0:
-                query[-1].append((Corpus.sentence_feature, Corpus.sentence_start_value, False))
-        return query
+        for lit in self.literals:
+            self.featured_query[lit.feature].append(
+                (lit.negative, lit.offset, lit.value)
+            )
 
     def __str__(self) -> str:
-        return ' '.join(
-            '[' + ' '.join(
-                feat + ('=' if positive else '!=') + str(val)
-                for feat, val, positive in subq
-            ) + ']'
-            for subq in self.query
-        )
+        return '[' + ']&['.join(map(str, self.literals)) + ']'
 
-    def subqueries(self) -> Iterator[Tuple[Template, Instance, int, bool]]:
-        # Pairs of tokens, only positive!
-        for offset, tok in enumerate(self.query):
-            for feat, value, positive in tok:
-                for dist in range(1, len(self.query)-offset):
-                    for feat1, value1, positive1 in self.query[offset+dist]:
-                        if positive and positive1:
-                            yield (
-                                Template([(feat, 0), (feat1, dist)]),
-                                Instance([value, value1]),
-                                offset,
-                                positive,
-                            )
-        # Single tokens: yield subqueries after more complex queries!
-        for offset, tok in enumerate(self.query):
-            for feat, value, positive in tok:
-                yield (
-                    Template([(feat, 0)]),
-                    Instance([value]),
-                    offset,
-                    positive,
-                )
+    def __len__(self) -> int:
+        return len(self.literals)
+
+    def offset(self) -> int:
+        if self.is_negative():
+            return min(lit.offset for lit in self.negative_literals())
+        else:
+            return min(lit.offset for lit in self.positive_literals())
+
+    def is_negative(self) -> bool:
+        return not self.positive_literals()
+
+    def positive_literals(self) -> List[Literal]:
+        return [lit for lit in self.literals if not lit.negative]
+
+    def negative_literals(self) -> List[Literal]:
+        return [lit for lit in self.literals if lit.negative]
+
+    def template(self) -> Template:
+        if self.is_negative():
+            return Template(
+                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.negative_literals()],
+            )
+        else:
+            return Template(
+                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
+                [Literal(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
+            )
+
+    def instance(self) -> Instance:
+        if self.is_negative():
+            return Instance([lit.value for lit in self.negative_literals()])
+        else:
+            return Instance([lit.value for lit in self.positive_literals()])
+
+    def index(self) -> Index:
+        return Index(self.corpus, self.template())
+
+    def subqueries(self) -> Iterator['Query']:
+        # Subqueries are generated in decreasing order of complexity
+        for n in reversed(range(len(self))):
+            for literals in itertools.combinations(self.literals, n+1):
+                try:
+                    yield Query(self.corpus, literals)
+                except ValueError:
+                    pass
+
+    def subsumed_by(self, others:List['Query']) -> bool:
+        other_literals = {lit for other_query in others for lit in other_query.literals}
+        return set(self.literals).issubset(other_literals)
 
     def check_sentence(self, sent:int) -> bool:
         positions = self.corpus.lookup_sentence(sent)
+        min_offset = min(lit.offset for lit in self.literals)
+        max_offset = max(lit.offset for lit in self.literals)
         return any(
             self.check_position(pos)
-            for pos in range(positions.start, positions.stop - len(self.query) + 1)
+            for pos in range(positions.start - min_offset, positions.stop - max_offset)
         )
 
     def check_position(self, pos:int) -> bool:
         # return all(
-        #     self.corpus.words[feat][pos+i] == val
-        #     for i, token in enumerate(self.query)
-        #     for feat, val in token
+        #     (self.corpus.tokens[lit.feature][pos + lit.offset] == lit.value) != lit.negative
+        #     for lit in self.literals
         # )
         # This is an optimised (but less readable) version of the code above:
-        for feat, values in self.featured_query.items():
-            fsent = self.corpus.tokens[feat]
-            if not all((fsent[pos+i] == val) == positive for i, val, positive in values):
+        for feature, values in self.featured_query.items():
+            lookup = self.corpus.tokens[feature]
+            if any((lookup[pos+offset] == value) == negative for negative, offset, value in values):
                 return False
         return True
 
     @staticmethod
-    def is_subquery(
-            subtemplate:Template, subinstance:Instance, suboffset:int, subpositive:bool,
-            template:Template, instance:Instance, offset:int, positive:bool,
-        ):
-        if not (subpositive and positive):
-            return False
-        positions : List[int] = sorted({pos for _, pos in template})
-        QuerySet = Set[Tuple[str, int, InternedString]]
-        query : QuerySet = {(feat, pos+offset, val) for ((feat, pos), val) in zip(template, instance)}
-        for base in positions:
-            subquery : QuerySet = {(feat, base+pos+suboffset, val) for ((feat, pos), val) in zip(subtemplate, subinstance)}
-            if subquery.issubset(query):
-                return True
-        return False
-
+    def parse(corpus:Corpus, querystr:str, no_sentence_breaks:bool=False) -> 'Query':
+        querystr = querystr.replace(' ', '')
+        if not Query.query_regex.match(querystr):
+            raise ValueError(f"Error in query: {querystr!r}")
+        tokens = querystr.split('][')
+        query : List[Literal] = []
+        for offset, token in enumerate(tokens):
+            for match in Query.token_regex.finditer(token):
+                feature, negated, value = match.groups()
+                negative = (negated == '!')
+                value = corpus.intern(feature, value.encode())
+                query.append(Literal(negative, offset, feature, value))
+        if not no_sentence_breaks:
+            sfeature = corpus.sentence_feature
+            svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+            for offset in range(1, len(tokens)):
+                query.append(Literal(True, offset, sfeature, svalue))
+        return Query(corpus, query, no_sentence_breaks)

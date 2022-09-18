@@ -3,10 +3,10 @@ import shutil
 import argparse
 import itertools
 from pathlib import Path
-from typing import List
+from typing import Iterator
 import logging
 
-from index import Template, Index
+from index import Literal, TemplateLiteral, Template, Index
 from corpus import Corpus
 from util import setup_logger
 
@@ -35,8 +35,8 @@ def main(args:argparse.Namespace):
             indexdir.mkdir(exist_ok=True)
             ctr = 0
             for template in itertools.chain(
-                                yield_templates(args.features, args.max_dist),
-                                map(Template.parse, args.templates),
+                                yield_templates(corpus, args),
+                                [Template.parse(corpus, tmplstr) for tmplstr in args.templates],
                             ):
                 Index.build(
                     corpus, template, 
@@ -48,13 +48,25 @@ def main(args:argparse.Namespace):
             logging.info(f"Created {ctr} query indexes")
 
 
-def yield_templates(features:List[str], max_dist:int):
-    for feat in features:
-        yield Template([(feat, 0)])
-    for feat in features:
-        for feat1 in features:
-            for dist in range(1, max_dist+1):
-                yield Template([(feat, 0), (feat1, dist)])
+def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template]:
+    if not args.no_sentence_breaks:
+        yield Template([TemplateLiteral(0, corpus.sentence_feature)])
+    for feat in args.features:
+        yield Template([TemplateLiteral(0, feat)])
+    for feat in args.features:
+        for feat1 in args.features:
+            for dist in range(1, args.max_dist+1):
+                template = [TemplateLiteral(0, feat), TemplateLiteral(dist, feat1)]
+                if not args.no_sentence_breaks:
+                    sfeature = corpus.sentence_feature
+                    svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+                    literals = [
+                        Literal(True, offset, sfeature, svalue)
+                        for offset in range(1, dist+1)
+                    ]
+                    yield Template(template, literals)
+                else:
+                    yield Template(template)
 
 
 ################################################################################
@@ -70,18 +82,24 @@ parser.add_argument('--corpus-index', '-c', action='store_true',
 parser.add_argument('--features', '-f', nargs='+', default=[],
     help='build all possible (unary and binary) query indexes for the given features')
 parser.add_argument('--templates', '-t', nargs='+', default=[],
-    help='build query indexes for the given templates: e.g., pos.0 (unary index), or word.0-pos.2 (binary index)')
+    help='build query indexes for the given templates: e.g., pos:0 (unary index), or word:0+pos:2 (binary index)')
 
 parser.add_argument('--max-dist', type=int, default=2, 
-                    help='[only with the --features option] max distance between token pairs (default: 2)')
+    help='[only with the --features option] max distance between token pairs (default: 2)')
 parser.add_argument('--min-frequency', type=int, default=0,
-                    help='[only for binary indexes] min unary frequency for all values in a binary instance')
+    help='[only for binary indexes] min unary frequency for all values in a binary instance (default: 0)')
+parser.add_argument('--no-sentence-breaks', action='store_true', 
+    help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 
-parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.DEBUG, help='verbose output')
-parser.add_argument('--silent', action="store_const", dest="loglevel", const=logging.WARNING, default=logging.INFO, help='silent (no output)')
+parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, 
+    help='verbose output')
+parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO, 
+    help='silent (no output)')
 
-parser.add_argument('--keep-tmpfiles', action='store_true', help='keep temporary database files')
-parser.add_argument('--no-sqlite', action='store_true', help="don't use sqlite to build suffix arrays (probably slower)")
+parser.add_argument('--keep-tmpfiles', action='store_true', 
+    help='keep temporary database files')
+parser.add_argument('--no-sqlite', action='store_true', 
+    help="don't use sqlite to build suffix arrays, instead sort using quicksort (probably slower)")
 
 
 if __name__ == '__main__':
