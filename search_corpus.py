@@ -33,7 +33,7 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         try:
             results : IndexSet = index.search(subq.instance(), offset=subq.offset())
         except KeyError:
-            logging.debug(f"    -- not found: {subq} = {subq.instance()} in {index}")
+            logging.debug(f"    -- {subq.instance()} not found: {subq}")
             continue
         search_results.append((subq, results))
         logging.info(f"    {subq!s:{maxwidth}} = {results}")
