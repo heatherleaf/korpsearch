@@ -1,6 +1,7 @@
 
 from pathlib import Path
 from typing import Tuple, List, Iterator, Callable, Union, Sequence, NamedTuple
+from functools import total_ordering
 from types import TracebackType
 import logging
 
@@ -54,6 +55,7 @@ class TemplateLiteral(NamedTuple):
             raise ValueError(f"Ill-formed template literal: {litstr}")
 
 
+@total_ordering
 class Template:
     template : Tuple[TemplateLiteral,...]
     literals : Tuple[Literal,...]
@@ -78,6 +80,16 @@ class Template:
     def __len__(self) -> int:
         return len(self.template)
 
+    def __eq__(self, other:'Template') -> bool:
+        return isinstance(other, Template) and \
+            (self.template, self.literals) == (other.template, other.literals)
+
+    def __lt__(self, other:'Template') -> bool:
+        return (len(self), self.template, self.literals) < (len(other), other.template, other.literals)
+
+    def __hash__(self) -> int:
+        return hash((self.template, self.literals))
+
     @staticmethod
     def parse(corpus:Corpus, template_str:str) -> 'Template':
         try:
@@ -96,6 +108,7 @@ class Template:
             )
 
 
+@total_ordering
 class Instance:
     values : Tuple[InternedString,...]
 
@@ -111,6 +124,15 @@ class Instance:
 
     def __len__(self) -> int:
         return len(self.values)
+
+    def __eq__(self, other:'Instance') -> bool:
+        return isinstance(other, Instance) and self.values == other.values
+
+    def __lt__(self, other:'Instance') -> bool:
+        return self.values < other.values
+
+    def __hash__(self) -> int:
+        return hash(self.values)
 
 
 ################################################################################

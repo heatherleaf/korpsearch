@@ -33,27 +33,25 @@ def main(args:argparse.Namespace):
     if args.features or args.templates:
         with Corpus(base) as corpus:
             indexdir.mkdir(exist_ok=True)
-            ctr = 0
-            for template in itertools.chain(
-                                yield_templates(corpus, args),
-                                [Template.parse(corpus, tmplstr) for tmplstr in args.templates],
-                            ):
+            templates = sorted(set(yield_templates(corpus, args)))
+            logging.debug(f"Creating indexes: {', '.join(map(str, templates))}")
+            for template in templates:
                 Index.build(
                     corpus, template, 
                     min_frequency=args.min_frequency, 
                     keep_tmpfiles=args.keep_tmpfiles, 
                     use_sqlite=not args.no_sqlite,
                 )
-                ctr += 1
-            logging.info(f"Created {ctr} query indexes")
+            logging.info(f"Created {len(templates)} query indexes")
 
 
 def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template]:
     if not args.no_sentence_breaks:
         yield Template([TemplateLiteral(0, corpus.sentence_feature)])
+    for tmplstr in args.templates:
+        yield Template.parse(corpus, tmplstr)
     for feat in args.features:
         yield Template([TemplateLiteral(0, feat)])
-    for feat in args.features:
         for feat1 in args.features:
             for dist in range(1, args.max_dist+1):
                 template = [TemplateLiteral(0, feat), TemplateLiteral(dist, feat1)]
