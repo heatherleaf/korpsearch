@@ -118,10 +118,6 @@ parser.add_argument('corpus', type=Path,
     help='corpus file in .csv format')
 parser.add_argument('query', type=str, 
     help='the query')
-parser.add_argument('--filter', '-f', action='store_true', 
-    help='filter the final results (might take time, but should not be necessary)')
-parser.add_argument('--sentences', action='store_true', 
-    help='convert the matches to sentences')
 
 parser.add_argument('--print', '-p', action='store_true', 
     help='output the result(s), one per line')
@@ -139,6 +135,10 @@ parser.add_argument('--no-sentence-breaks', action='store_true',
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 parser.add_argument('--internal-intersection', action='store_true', 
     help='use internal (slow) intersection implementation')
+parser.add_argument('--filter', action='store_true', 
+    help='filter the final results (should not be necessary, and can take time)')
+parser.add_argument('--sentences', action='store_true', 
+    help='convert the matches to sentences (should not be necessary)')
 
 if __name__ == '__main__':
     args : argparse.Namespace = parser.parse_args()
