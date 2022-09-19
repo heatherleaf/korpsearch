@@ -1,6 +1,6 @@
 
 from pathlib import Path
-from typing import Tuple, List, Iterator, Callable, Union, Sequence, NamedTuple
+from typing import Tuple, List, Iterator, Callable, Union, Collection, Sequence, NamedTuple
 from functools import total_ordering
 from types import TracebackType
 import logging
@@ -60,13 +60,14 @@ class Template:
     template : Tuple[TemplateLiteral,...]
     literals : Tuple[Literal,...]
 
-    def __init__(self, template:Sequence[TemplateLiteral], literals:Sequence[Literal]=[]):
-        self.template = tuple(sorted(template))
-        self.literals = tuple(sorted(literals))
-        assert all(sorted(x) == sorted(set(x)) for x in (template, literals)), f"Duplicate literal(s): {self}"
-        assert len(template) > 0,                                              f"Empty template: {self}"
-        assert min(t.offset for t in template) == 0,                           f"Minimum offset must be 0: {self}"
-        assert all(lit.negative for lit in literals),                          f"Positive template literal(s): {self}"
+    def __init__(self, template:Sequence[TemplateLiteral], literals:Collection[Literal]=[]):
+        self.template = tuple(template)
+        self.literals = tuple(sorted(set(literals)))
+        assert self.template == tuple(sorted(set(self.template))), f"Unsorted template: {self}"
+        assert self.literals == tuple(sorted(literals)),           f"Duplicate literal(s): {self}"
+        assert len(self.template) > 0,                             f"Empty template: {self}"
+        assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0: {self}"
+        assert all(lit.negative for lit in self.literals),         f"Positive template literal(s): {self}"
 
     def maxdelta(self):
         return max(t.offset for t in self.template)

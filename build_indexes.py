@@ -46,25 +46,36 @@ def main(args:argparse.Namespace):
 
 
 def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template]:
-    if not args.no_sentence_breaks:
-        yield Template([TemplateLiteral(0, corpus.sentence_feature)])
-    for tmplstr in args.templates:
-        yield Template.parse(corpus, tmplstr)
-    for feat in args.features:
-        yield Template([TemplateLiteral(0, feat)])
-        for feat1 in args.features:
-            for dist in range(1, args.max_dist+1):
-                template = [TemplateLiteral(0, feat), TemplateLiteral(dist, feat1)]
-                if not args.no_sentence_breaks:
-                    sfeature = corpus.sentence_feature
-                    svalue = corpus.intern(sfeature, corpus.sentence_start_value)
-                    literals = [
-                        Literal(True, offset, sfeature, svalue)
-                        for offset in range(1, dist+1)
-                    ]
-                    yield Template(template, literals)
-                else:
-                    yield Template(template)
+    sfeature = corpus.sentence_feature
+    svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+    if args.templates:
+        for tmplstr in args.templates:
+            tmpl = Template.parse(corpus, tmplstr)
+            if args.no_sentence_breaks:
+                yield tmpl
+            else:
+                dist = tmpl.maxdelta()
+                literals = set(tmpl.literals) | {
+                    Literal(True, offset, sfeature, svalue)
+                    for offset in range(1, dist+1)
+                }
+                yield Template(tmpl.template, literals)
+    if args.features:
+        if not args.no_sentence_breaks:
+            yield Template([TemplateLiteral(0, corpus.sentence_feature)])
+        for feat in args.features:
+            yield Template([TemplateLiteral(0, feat)])
+            for feat1 in args.features:
+                for dist in range(1, args.max_dist+1):
+                    template = [TemplateLiteral(0, feat), TemplateLiteral(dist, feat1)]
+                    if args.no_sentence_breaks:
+                        yield Template(template)
+                    else:
+                        literals = {
+                            Literal(True, offset, sfeature, svalue)
+                            for offset in range(1, dist+1)
+                        }
+                        yield Template(template, literals)
 
 
 ################################################################################
