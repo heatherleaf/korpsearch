@@ -23,6 +23,10 @@ except ModuleNotFoundError:
 IndexSetValuesType = Union[DiskIntArray, List[int]]
 
 class IndexSet:
+    # if the sets have very uneven size, use __contains__ on the larger set
+    # instead of normal set intersection / difference
+    _min_size_difference_for_contains = 100
+
     start : int
     size : int
     offset : int
@@ -62,13 +66,19 @@ class IndexSet:
 
     def intersection(self, other:'IndexSet', use_internal:bool=False) -> List[int]:
         """Take the intersection of two sorted arrays."""
-        if (isinstance(self.values, DiskIntArray) and 
-            isinstance(other.values, DiskIntArray) and 
-            len(self.values) > 0 and len(other.values) > 0 and
-            self.values._byteorder == other.values._byteorder == sys.byteorder and
-            self.values._elemsize == other.values._elemsize and
-            not use_internal
-            ):
+        # We assume that self is smaller than other!
+        if len(other) > len(self) * self._min_size_difference_for_contains:
+            # Complexity: O(self * log(other))
+            return [elem for elem in self if elem in other]
+
+        # Complexity: O(self + other)
+        elif (isinstance(self.values, DiskIntArray) and 
+              isinstance(other.values, DiskIntArray) and 
+              len(self) > 0 and len(other) > 0 and
+              self.values._byteorder == other.values._byteorder == sys.byteorder and
+              self.values._elemsize == other.values._elemsize and
+              not use_internal
+              ):
             try:
                 return fast_intersection.intersection(
                     self.values, self.start, self.size, self.offset,
@@ -103,13 +113,19 @@ class IndexSet:
 
     def difference(self, other:'IndexSet', use_internal:bool=False) -> List[int]:
         """Take the difference between this set and another."""
-        if (isinstance(self.values, DiskIntArray) and 
-            isinstance(other.values, DiskIntArray) and 
-            len(self.values) > 0 and len(other.values) > 0 and
-            self.values._byteorder == other.values._byteorder == sys.byteorder and
-            self.values._elemsize == other.values._elemsize and
-            not use_internal
-            ):
+        # We assume that self is smaller than other!
+        if len(other) > len(self) * self._min_size_difference_for_contains:
+            # Complexity: O(self * log(other))
+            return [elem for elem in self if elem not in other]
+
+        # Complexity: O(self + other)
+        elif (isinstance(self.values, DiskIntArray) and 
+              isinstance(other.values, DiskIntArray) and 
+              len(self) > 0 and len(other) > 0 and
+              self.values._byteorder == other.values._byteorder == sys.byteorder and
+              self.values._elemsize == other.values._elemsize and
+              not use_internal
+              ):
             try:
                 return fast_intersection.difference(
                     self.values, self.start, self.size, self.offset,
