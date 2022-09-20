@@ -247,6 +247,8 @@ class Index:
             ]
 
         def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
+            # This is an optimised version of:
+            # >>> start, end = unary.lookup_instance(x); return end-start >= min_frequency
             searchkey = unary.search_key
             start, end = 0, len(unary)-1
             while start <= end:
@@ -261,6 +263,21 @@ class Index:
 
         assert all(lit.negative for lit in template.literals), \
             f"Cannot handle positive template literals: {template}"
+        if len(template.literals) == 0:
+            test_literals = lambda pos: True
+        elif len(template.literals) == 1:
+            [(_neg1, off1, feat1, val1)] = template.literals
+            test_literals = lambda pos: corpus.tokens[feat1][pos+off1] != val1
+        elif len(template.literals) == 2:
+            [(_neg1, off1, feat1, val1), (_neg2, off2, feat2, val2)] = template.literals
+            test_literals = lambda pos: \
+                corpus.tokens[feat1][pos+off1] != val1 and corpus.tokens[feat2][pos+off2] != val2
+        else:
+            # The above three are just optimisations of the following generic test function:
+            test_literals = lambda pos: all(
+                corpus.tokens[lit.feature][pos+lit.offset] != lit.value
+                for lit in template.literals
+            )
 
         tmpfile = index_path.parent / 'index.tmp'
         bytesize = min_bytes_to_store_values(index_size)
@@ -270,11 +287,7 @@ class Index:
             skipped_instances : int = 0
             for pos in progress_bar(range(index_size), desc="Collecting positions"):
                 instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
-                if all(instance_values) and all(
-                            # We can only handle negative literals:
-                            corpus.tokens[lit.feature][pos+lit.offset] != lit.value
-                            for lit in template.literals
-                        ):
+                if all(instance_values) and test_literals(pos):
                     if unary_indexes and not all(
                                 unary_min_frequency(unary, val, min_frequency)
                                 for val, unary in zip(instance_values, unary_indexes)
