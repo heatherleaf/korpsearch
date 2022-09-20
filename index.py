@@ -5,7 +5,7 @@ from functools import total_ordering
 from types import TracebackType
 import logging
 
-from disk import DiskIntArray, DiskIntArrayBuilder, InternedString
+from disk import DiskIntArray, DiskIntArrayBuilder, InternedString, DiskFixedBytesArray
 from corpus import Corpus
 from indexset import IndexSet
 from util import progress_bar
@@ -268,7 +268,7 @@ class Index:
         assert all(lit.negative for lit in template.literals), \
             f"Cannot handle positive template literals: {template}"
 
-        def generate_positions():
+        def generate_positions() -> Iterator[Tuple[int, List[InternedString]]]:
             with progress_bar(range(index_size), desc="Collecting positions") as pbar:
                 for pos in pbar:
                     instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
@@ -278,9 +278,9 @@ class Index:
                             ):
                         yield pos, instance_values
 
+        tmpfile = index_path.parent / 'index.db.tmp'
         if use_sqlite:
-            dbfile = index_path.parent / 'index.db.tmp'
-            with IndexBuilderDB(dbfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
+            with IndexBuilderDB(tmpfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
                 skipped_instances : int = 0
                 def generate_db_rows() -> Iterator[Tuple[int,...]]:
                     nonlocal skipped_instances
@@ -305,45 +305,43 @@ class Index:
                 logging.info(f"Built index for {template}, with {nr_rows} rows, {nr_instances} instances")
 
         else:
-            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-                if unary_indexes:
-                    skipped_instances : int = 0
-                    for pos, instance_values in generate_positions():
-                        if unary_indexes and not all_unary_min_frequency(instance_values):
-                            skipped_instances += 1
-                        else:
-                            suffix_array.append(pos)
-                    if skipped_instances:
-                        logging.debug(f"Skipped {skipped_instances} low-frequency instances")
-                else:
-                    for pos, _ in generate_positions():
-                        suffix_array.append(pos)
-                nr_rows = len(suffix_array)
+            bytesize = DiskIntArrayBuilder._min_bytes_to_store_values(index_size)
+            rowsize = bytesize * (1 + len(template))
+            with open(tmpfile, 'wb') as OUT:
+                skipped_instances : int = 0
+                for pos, instance_values in generate_positions():
+                    if unary_indexes and not all_unary_min_frequency(instance_values):
+                        skipped_instances += 1
+                    else:
+                        for val in instance_values:
+                            OUT.write(val.index.to_bytes(bytesize, 'big'))
+                        OUT.write(pos.to_bytes(bytesize, 'big'))
+                if skipped_instances:
+                    logging.info(f"Skipped {skipped_instances} low-frequency instances")
+                nr_rows = OUT.tell() // rowsize
 
-            # sort the suffix array
-            lookups = [(corpus.tokens[tmpl.feature], tmpl.offset) for tmpl in template]
-            if len(template) == 1:
-                [(lookup1, offset1)] = lookups
-                assert offset1 == 0   # delta for the first feature should always be 0
-                sortkey = lambda pos: (lookup1[pos], pos)
-            elif len(template) == 2:
-                [(lookup1, offset1), (lookup2, offset2)] = lookups
-                assert offset1 == 0   # delta for the first feature should always be 0
-                sortkey = lambda pos: (lookup1[pos], lookup2[pos+offset2], pos)
-            else:
-                # the provious sortkeys above are just optimisations of this generic one:
-                sortkey = lambda pos: (tuple(lookup[pos+offset] for lookup, offset in lookups), pos)
-
-            with DiskIntArray(index_path) as suffix_array:
+            # bsort is really fast, but it hangs on some files... https://github.com/yoyyyyo/bsort
+            # subprocess.run(['bsort/bsort', '-k', str(rowsize), '-r', str(rowsize), tmpfile])
+            logging.debug(f"Sorting {nr_rows} rows")
+            with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
                 import sort
                 sort.quicksort(
-                    suffix_array,
-                    key = sortkey, 
+                    bytes_array,
                     pivotselector = sort.random_pivot, 
                     # pivotselector = sort.median_of_three,
                     # pivotselector = sort.tukey_ninther,
                     cutoff = 100_000,
                 )
+
+            logging.debug(f"Creating suffix array")
+            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+                with open(tmpfile, 'rb') as IN:
+                    while (row := IN.read(rowsize)):
+                        pos = int.from_bytes(row[-bytesize:], 'big')
+                        suffix_array.append(pos)
+
+            if not keep_tmpfiles:
+                tmpfile.unlink()
 
             logging.info(f"Built index for {template}, with {nr_rows} rows")
 
@@ -357,7 +355,6 @@ class IndexBuilderDB:
     dbfile : Path
     keep_dbfile : bool
     con : sqlite3.Connection
-    template : Template
     columns : List[str]
 
     def __init__(self, dbfile:Path, width:int, keep_dbfile:bool=False):
