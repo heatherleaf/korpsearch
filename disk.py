@@ -8,7 +8,7 @@ from mmap import mmap
 from array import array
 import itertools
 from functools import total_ordering
-from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable, MutableSequence
+from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable, Sequence, MutableSequence
 from types import TracebackType
 from abc import abstractmethod
 
@@ -18,7 +18,7 @@ from util import ByteOrder, add_suffix, min_bytes_to_store_values
 ################################################################################
 ## On-disk arrays of numbers
 
-class DiskIntArray:
+class DiskIntArray(Sequence):
     array_suffix = '.ia'
     config_suffix = '.ia-cfg'
 
@@ -64,9 +64,6 @@ class DiskIntArray:
     @abstractmethod
     def __len__(self) -> int: pass
 
-    @abstractmethod
-    def __setitem__(self, i:int, val:int): pass
-
     @overload
     @abstractmethod
     def __getitem__(self, i:int) -> int: pass
@@ -105,9 +102,6 @@ class FastDiskIntArray(DiskIntArray):
     def __len__(self):
         return len(self.array)
 
-    def __setitem__(self, i, val):
-        self.array[i] = val
-
     def __getitem__(self, i):
         return self.array[i]
 
@@ -126,11 +120,6 @@ class SlowDiskIntArray(DiskIntArray):
 
     def __len__(self):
         return self._length
-
-    def __setitem__(self, i, val):
-        elemsize = self._elemsize 
-        pos = i * elemsize
-        self._mmap[pos : pos+elemsize] = val.to_bytes(length=elemsize, byteorder=self._byteorder)
 
     @overload
     def __getitem__(self, i:int) -> int: pass
@@ -245,11 +234,11 @@ class DiskFixedBytesArray(MutableSequence):
         self._mmap[start : start+elemsize] = val
 
     def __delitem__(self, i:int):
-        # Required by MutableSequence
+        # Required to be a MutableSequence, but mmap arrays cannot change size
         raise NotImplementedError
 
     def insert(self, i:int, val:bytes):
-        # Required by MutableSequence
+        # Required to be a MutableSequence, but mmap arrays cannot change size
         raise NotImplementedError
 
     @overload
@@ -422,7 +411,7 @@ class InternedString:
 ################################################################################
 ## On-disk arrays of interned strings
 
-class DiskStringArray:
+class DiskStringArray(Sequence):
     strings_suffix = '.sa'
 
     strings : StringCollection
