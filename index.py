@@ -1,5 +1,4 @@
 
-from pathlib import Path
 from typing import Tuple, List, Iterator, Callable, Union, Collection, Sequence, NamedTuple
 from functools import total_ordering
 from types import TracebackType
@@ -8,6 +7,7 @@ import logging
 from disk import DiskIntArray, DiskIntArrayBuilder, InternedString, DiskFixedBytesArray
 from corpus import Corpus
 from indexset import IndexSet
+import sort
 from util import progress_bar
 
 
@@ -231,7 +231,7 @@ class Index:
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, min_frequency:int=0, use_sqlite:bool=False, keep_tmpfiles:bool=False):
+    def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False):
         logging.debug(f"Building index for {template}")
         index_path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
@@ -259,143 +259,56 @@ class Index:
             end = start + min_frequency - 1
             return end < len(unary.index) and searchkey(end) == unary_key
 
-        def all_unary_min_frequency(instance_values) -> bool:
-            return all(
-                unary_min_frequency(unary, val, min_frequency)
-                for val, unary in zip(instance_values, unary_indexes)
-            )
-
         assert all(lit.negative for lit in template.literals), \
             f"Cannot handle positive template literals: {template}"
 
-        def generate_positions() -> Iterator[Tuple[int, List[InternedString]]]:
-            with progress_bar(range(index_size), desc="Collecting positions") as pbar:
-                for pos in pbar:
-                    instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
-                    if all(instance_values) and all(
-                                corpus.tokens[lit.feature][pos+lit.offset] != lit.value
-                                for lit in template.literals
+        tmpfile = index_path.parent / 'index.tmp'
+        bytesize = DiskIntArrayBuilder._min_bytes_to_store_values(index_size)
+        rowsize = bytesize * (1 + len(template))
+
+        with open(tmpfile, 'wb') as OUT:
+            skipped_instances : int = 0
+            for pos in progress_bar(range(index_size), desc="Collecting positions"):
+                instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
+                if all(instance_values) and all(
+                            # We can only handle negative literals:
+                            corpus.tokens[lit.feature][pos+lit.offset] != lit.value
+                            for lit in template.literals
+                        ):
+                    if unary_indexes and not all(
+                                unary_min_frequency(unary, val, min_frequency)
+                                for val, unary in zip(instance_values, unary_indexes)
                             ):
-                        yield pos, instance_values
-
-        tmpfile = index_path.parent / 'index.db.tmp'
-        if use_sqlite:
-            with IndexBuilderDB(tmpfile, len(template)+1, keep_dbfile=keep_tmpfiles) as con:
-                skipped_instances : int = 0
-                def generate_db_rows() -> Iterator[Tuple[int,...]]:
-                    nonlocal skipped_instances
-                    for pos, instance_values in generate_positions():
-                        if unary_indexes and not all_unary_min_frequency(instance_values):
-                            skipped_instances += 1
-                        else:
-                            yield tuple(value.index for value in instance_values) + (pos,)
-
-                con.insert_rows(generate_db_rows())
-                if skipped_instances:
-                    logging.info(f"Skipped {skipped_instances} low-frequency instances")
-
-                nr_rows, nr_instances = con.count_rows_and_instances()
-                logging.debug(f" --> created instance database, {nr_rows} rows, {nr_instances} instances")
-
-                with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-                    for row in progress_bar(con.row_iterator(), "Creating index", total=nr_rows):
-                        pos = row[-1]
-                        suffix_array.append(pos)
-
-                logging.info(f"Built index for {template}, with {nr_rows} rows, {nr_instances} instances")
-
-        else:
-            bytesize = DiskIntArrayBuilder._min_bytes_to_store_values(index_size)
-            rowsize = bytesize * (1 + len(template))
-            with open(tmpfile, 'wb') as OUT:
-                skipped_instances : int = 0
-                for pos, instance_values in generate_positions():
-                    if unary_indexes and not all_unary_min_frequency(instance_values):
                         skipped_instances += 1
                     else:
                         for val in instance_values:
                             OUT.write(val.index.to_bytes(bytesize, 'big'))
                         OUT.write(pos.to_bytes(bytesize, 'big'))
-                if skipped_instances:
-                    logging.info(f"Skipped {skipped_instances} low-frequency instances")
-                nr_rows = OUT.tell() // rowsize
+            if skipped_instances:
+                logging.info(f"Skipped {skipped_instances} low-frequency instances")
+            nr_rows = OUT.tell() // rowsize
 
-            # bsort is really fast, but it hangs on some files... https://github.com/yoyyyyo/bsort
-            # subprocess.run(['bsort/bsort', '-k', str(rowsize), '-r', str(rowsize), tmpfile])
-            logging.debug(f"Sorting {nr_rows} rows")
-            with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
-                import sort
-                sort.quicksort(
-                    bytes_array,
-                    pivotselector = sort.random_pivot, 
-                    # pivotselector = sort.median_of_three,
-                    # pivotselector = sort.tukey_ninther,
-                    cutoff = 100_000,
-                )
+        # bsort is really fast, but it hangs on some files... https://github.com/yoyyyyo/bsort
+        # subprocess.run(['bsort/bsort', '-k', str(rowsize), '-r', str(rowsize), tmpfile])
+        logging.debug(f"Sorting {nr_rows} rows")
+        with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
+            sort.quicksort(
+                bytes_array,
+                # pivotselector = sort.random_pivot, 
+                pivotselector = sort.median_of_three,
+                # pivotselector = sort.tukey_ninther,
+                cutoff = 100_000,
+            )
 
-            logging.debug(f"Creating suffix array")
-            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-                with open(tmpfile, 'rb') as IN:
-                    while (row := IN.read(rowsize)):
-                        pos = int.from_bytes(row[-bytesize:], 'big')
-                        suffix_array.append(pos)
+        logging.debug(f"Creating suffix array")
+        with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+            with open(tmpfile, 'rb') as IN:
+                while (row := IN.read(rowsize)):
+                    pos = int.from_bytes(row[-bytesize:], 'big')
+                    suffix_array.append(pos)
 
-            if not keep_tmpfiles:
-                tmpfile.unlink()
+        if not keep_tmpfiles:
+            tmpfile.unlink()
 
-            logging.info(f"Built index for {template}, with {nr_rows} rows")
-
-
-################################################################################
-## SQLite database for building the index
-
-import sqlite3
-
-class IndexBuilderDB:
-    dbfile : Path
-    keep_dbfile : bool
-    con : sqlite3.Connection
-    columns : List[str]
-
-    def __init__(self, dbfile:Path, width:int, keep_dbfile:bool=False):
-        self.dbfile = dbfile
-        self.keep_dbfile = keep_dbfile
-        self.con = sqlite3.connect(dbfile)
-
-        # Switch off journalling etc to speed up database creation
-        self.con.execute('pragma synchronous = off')
-        self.con.execute('pragma journal_mode = off')
-
-        # Create a table with `width` columns
-        self.columns = [f"c{i}" for i in range(width)]
-        column_types = [c + ' int' for c in self.columns]
-        self.con.execute(f"""
-            create table builder(
-                {','.join(column_types)},
-                primary key ({','.join(self.columns)})
-            ) without rowid
-        """)
-
-    def insert_rows(self, row_iterator):
-        places = ['?' for _ in self.columns]
-        self.con.executemany(f"insert or ignore into builder values({','.join(places)})", row_iterator)
-
-    def row_iterator(self) -> Iterator[Tuple[int,...]]:
-        return self.con.execute(f"select * from builder order by {','.join(self.columns)}")
-
-    def count_rows_and_instances(self) -> Tuple[int, int]:
-        nr_rows = self.con.execute(f"select count(*) from builder").fetchone()[0]
-        nr_instances = self.con.execute(f"select count(*) from (select distinct {','.join(self.columns[:-1])} from builder)").fetchone()[0]
-        return nr_rows, nr_instances
-
-    def close(self):
-        self.con.close()
-        if not self.keep_dbfile:
-            self.dbfile.unlink()
-
-    def __enter__(self) -> 'IndexBuilderDB':
-        return self
-
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
-        self.close()
+        logging.info(f"Built index for {template}, with {nr_rows} rows")
 

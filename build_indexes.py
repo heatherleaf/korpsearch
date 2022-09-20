@@ -58,7 +58,6 @@ def main(args:argparse.Namespace):
                         corpus, template, 
                         min_frequency=args.min_frequency, 
                         keep_tmpfiles=args.keep_tmpfiles, 
-                        use_sqlite=not args.no_sqlite,
                     )
                 logging.info(f"Created {len(templates)} query indexes")
 
@@ -127,9 +126,7 @@ parser.add_argument('--silent', action="store_const", dest='loglevel', const=log
     help='silent (no output)')
 
 parser.add_argument('--keep-tmpfiles', action='store_true', 
-    help='keep temporary database files')
-parser.add_argument('--no-sqlite', action='store_true', 
-    help="don't use sqlite to build suffix arrays, instead sort using quicksort (probably slower)")
+    help='keep temporary files')
 
 
 if __name__ == '__main__':
