@@ -8,7 +8,7 @@ from disk import DiskIntArray, DiskIntArrayBuilder, InternedString, DiskFixedByt
 from corpus import Corpus
 from indexset import IndexSet
 import sort
-from util import progress_bar
+from util import progress_bar, min_bytes_to_store_values
 
 
 ################################################################################
@@ -263,7 +263,7 @@ class Index:
             f"Cannot handle positive template literals: {template}"
 
         tmpfile = index_path.parent / 'index.tmp'
-        bytesize = DiskIntArrayBuilder._min_bytes_to_store_values(index_size)
+        bytesize = min_bytes_to_store_values(index_size)
         rowsize = bytesize * (1 + len(template))
 
         with open(tmpfile, 'wb') as OUT:

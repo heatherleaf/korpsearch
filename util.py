@@ -1,5 +1,6 @@
 
 import sys
+import math
 import logging
 from pathlib import Path
 from typing import Any, Literal, Iterable, Optional
@@ -15,6 +16,10 @@ def add_suffix(path:Path, suffix:str):
         # Alternatively: Path(path).with_suffix(path.suffix + suffix)
     return path
 
+
+def min_bytes_to_store_values(max_value:int) -> int:
+    """The minimal n:o bytes needed to store values `0...max_value`"""
+    return math.ceil(math.log(max_value + 1, 2) / 8)
 
 
 ###############################################################################

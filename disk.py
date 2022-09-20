@@ -3,7 +3,6 @@
 import os
 import sys
 import json
-import math
 from pathlib import Path
 from mmap import mmap
 from array import array
@@ -13,7 +12,7 @@ from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable
 from types import TracebackType
 from abc import abstractmethod
 
-from util import ByteOrder, add_suffix
+from util import ByteOrder, add_suffix, min_bytes_to_store_values
 
 
 ################################################################################
@@ -169,7 +168,7 @@ class DiskIntArrayBuilder:
         self._byteorder = byteorder
 
         if max_value == 0: max_value = 2**32-1  # default: 4-byte integers
-        self._elemsize = self._min_bytes_to_store_values(max_value)
+        self._elemsize = min_bytes_to_store_values(max_value)
 
         if use_memoryview:
             if byteorder != sys.byteorder:
@@ -207,10 +206,6 @@ class DiskIntArrayBuilder:
 
     def close(self):
         self._file.close()
-
-    @staticmethod
-    def _min_bytes_to_store_values(max_value:int) -> int:
-        return math.ceil(math.log(max_value + 1, 2) / 8)
 
     @staticmethod
     def build(path:Path, values:Iterable[int], max_value:int=0, byteorder:ByteOrder=sys.byteorder, use_memoryview:bool=False):
