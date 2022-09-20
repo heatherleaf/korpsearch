@@ -52,7 +52,7 @@ def main(args:argparse.Namespace):
                 templates -= existing_templates
             if templates:
                 templates = sorted(templates)
-                logging.debug(f"Creating indexes: {', '.join(map(str, templates))}")
+                logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, templates))}")
                 for template in templates:
                     Index.build(
                         corpus, template, 
