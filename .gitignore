@@ -132,4 +132,3 @@ dmypy.json
 private
 *.indexes/
 *.corpus/
-*.sa-indexes/
