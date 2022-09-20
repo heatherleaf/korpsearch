@@ -9,7 +9,7 @@ from mmap import mmap
 from array import array
 import itertools
 from functools import total_ordering
-from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable
+from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable, MutableSequence
 from types import TracebackType
 from abc import abstractmethod
 
@@ -221,6 +221,72 @@ class DiskIntArrayBuilder:
         with DiskIntArrayBuilder(path, max_value=max_value, byteorder=byteorder, use_memoryview=use_memoryview) as builder:
             for value in values: 
                 builder.append(value)
+
+
+################################################################################
+## On-disk array of fixed-width byte sequences
+
+class DiskFixedBytesArray(MutableSequence):
+    _file : BinaryIO
+    _mmap : mmap
+    _elemsize : int
+    _len : int
+
+    def __init__(self, path:Path, elemsize:int):
+        self._file = open(path, 'r+b')
+        self._mmap = mmap(self._file.fileno(), 0)
+        self._elemsize = elemsize
+        self._len = len(self._mmap) // self._elemsize
+        assert len(self._mmap) % self._elemsize == 0, \
+            f"Array length ({len(self._mmap)}) is not divisible by elemsize ({self._elemsize})"
+
+    def __len__(self) -> int:
+        return self._len
+
+    def __setitem__(self, i:int, val:bytes):
+        elemsize = self._elemsize
+        start = i * elemsize
+        assert len(val) == elemsize
+        self._mmap[start : start+elemsize] = val
+
+    def __delitem__(self, i:int):
+        # Required by MutableSequence
+        raise NotImplementedError
+
+    def insert(self, i:int, val:bytes):
+        # Required by MutableSequence
+        raise NotImplementedError
+
+    @overload
+    def __getitem__(self, i:int) -> bytes: pass
+    @overload
+    def __getitem__(self, i:slice) -> Iterator[bytes]: pass
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            return self._slice(i)
+        elemsize = self._elemsize
+        start = i * elemsize
+        return self._mmap[start : start+elemsize]
+
+    def _slice(self, sl:slice) -> Iterator[bytes]:
+        array = self._mmap
+        elemsize = self._elemsize
+        start, stop, step = sl.indices(len(self))
+        for i in range(start * elemsize, stop * elemsize, step * elemsize):
+            yield array[i : i+elemsize]
+
+    def __iter__(self) -> Iterator[bytes]:
+        return self._slice(slice(None))
+
+    def __enter__(self) -> 'DiskFixedBytesArray':
+        return self
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        self._mmap.close()
+        self._file.close()
 
 
 ################################################################################
