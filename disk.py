@@ -18,120 +18,71 @@ from util import ByteOrder, add_suffix, min_bytes_to_store_values
 ################################################################################
 ## On-disk arrays of numbers
 
+
 class DiskIntArray(Sequence):
+    typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+
     array_suffix = '.ia'
     config_suffix = '.ia-cfg'
 
-    array : Union[memoryview, 'SlowDiskIntArray']
+    array : Union[memoryview, 'DiskIntArray']
 
-    _file : Optional[BinaryIO]
+    _file : BinaryIO
     _mmap : mmap
+    _mview : memoryview
+    _length : int
     _elemsize : int
     _byteorder : ByteOrder
 
-    def __new__(cls, 
+    def __init__(self, 
         path : Optional[Path] = None, 
         bytemap : Optional[mmap] = None, 
         elemsize : Optional[int] = None, 
         byteorder : Optional[ByteOrder] = None,
     ):
+        for n, c in self.typecodes.items(): assert array(c).itemsize == n
+
         if path is None:
             assert bytemap is not None and elemsize is not None and byteorder is not None
-            file = None
+            self._elemsize = elemsize
+            self._byteorder = byteorder
+            self._mmap = bytemap
 
         else:
             assert bytemap is None and elemsize is None and byteorder is None
-            path = add_suffix(path, cls.array_suffix)
-            with open(path.with_suffix(cls.config_suffix)) as configfile:
+            path = add_suffix(path, self.array_suffix)
+            with open(path.with_suffix(self.config_suffix)) as configfile:
                 config = json.load(configfile)
-            elemsize = config['elemsize']
-            byteorder = config['byteorder']
-            file = open(path, 'r+b')
-            bytemap = mmap(file.fileno(), 0)
+            self._file = open(path, 'r+b')
+            self._elemsize = config['elemsize']
+            self._byteorder = config['byteorder']
+            self._mmap = mmap(self._file.fileno(), 0)
 
-        if elemsize in FastDiskIntArray.typecodes and byteorder == sys.byteorder:
-            subclass = FastDiskIntArray
-        else:
-            subclass = SlowDiskIntArray
-
-        self = super(cls, subclass).__new__(subclass)  # type: ignore
-        self._file = file
-        self._mmap = bytemap
-        self._elemsize = elemsize
-        self._byteorder = byteorder
-        return self
-
-    @abstractmethod
-    def __len__(self) -> int: pass
-
-    @overload
-    @abstractmethod
-    def __getitem__(self, i:int) -> int: pass
-    @overload
-    @abstractmethod
-    def __getitem__(self, i:slice) -> Union[memoryview, Iterator[int]]: pass
-    @abstractmethod
-    def __getitem__(self, i): pass  # type: ignore
-
-    @abstractmethod
-    def __iter__(self) -> Iterator[int]: pass
-
-    def __enter__(self) -> Union[memoryview, 'SlowDiskIntArray']:
-        return self.array
-
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
-        self.close()
-
-    def close(self):
-        if isinstance(self.array, memoryview):
-            self.array.release()
-        self._mmap.close()
-        if self._file is not None:
-            self._file.close()
-
-
-class FastDiskIntArray(DiskIntArray):
-    typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
-
-    def __init__(self, *args, **kwargs):
-        for n, c in self.typecodes.items(): assert array(c).itemsize == n
-        assert self._elemsize in self.typecodes and self._byteorder == sys.byteorder
-        typecode = self.typecodes[self._elemsize]
-        self.array = memoryview(self._mmap).cast(typecode)
-
-    def __len__(self):
-        return len(self.array)
-
-    def __getitem__(self, i):
-        return self.array[i]
-
-    def __iter__(self):
-        return iter(self.array)
-
-
-class SlowDiskIntArray(DiskIntArray):
-    _length : int
-
-    def __init__(self, *args, **kwargs):
+        self._length = len(self._mmap) // self._elemsize
         assert len(self._mmap) % self._elemsize == 0, \
             f"Array length ({len(self._mmap)}) is not divisible by elemsize ({self._elemsize})"
-        self._length = len(self._mmap) // self._elemsize
-        self.array = self
 
-    def __len__(self):
+        if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
+            typecode = self.typecodes[self._elemsize]
+            self._mview = memoryview(self._mmap).cast(typecode)
+            self.array = self._mview
+        else:
+            self.array = self
+
+    def __len__(self) -> int:
         return self._length
 
     @overload
     def __getitem__(self, i:int) -> int: pass
     @overload
-    def __getitem__(self, i:slice) -> Iterator[int]: pass
-    def __getitem__(self, i):
+    def __getitem__(self, i:slice) -> Union[memoryview, Iterator[int]]: pass
+    def __getitem__(self, i): # type: ignore
+        try:
+            return self._mview[i]
+        except AttributeError:
+            pass
         if isinstance(i, slice):
             return self._slice(i)
-        if not isinstance(i, int):
-            raise TypeError("DiskIntArray: invalid array index type")
-        if i < 0 or i >= len(self):
-            raise IndexError("DiskIntArray: array index out of range")
         start = i * self._elemsize
         return int.from_bytes(self._mmap[start : start+self._elemsize], byteorder=self._byteorder)
 
@@ -144,7 +95,27 @@ class SlowDiskIntArray(DiskIntArray):
             yield int.from_bytes(array[i : i+elemsize], byteorder=byteorder)
 
     def __iter__(self) -> Iterator[int]:
-        return self._slice(slice(None))
+        try:
+            return iter(self._mview)
+        except AttributeError:
+            return self._slice(slice(None))
+
+    def __enter__(self) -> Union[memoryview, 'DiskIntArray']:
+        return self.array
+
+    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+        self.close()
+
+    def close(self):
+        try:
+            self._mview.release()
+        except AttributeError:
+            pass
+        self._mmap.close()
+        try:
+            self._file.close()
+        except AttributeError:
+            pass
 
 
 class DiskIntArrayBuilder:
@@ -165,7 +136,7 @@ class DiskIntArrayBuilder:
             if self._elemsize == 3: self._elemsize = 4
             if self._elemsize > 4 and self._elemsize <= 8: self._elemsize = 8
             if self._elemsize > 8:
-                raise RuntimeError('DiskIntArrayBuilder: memoryview does not support self._elemsize > 8')
+                raise ValueError('DiskIntArrayBuilder: memoryview does not support self._elemsize > 8')
 
         self._path = add_suffix(path, DiskIntArray.array_suffix)
         self._file : BinaryIO = open(self._path, 'wb')
@@ -281,7 +252,7 @@ class StringCollection:
     starts_suffix  = '.starts'
 
     strings : mmap
-    starts : Union[memoryview, SlowDiskIntArray]
+    starts : Union[memoryview, DiskIntArray]
 
     _path : Path
     _stringsfile : BinaryIO
