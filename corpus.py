@@ -161,11 +161,7 @@ class Corpus:
                     strings[i].add(feat)
         logging.debug(f" --> read {sum(map(len, strings))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
 
-        sentence_builder = DiskIntArrayBuilder(
-            basedir / Corpus.sentences_path, 
-            max_value = n_tokens, 
-            use_memoryview = True,
-        )
+        sentence_builder = DiskIntArrayBuilder(basedir / Corpus.sentences_path, max_value=n_tokens)
         sentence_builder.append(0) # sentence 0 doesn't exist
 
         feature_builders : List[DiskStringArrayBuilder] = []
