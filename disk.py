@@ -26,6 +26,7 @@ class DiskIntArray(Sequence):
     config_suffix = '.ia-cfg'
 
     array : Union[memoryview, 'DiskIntArray']
+    path : Optional[Path]
 
     _file : BinaryIO
     _mmap : mmap
@@ -34,29 +35,16 @@ class DiskIntArray(Sequence):
     _elemsize : int
     _byteorder : ByteOrder
 
-    def __init__(self, 
-        path : Optional[Path] = None, 
-        bytemap : Optional[mmap] = None, 
-        elemsize : Optional[int] = None, 
-        byteorder : Optional[ByteOrder] = None,
-    ):
+    def __init__(self, path : Path):
         for n, c in self.typecodes.items(): assert array(c).itemsize == n
 
-        if path is None:
-            assert bytemap is not None and elemsize is not None and byteorder is not None
-            self._elemsize = elemsize
-            self._byteorder = byteorder
-            self._mmap = bytemap
-
-        else:
-            assert bytemap is None and elemsize is None and byteorder is None
-            path = add_suffix(path, self.array_suffix)
-            with open(path.with_suffix(self.config_suffix)) as configfile:
-                config = json.load(configfile)
-            self._file = open(path, 'r+b')
-            self._elemsize = config['elemsize']
-            self._byteorder = config['byteorder']
-            self._mmap = mmap(self._file.fileno(), 0)
+        self.path = self.getpath(path)
+        with open(self.getconfig(self.path)) as configfile:
+            config = json.load(configfile)
+        self._file = open(self.path, 'r+b')
+        self._elemsize = config['elemsize']
+        self._byteorder = config['byteorder']
+        self._mmap = mmap(self._file.fileno(), 0)
 
         self._length = len(self._mmap) // self._elemsize
         assert len(self._mmap) % self._elemsize == 0, \
@@ -117,11 +105,40 @@ class DiskIntArray(Sequence):
         except AttributeError:
             pass
 
+    @classmethod
+    def getpath(cls, path:Path) -> Path:
+        return add_suffix(path, cls.array_suffix)
+
+    @classmethod
+    def getconfig(cls, path:Path) -> Path:
+        return cls.getpath(path).with_suffix(cls.config_suffix)
+
+
+
+class LowlevelIntArray(DiskIntArray):
+    _mmap : bytes
+    def __init__(self, bytemap:bytes, elemsize:int, byteorder:ByteOrder):
+        self.path = None
+        self._elemsize = elemsize
+        self._byteorder = byteorder
+        self._mmap = bytemap
+        self._length = len(self._mmap) // self._elemsize
+        assert len(self._mmap) % self._elemsize == 0, \
+            f"Array length ({len(self._mmap)}) is not divisible by elemsize ({self._elemsize})"
+        if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
+            typecode = self.typecodes[self._elemsize]
+            self._mview = memoryview(self._mmap).cast(typecode)
+            self.array = self._mview
+        else:
+            self.array = self
+
+
 
 class DiskIntArrayBuilder:
+    path : Path
+
     _byteorder : ByteOrder
     _elemsize : int
-    _path : Path
     _file : BinaryIO
 
     def __init__(self, path:Path, max_value:int=0, byteorder:ByteOrder=sys.byteorder, use_memoryview:bool=False):
@@ -138,10 +155,10 @@ class DiskIntArrayBuilder:
             if self._elemsize > 8:
                 raise ValueError('DiskIntArrayBuilder: memoryview does not support self._elemsize > 8')
 
-        self._path = add_suffix(path, DiskIntArray.array_suffix)
-        self._file : BinaryIO = open(self._path, 'wb')
+        self.path = DiskIntArray.getpath(path)
+        self._file = open(self.path, 'wb')
 
-        with open(self._path.with_suffix(DiskIntArray.config_suffix), 'w') as configfile:
+        with open(DiskIntArray.getconfig(self.path), 'w') as configfile:
             json.dump({
                 'elemsize': self._elemsize,
                 'byteorder': self._byteorder,
