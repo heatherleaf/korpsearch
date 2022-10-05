@@ -58,6 +58,7 @@ def main(args:argparse.Namespace):
                         corpus, template, 
                         min_frequency=args.min_frequency, 
                         keep_tmpfiles=args.keep_tmpfiles, 
+                        external_sort=args.external_sort,
                     )
                 logging.info(f"Created {len(templates)} query indexes")
 
@@ -125,6 +126,8 @@ parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', co
 parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
     help='silent (no output)')
 
+parser.add_argument('--external-sort', '-e', action='store_true', 
+    help='sort using external program (DiskFixedSizeArray.jar)')
 parser.add_argument('--keep-tmpfiles', action='store_true', 
     help='keep temporary files')
 

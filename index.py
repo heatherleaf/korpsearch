@@ -3,6 +3,7 @@ from typing import Tuple, List, Iterator, Callable, Union, Collection, Sequence,
 from functools import total_ordering
 from types import TracebackType
 import logging
+import subprocess
 
 from disk import DiskIntArray, DiskIntArrayBuilder, InternedString, DiskFixedBytesArray
 from corpus import Corpus
@@ -231,7 +232,7 @@ class Index:
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False):
+    def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False, external_sort:bool=False):
         logging.debug(f"Building index for {template}")
         index_path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
@@ -301,17 +302,18 @@ class Index:
                 logging.info(f"Skipped {skipped_instances} low-frequency instances")
             nr_rows = OUT.tell() // rowsize
 
-        # bsort is really fast, but it hangs on some files... https://github.com/yoyyyyo/bsort
-        # subprocess.run(['bsort/bsort', '-k', str(rowsize), '-r', str(rowsize), tmpfile])
-        logging.debug(f"Sorting {nr_rows} rows")
-        with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
-            sort.quicksort(
-                bytes_array,
-                # pivotselector = sort.random_pivot, 
-                pivotselector = sort.median_of_three,
-                # pivotselector = sort.tukey_ninther,
-                cutoff = 100_000,
-            )
+        logging.debug(f"Sorting {nr_rows} rows.")
+        if external_sort:
+            subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), 'random', '100000'])
+        else:
+            with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
+                sort.quicksort(
+                    bytes_array,
+                    pivotselector = sort.random_pivot, 
+                    # pivotselector = sort.median_of_three,
+                    # pivotselector = sort.tukey_ninther,
+                    cutoff = 100_000,
+                )
 
         logging.debug(f"Creating suffix array")
         with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
