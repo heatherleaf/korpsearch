@@ -57,12 +57,12 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         if subq.subsumed_by(used_queries):
             logging.debug(f"    -- subsumed: {subq}")
             continue
-        if subq.is_negative():
-            intersection.difference_update(results)
-        else:
-            intersection.intersection_update(results, use_internal=args.internal_intersection)
+        result_file = args.file
+        intersection_type = intersection.intersection_update(results, result_file, use_internal=args.internal_intersection, difference=subq.is_negative())
         logging.info(f" /\\ {subq!s:{maxwidth}} = {intersection}")
+        logging.debug(f"    -- intersection type: {intersection_type} --> result file: {intersection.path}")
         used_queries.append(subq)
+    logging.debug(f"Result file: {intersection.path}")
 
     if args.filter:
         intersection.filter(query.check_position)
@@ -118,6 +118,8 @@ parser.add_argument('corpus', type=Path,
 parser.add_argument('query', type=str, 
     help='the query')
 
+parser.add_argument('--file', '-f', type=Path,
+    help='store the array of results in a file')
 parser.add_argument('--print', '-p', action='store_true', 
     help='output the result(s), one per line')
 parser.add_argument('--context', type=int, default=-1,
