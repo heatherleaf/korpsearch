@@ -1,9 +1,10 @@
 
 import sys
 import itertools
-from typing import List, Iterator, Union, Callable
+from pathlib import Path
+from typing import List, Iterator, Union, Callable, Optional
 
-from disk import DiskIntArray
+from disk import DiskIntArray, LowlevelIntArray, DiskIntArrayBuilder
 
 try:
     import platform
@@ -21,6 +22,7 @@ except ModuleNotFoundError:
 ## Index set
 
 IndexSetValuesType = Union[DiskIntArray, List[int]]
+IndexSetValuesBuilder = Union[DiskIntArray, DiskIntArrayBuilder, List[int]]
 
 class IndexSet:
     # if the sets have very uneven size, use __contains__ on the larger set
@@ -31,9 +33,11 @@ class IndexSet:
     size : int
     offset : int
     values : IndexSetValuesType
+    path : Optional[Path]
 
     def __init__(self, values:IndexSetValuesType, start:int=0, size:int=-1, offset:int=0):
         self.values = values
+        self.path = values.path if isinstance(values, DiskIntArray) else None
         self.start = start
         self.offset = offset
         self.size = size
@@ -58,83 +62,80 @@ class IndexSet:
         for val in self.values[self.start:self.start+self.size]:
             yield val - offset
 
-    def intersection_update(self, other:'IndexSet', use_internal:bool=False):
-        self.values = self.intersection(other, use_internal=use_internal)
+
+    def intersection_update(self, other:'IndexSet', resultpath:Optional[Path]=None, use_internal:bool=False, difference:bool=False) -> str:
+        if len(other) > len(self) * self._min_size_difference_for_contains:
+            result = self._init_result(other, resultpath)
+            self._intersection_lookup(other, result, difference)
+            self._finalise_result(result)
+            return 'lookup'
+
+        if not use_internal and not resultpath:
+            result = self._intersection_external(other, difference)
+            if result is not None:
+                self._finalise_result(result)
+                return 'external'
+
+        result = self._init_result(other, resultpath)
+        self._intersection_internal(other, result, difference)
+        self._finalise_result(result)
+        return 'internal'
+
+    def _init_result(self, other:'IndexSet', resultpath:Optional[Path]) -> IndexSetValuesBuilder:
+        if not resultpath:
+            return []
+        elif self.path and DiskIntArray.getpath(resultpath) == DiskIntArray.getpath(self.path):
+            assert isinstance(self.values, DiskIntArray) and not isinstance(self.values, LowlevelIntArray)
+            self.values.reset_append()
+            return self.values
+        else:
+            if other.path: assert DiskIntArray.getpath(resultpath) != DiskIntArray.getpath(other.path)
+            return DiskIntArrayBuilder(resultpath)
+
+    def _finalise_result(self, result:IndexSetValuesBuilder):
+        path = None
+        if isinstance(result, DiskIntArray) and not isinstance(result, LowlevelIntArray):
+            result.truncate_append()
+            path = result.path
+        elif isinstance(result, DiskIntArrayBuilder):
+            path = result.path
+            result.close()
+            result = DiskIntArray(path)
+        self.values = result
+        self.path = path
         self.start = 0
         self.size = len(self.values)
         self.offset = 0
 
-    def intersection(self, other:'IndexSet', use_internal:bool=False) -> List[int]:
-        """Take the intersection of two sorted arrays."""
-        # We assume that self is smaller than other!
-        if len(other) > len(self) * self._min_size_difference_for_contains:
-            # Complexity: O(self * log(other))
-            return [elem for elem in self if elem in other]
+    def _intersection_lookup(self, other:'IndexSet', result:IndexSetValuesBuilder, difference:bool):
+        # Complexity: O(self * log(other))
+        if difference:
+            for elem in self:
+                if elem not in other:
+                    result.append(elem)
+        else: # intersection
+            for elem in self:
+                if elem in other:
+                    result.append(elem)
 
+    def _intersection_external(self, other:'IndexSet', difference:bool) -> Optional[IndexSetValuesType]:
         # Complexity: O(self + other)
-        elif (isinstance(self.values, DiskIntArray) and 
-              isinstance(other.values, DiskIntArray) and 
-              len(self) > 0 and len(other) > 0 and
-              self.values._byteorder == other.values._byteorder == sys.byteorder and
-              self.values._elemsize == other.values._elemsize and
-              not use_internal
-              ):
+        if (isinstance(self.values, DiskIntArray) and 
+            isinstance(other.values, DiskIntArray) and 
+            len(self) > 0 and len(other) > 0 and
+            self.values._byteorder == other.values._byteorder == sys.byteorder and
+            self.values._elemsize == other.values._elemsize
+        ):
             try:
                 return fast_intersection.intersection(
                     self.values, self.start, self.size, self.offset,
-                    other.values, other.start, other.size, other.offset,
+                    other.values, other.start, other.size, other.offset, difference,
                 )
             except NameError:
                 pass
 
-        result = []
-        xiter = iter(self)
-        yiter = iter(other)
-        try:
-            x = next(xiter)
-            y = next(yiter)
-            while True:
-                if x < y:
-                    x = next(xiter)
-                elif x > y:
-                    y = next(yiter)
-                else:
-                    result.append(x)
-                    x = next(xiter)
-                    y = next(yiter)
-        except StopIteration:
-            return result
-
-    def difference_update(self, other:'IndexSet', use_internal:bool=False):
-        self.values = self.difference(other, use_internal=use_internal)
-        self.start = 0
-        self.size = len(self.values)
-        self.offset = 0
-
-    def difference(self, other:'IndexSet', use_internal:bool=False) -> List[int]:
-        """Take the difference between this set and another."""
-        # We assume that self is smaller than other!
-        if len(other) > len(self) * self._min_size_difference_for_contains:
-            # Complexity: O(self * log(other))
-            return [elem for elem in self if elem not in other]
-
+    def _intersection_internal(self, other:'IndexSet', result:IndexSetValuesBuilder, difference:bool):
         # Complexity: O(self + other)
-        elif (isinstance(self.values, DiskIntArray) and 
-              isinstance(other.values, DiskIntArray) and 
-              len(self) > 0 and len(other) > 0 and
-              self.values._byteorder == other.values._byteorder == sys.byteorder and
-              self.values._elemsize == other.values._elemsize and
-              not use_internal
-              ):
-            try:
-                return fast_intersection.difference(
-                    self.values, self.start, self.size, self.offset,
-                    other.values, other.start, other.size, other.offset,
-                )
-            except NameError:
-                pass
-
-        result = []
         xiter = iter(self)
         yiter = iter(other)
         try:
@@ -142,15 +143,17 @@ class IndexSet:
             y = next(yiter)
             while True:
                 if x < y:
-                    result.append(x)
+                    if difference: result.append(x)
                     x = next(xiter)
                 elif x > y:
                     y = next(yiter)
                 else:
+                    if not difference: result.append(x)
                     x = next(xiter)
                     y = next(yiter)
         except StopIteration:
-            return result
+            return
+
 
     def filter(self, check:Callable[[int],bool]):
         if isinstance(self.values, list):
