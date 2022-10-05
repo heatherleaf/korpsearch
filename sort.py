@@ -12,22 +12,29 @@ PivotSelector = Callable[[MutableSequence, int, int], int]
 
 def quicksort(array:MutableSequence, pivotselector:PivotSelector, cutoff:int=0):
     """In-place quicksort."""
+    import sys
+    lim = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
     with progress_bar(total=len(array), desc="Quicksorting") as logger:
         quicksort_subarray(array, 0, len(array), pivotselector, cutoff, logger)
         logger.update(len(array) - logger.n)
+    sys.setrecursionlimit(lim)
 
 
 def quicksort_subarray(array:MutableSequence, lo:int, hi:int, 
                        pivotselector:PivotSelector, cutoff:int, logger):
     """Quicksorts the subarray array[lo:hi] in place."""
     logger.update(lo - logger.n)
-    if hi <= lo + 1: 
-        return
-    if hi <= lo + cutoff:
-        return builtin_timsort(array, lo, hi)
-    mid = partition(array, lo, hi, pivotselector)
-    quicksort_subarray(array, lo, mid, pivotselector, cutoff, logger)
-    quicksort_subarray(array, mid+1, hi, pivotselector, cutoff, logger)
+    size = hi - lo
+    if size == 2:
+        if array[lo] > array[lo+1]:
+            array[lo], array[lo+1] = array[lo+1], array[lo]
+    elif size <= cutoff:
+        builtin_timsort(array, lo, hi)
+    elif size > 2:
+        mid = partition(array, lo, hi, pivotselector)
+        quicksort_subarray(array, lo, mid, pivotselector, cutoff, logger)
+        quicksort_subarray(array, mid+1, hi, pivotselector, cutoff, logger)
 
 
 def builtin_timsort(array:MutableSequence, lo:int, hi:int):
