@@ -2579,7 +2579,6 @@ static const char __pyx_k_MemoryError[] = "MemoryError";
 static const char __pyx_k_PickleError[] = "PickleError";
 static const char __pyx_k_byteorder_2[] = "byteorder";
 static const char __pyx_k_collections[] = "collections";
-static const char __pyx_k_DiskIntArray[] = "DiskIntArray";
 static const char __pyx_k_initializing[] = "_initializing";
 static const char __pyx_k_intersection[] = "intersection";
 static const char __pyx_k_is_coroutine[] = "_is_coroutine";
@@ -2595,6 +2594,7 @@ static const char __pyx_k_collections_abc[] = "collections.abc";
 static const char __pyx_k_dtype_is_object[] = "dtype_is_object";
 static const char __pyx_k_pyx_PickleError[] = "__pyx_PickleError";
 static const char __pyx_k_setstate_cython[] = "__setstate_cython__";
+static const char __pyx_k_LowlevelIntArray[] = "LowlevelIntArray";
 static const char __pyx_k_fast_intersection[] = "fast_intersection";
 static const char __pyx_k_pyx_unpickle_Enum[] = "__pyx_unpickle_Enum";
 static const char __pyx_k_asyncio_coroutines[] = "asyncio.coroutines";
@@ -2641,7 +2641,6 @@ static PyObject *__pyx_kp_s_Cannot_create_writable_memory_vi;
 static PyObject *__pyx_kp_u_Cannot_index_with_type;
 static PyObject *__pyx_kp_s_Cannot_transpose_memoryview_with;
 static PyObject *__pyx_kp_s_Dimension_d_is_not_direct;
-static PyObject *__pyx_n_s_DiskIntArray;
 static PyObject *__pyx_n_s_Ellipsis;
 static PyObject *__pyx_kp_s_Empty_shape_tuple_for_cython_arr;
 static PyObject *__pyx_kp_s_Incompatible_checksums_0x_x_vs_0;
@@ -2650,6 +2649,7 @@ static PyObject *__pyx_kp_s_Index_out_of_bounds_axis_d;
 static PyObject *__pyx_kp_s_Indirect_dimensions_not_supporte;
 static PyObject *__pyx_kp_u_Invalid_mode_expected_c_or_fortr;
 static PyObject *__pyx_kp_u_Invalid_shape_in_axis;
+static PyObject *__pyx_n_s_LowlevelIntArray;
 static PyObject *__pyx_n_s_MemoryError;
 static PyObject *__pyx_kp_s_MemoryView_of_r_at_0x_x;
 static PyObject *__pyx_kp_s_MemoryView_of_r_object;
@@ -2783,8 +2783,7 @@ static PyObject *__pyx_n_s_x;
 static PyObject *__pyx_n_s_y;
 #endif
 /* #### Code section: decls ### */
-static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_arr1, PyObject *__pyx_v_start1, PyObject *__pyx_v_length1, PyObject *__pyx_v_offset1, PyObject *__pyx_v_arr2, PyObject *__pyx_v_start2, PyObject *__pyx_v_length2, PyObject *__pyx_v_offset2); /* proto */
-static PyObject *__pyx_pf_17fast_intersection_2difference(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_arr1, PyObject *__pyx_v_start1, PyObject *__pyx_v_length1, PyObject *__pyx_v_offset1, PyObject *__pyx_v_arr2, PyObject *__pyx_v_start2, PyObject *__pyx_v_length2, PyObject *__pyx_v_offset2); /* proto */
+static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_arr1, PyObject *__pyx_v_start1, PyObject *__pyx_v_length1, PyObject *__pyx_v_offset1, PyObject *__pyx_v_arr2, PyObject *__pyx_v_start2, PyObject *__pyx_v_length2, PyObject *__pyx_v_offset2, PyObject *__pyx_v_difference); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array___cinit__(struct __pyx_array_obj *__pyx_v_self, PyObject *__pyx_v_shape, Py_ssize_t __pyx_v_itemsize, PyObject *__pyx_v_format, PyObject *__pyx_v_mode, int __pyx_v_allocate_buffer); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array_2__getbuffer__(struct __pyx_array_obj *__pyx_v_self, Py_buffer *__pyx_v_info, int __pyx_v_flags); /* proto */
 static void __pyx_array___pyx_pf_15View_dot_MemoryView_5array_4__dealloc__(struct __pyx_array_obj *__pyx_v_self); /* proto */
@@ -2844,6 +2843,7 @@ static PyObject *__pyx_slice__5;
 static PyObject *__pyx_tuple__4;
 static PyObject *__pyx_tuple__8;
 static PyObject *__pyx_tuple__9;
+static PyObject *__pyx_tuple__11;
 static PyObject *__pyx_tuple__12;
 static PyObject *__pyx_tuple__13;
 static PyObject *__pyx_tuple__14;
@@ -2855,7 +2855,6 @@ static PyObject *__pyx_tuple__19;
 static PyObject *__pyx_tuple__20;
 static PyObject *__pyx_tuple__21;
 static PyObject *__pyx_codeobj__10;
-static PyObject *__pyx_codeobj__11;
 static PyObject *__pyx_codeobj__22;
 #endif
 /* #### Code section: late_includes ### */
@@ -2893,7 +2892,6 @@ typedef struct {
   PyObject *__pyx_kp_u_Cannot_index_with_type;
   PyObject *__pyx_kp_s_Cannot_transpose_memoryview_with;
   PyObject *__pyx_kp_s_Dimension_d_is_not_direct;
-  PyObject *__pyx_n_s_DiskIntArray;
   PyObject *__pyx_n_s_Ellipsis;
   PyObject *__pyx_kp_s_Empty_shape_tuple_for_cython_arr;
   PyObject *__pyx_kp_s_Incompatible_checksums_0x_x_vs_0;
@@ -2902,6 +2900,7 @@ typedef struct {
   PyObject *__pyx_kp_s_Indirect_dimensions_not_supporte;
   PyObject *__pyx_kp_u_Invalid_mode_expected_c_or_fortr;
   PyObject *__pyx_kp_u_Invalid_shape_in_axis;
+  PyObject *__pyx_n_s_LowlevelIntArray;
   PyObject *__pyx_n_s_MemoryError;
   PyObject *__pyx_kp_s_MemoryView_of_r_at_0x_x;
   PyObject *__pyx_kp_s_MemoryView_of_r_object;
@@ -3044,6 +3043,7 @@ typedef struct {
   PyObject *__pyx_tuple__4;
   PyObject *__pyx_tuple__8;
   PyObject *__pyx_tuple__9;
+  PyObject *__pyx_tuple__11;
   PyObject *__pyx_tuple__12;
   PyObject *__pyx_tuple__13;
   PyObject *__pyx_tuple__14;
@@ -3055,7 +3055,6 @@ typedef struct {
   PyObject *__pyx_tuple__20;
   PyObject *__pyx_tuple__21;
   PyObject *__pyx_codeobj__10;
-  PyObject *__pyx_codeobj__11;
   PyObject *__pyx_codeobj__22;
 } __pyx_mstate;
 
@@ -3109,7 +3108,6 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_kp_u_Cannot_index_with_type);
   Py_CLEAR(clear_module_state->__pyx_kp_s_Cannot_transpose_memoryview_with);
   Py_CLEAR(clear_module_state->__pyx_kp_s_Dimension_d_is_not_direct);
-  Py_CLEAR(clear_module_state->__pyx_n_s_DiskIntArray);
   Py_CLEAR(clear_module_state->__pyx_n_s_Ellipsis);
   Py_CLEAR(clear_module_state->__pyx_kp_s_Empty_shape_tuple_for_cython_arr);
   Py_CLEAR(clear_module_state->__pyx_kp_s_Incompatible_checksums_0x_x_vs_0);
@@ -3118,6 +3116,7 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_kp_s_Indirect_dimensions_not_supporte);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Invalid_mode_expected_c_or_fortr);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Invalid_shape_in_axis);
+  Py_CLEAR(clear_module_state->__pyx_n_s_LowlevelIntArray);
   Py_CLEAR(clear_module_state->__pyx_n_s_MemoryError);
   Py_CLEAR(clear_module_state->__pyx_kp_s_MemoryView_of_r_at_0x_x);
   Py_CLEAR(clear_module_state->__pyx_kp_s_MemoryView_of_r_object);
@@ -3260,6 +3259,7 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_tuple__4);
   Py_CLEAR(clear_module_state->__pyx_tuple__8);
   Py_CLEAR(clear_module_state->__pyx_tuple__9);
+  Py_CLEAR(clear_module_state->__pyx_tuple__11);
   Py_CLEAR(clear_module_state->__pyx_tuple__12);
   Py_CLEAR(clear_module_state->__pyx_tuple__13);
   Py_CLEAR(clear_module_state->__pyx_tuple__14);
@@ -3271,7 +3271,6 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_tuple__20);
   Py_CLEAR(clear_module_state->__pyx_tuple__21);
   Py_CLEAR(clear_module_state->__pyx_codeobj__10);
-  Py_CLEAR(clear_module_state->__pyx_codeobj__11);
   Py_CLEAR(clear_module_state->__pyx_codeobj__22);
   return 0;
 }
@@ -3312,7 +3311,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_kp_u_Cannot_index_with_type);
   Py_VISIT(traverse_module_state->__pyx_kp_s_Cannot_transpose_memoryview_with);
   Py_VISIT(traverse_module_state->__pyx_kp_s_Dimension_d_is_not_direct);
-  Py_VISIT(traverse_module_state->__pyx_n_s_DiskIntArray);
   Py_VISIT(traverse_module_state->__pyx_n_s_Ellipsis);
   Py_VISIT(traverse_module_state->__pyx_kp_s_Empty_shape_tuple_for_cython_arr);
   Py_VISIT(traverse_module_state->__pyx_kp_s_Incompatible_checksums_0x_x_vs_0);
@@ -3321,6 +3319,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_kp_s_Indirect_dimensions_not_supporte);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Invalid_mode_expected_c_or_fortr);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Invalid_shape_in_axis);
+  Py_VISIT(traverse_module_state->__pyx_n_s_LowlevelIntArray);
   Py_VISIT(traverse_module_state->__pyx_n_s_MemoryError);
   Py_VISIT(traverse_module_state->__pyx_kp_s_MemoryView_of_r_at_0x_x);
   Py_VISIT(traverse_module_state->__pyx_kp_s_MemoryView_of_r_object);
@@ -3463,6 +3462,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_tuple__4);
   Py_VISIT(traverse_module_state->__pyx_tuple__8);
   Py_VISIT(traverse_module_state->__pyx_tuple__9);
+  Py_VISIT(traverse_module_state->__pyx_tuple__11);
   Py_VISIT(traverse_module_state->__pyx_tuple__12);
   Py_VISIT(traverse_module_state->__pyx_tuple__13);
   Py_VISIT(traverse_module_state->__pyx_tuple__14);
@@ -3474,7 +3474,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_tuple__20);
   Py_VISIT(traverse_module_state->__pyx_tuple__21);
   Py_VISIT(traverse_module_state->__pyx_codeobj__10);
-  Py_VISIT(traverse_module_state->__pyx_codeobj__11);
   Py_VISIT(traverse_module_state->__pyx_codeobj__22);
   return 0;
 }
@@ -3512,7 +3511,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_kp_u_Cannot_index_with_type __pyx_mstate_global->__pyx_kp_u_Cannot_index_with_type
 #define __pyx_kp_s_Cannot_transpose_memoryview_with __pyx_mstate_global->__pyx_kp_s_Cannot_transpose_memoryview_with
 #define __pyx_kp_s_Dimension_d_is_not_direct __pyx_mstate_global->__pyx_kp_s_Dimension_d_is_not_direct
-#define __pyx_n_s_DiskIntArray __pyx_mstate_global->__pyx_n_s_DiskIntArray
 #define __pyx_n_s_Ellipsis __pyx_mstate_global->__pyx_n_s_Ellipsis
 #define __pyx_kp_s_Empty_shape_tuple_for_cython_arr __pyx_mstate_global->__pyx_kp_s_Empty_shape_tuple_for_cython_arr
 #define __pyx_kp_s_Incompatible_checksums_0x_x_vs_0 __pyx_mstate_global->__pyx_kp_s_Incompatible_checksums_0x_x_vs_0
@@ -3521,6 +3519,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_kp_s_Indirect_dimensions_not_supporte __pyx_mstate_global->__pyx_kp_s_Indirect_dimensions_not_supporte
 #define __pyx_kp_u_Invalid_mode_expected_c_or_fortr __pyx_mstate_global->__pyx_kp_u_Invalid_mode_expected_c_or_fortr
 #define __pyx_kp_u_Invalid_shape_in_axis __pyx_mstate_global->__pyx_kp_u_Invalid_shape_in_axis
+#define __pyx_n_s_LowlevelIntArray __pyx_mstate_global->__pyx_n_s_LowlevelIntArray
 #define __pyx_n_s_MemoryError __pyx_mstate_global->__pyx_n_s_MemoryError
 #define __pyx_kp_s_MemoryView_of_r_at_0x_x __pyx_mstate_global->__pyx_kp_s_MemoryView_of_r_at_0x_x
 #define __pyx_kp_s_MemoryView_of_r_object __pyx_mstate_global->__pyx_kp_s_MemoryView_of_r_object
@@ -3663,6 +3662,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_tuple__4 __pyx_mstate_global->__pyx_tuple__4
 #define __pyx_tuple__8 __pyx_mstate_global->__pyx_tuple__8
 #define __pyx_tuple__9 __pyx_mstate_global->__pyx_tuple__9
+#define __pyx_tuple__11 __pyx_mstate_global->__pyx_tuple__11
 #define __pyx_tuple__12 __pyx_mstate_global->__pyx_tuple__12
 #define __pyx_tuple__13 __pyx_mstate_global->__pyx_tuple__13
 #define __pyx_tuple__14 __pyx_mstate_global->__pyx_tuple__14
@@ -3674,7 +3674,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_tuple__20 __pyx_mstate_global->__pyx_tuple__20
 #define __pyx_tuple__21 __pyx_mstate_global->__pyx_tuple__21
 #define __pyx_codeobj__10 __pyx_mstate_global->__pyx_codeobj__10
-#define __pyx_codeobj__11 __pyx_mstate_global->__pyx_codeobj__11
 #define __pyx_codeobj__22 __pyx_mstate_global->__pyx_codeobj__22
 #endif
 /* #### Code section: module_code ### */
@@ -3816,8 +3815,8 @@ static __pyx_t_17fast_intersection_buffer __pyx_f_17fast_intersection_to_buffer(
 /* "fast_intersection.pyx":19
  * 
  * 
- * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the intersection of two sorted arrays."""
+ * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2, difference=False):             # <<<<<<<<<<<<<<
+ *     """Take the intersection of two sorted arrays. Or difference if difference is True."""
  *     assert arr1._elemsize == arr2._elemsize
  */
 
@@ -3829,7 +3828,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_17fast_intersection_intersection, "Take the intersection of two sorted arrays.");
+PyDoc_STRVAR(__pyx_doc_17fast_intersection_intersection, "Take the intersection of two sorted arrays. Or difference if difference is True.");
 static PyMethodDef __pyx_mdef_17fast_intersection_1intersection = {"intersection", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_17fast_intersection_1intersection, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_17fast_intersection_intersection};
 static PyObject *__pyx_pw_17fast_intersection_1intersection(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -3846,6 +3845,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   PyObject *__pyx_v_start2 = 0;
   PyObject *__pyx_v_length2 = 0;
   PyObject *__pyx_v_offset2 = 0;
+  PyObject *__pyx_v_difference = 0;
   #if !CYTHON_METH_FASTCALL
   CYTHON_UNUSED const Py_ssize_t __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
   #endif
@@ -3858,14 +3858,17 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   __Pyx_RefNannySetupContext("intersection (wrapper)", 0);
   {
     #if CYTHON_USE_MODULE_STATE
-    PyObject **__pyx_pyargnames[] = {&__pyx_n_s_arr1,&__pyx_n_s_start1,&__pyx_n_s_length1,&__pyx_n_s_offset1,&__pyx_n_s_arr2,&__pyx_n_s_start2,&__pyx_n_s_length2,&__pyx_n_s_offset2,0};
+    PyObject **__pyx_pyargnames[] = {&__pyx_n_s_arr1,&__pyx_n_s_start1,&__pyx_n_s_length1,&__pyx_n_s_offset1,&__pyx_n_s_arr2,&__pyx_n_s_start2,&__pyx_n_s_length2,&__pyx_n_s_offset2,&__pyx_n_s_difference,0};
     #else
-    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_arr1,&__pyx_n_s_start1,&__pyx_n_s_length1,&__pyx_n_s_offset1,&__pyx_n_s_arr2,&__pyx_n_s_start2,&__pyx_n_s_length2,&__pyx_n_s_offset2,0};
+    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_arr1,&__pyx_n_s_start1,&__pyx_n_s_length1,&__pyx_n_s_offset1,&__pyx_n_s_arr2,&__pyx_n_s_start2,&__pyx_n_s_length2,&__pyx_n_s_offset2,&__pyx_n_s_difference,0};
     #endif
-    PyObject* values[8] = {0,0,0,0,0,0,0,0};
+    PyObject* values[9] = {0,0,0,0,0,0,0,0,0};
+    values[8] = ((PyObject *)((PyObject *)Py_False));
     if (__pyx_kwds) {
       Py_ssize_t kw_args;
       switch (__pyx_nargs) {
+        case  9: values[8] = __Pyx_Arg_FASTCALL(__pyx_args, 8);
+        CYTHON_FALLTHROUGH;
         case  8: values[7] = __Pyx_Arg_FASTCALL(__pyx_args, 7);
         CYTHON_FALLTHROUGH;
         case  7: values[6] = __Pyx_Arg_FASTCALL(__pyx_args, 6);
@@ -3896,66 +3899,77 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
         if (likely((values[1] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_start1)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 1); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 1); __PYX_ERR(0, 19, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  2:
         if (likely((values[2] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_length1)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 2); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 2); __PYX_ERR(0, 19, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  3:
         if (likely((values[3] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_offset1)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 3); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 3); __PYX_ERR(0, 19, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  4:
         if (likely((values[4] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_arr2)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 4); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 4); __PYX_ERR(0, 19, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  5:
         if (likely((values[5] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_start2)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 5); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 5); __PYX_ERR(0, 19, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  6:
         if (likely((values[6] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_length2)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 6); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 6); __PYX_ERR(0, 19, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  7:
         if (likely((values[7] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_offset2)) != 0)) kw_args--;
         else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, 7); __PYX_ERR(0, 19, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, 7); __PYX_ERR(0, 19, __pyx_L3_error)
+        }
+        CYTHON_FALLTHROUGH;
+        case  8:
+        if (kw_args > 0) {
+          PyObject* value = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_difference);
+          if (value) { values[8] = value; kw_args--; }
+          else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 19, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
         if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "intersection") < 0)) __PYX_ERR(0, 19, __pyx_L3_error)
       }
-    } else if (unlikely(__pyx_nargs != 8)) {
-      goto __pyx_L5_argtuple_error;
     } else {
-      values[0] = __Pyx_Arg_FASTCALL(__pyx_args, 0);
-      values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
-      values[2] = __Pyx_Arg_FASTCALL(__pyx_args, 2);
-      values[3] = __Pyx_Arg_FASTCALL(__pyx_args, 3);
-      values[4] = __Pyx_Arg_FASTCALL(__pyx_args, 4);
-      values[5] = __Pyx_Arg_FASTCALL(__pyx_args, 5);
-      values[6] = __Pyx_Arg_FASTCALL(__pyx_args, 6);
-      values[7] = __Pyx_Arg_FASTCALL(__pyx_args, 7);
+      switch (__pyx_nargs) {
+        case  9: values[8] = __Pyx_Arg_FASTCALL(__pyx_args, 8);
+        CYTHON_FALLTHROUGH;
+        case  8: values[7] = __Pyx_Arg_FASTCALL(__pyx_args, 7);
+        values[6] = __Pyx_Arg_FASTCALL(__pyx_args, 6);
+        values[5] = __Pyx_Arg_FASTCALL(__pyx_args, 5);
+        values[4] = __Pyx_Arg_FASTCALL(__pyx_args, 4);
+        values[3] = __Pyx_Arg_FASTCALL(__pyx_args, 3);
+        values[2] = __Pyx_Arg_FASTCALL(__pyx_args, 2);
+        values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
+        values[0] = __Pyx_Arg_FASTCALL(__pyx_args, 0);
+        break;
+        default: goto __pyx_L5_argtuple_error;
+      }
     }
     __pyx_v_arr1 = values[0];
     __pyx_v_start1 = values[1];
@@ -3965,23 +3979,24 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
     __pyx_v_start2 = values[5];
     __pyx_v_length2 = values[6];
     __pyx_v_offset2 = values[7];
+    __pyx_v_difference = values[8];
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("intersection", 1, 8, 8, __pyx_nargs); __PYX_ERR(0, 19, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("intersection", 0, 8, 9, __pyx_nargs); __PYX_ERR(0, 19, __pyx_L3_error)
   __pyx_L3_error:;
   __Pyx_AddTraceback("fast_intersection.intersection", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_17fast_intersection_intersection(__pyx_self, __pyx_v_arr1, __pyx_v_start1, __pyx_v_length1, __pyx_v_offset1, __pyx_v_arr2, __pyx_v_start2, __pyx_v_length2, __pyx_v_offset2);
+  __pyx_r = __pyx_pf_17fast_intersection_intersection(__pyx_self, __pyx_v_arr1, __pyx_v_start1, __pyx_v_length1, __pyx_v_offset1, __pyx_v_arr2, __pyx_v_start2, __pyx_v_length2, __pyx_v_offset2, __pyx_v_difference);
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_arr1, PyObject *__pyx_v_start1, PyObject *__pyx_v_length1, PyObject *__pyx_v_offset1, PyObject *__pyx_v_arr2, PyObject *__pyx_v_start2, PyObject *__pyx_v_length2, PyObject *__pyx_v_offset2) {
+static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_arr1, PyObject *__pyx_v_start1, PyObject *__pyx_v_length1, PyObject *__pyx_v_offset1, PyObject *__pyx_v_arr2, PyObject *__pyx_v_start2, PyObject *__pyx_v_length2, PyObject *__pyx_v_offset2, PyObject *__pyx_v_difference) {
   int __pyx_v_size;
   __pyx_t_17fast_intersection_buffer __pyx_v_buf1 = { 0, 0, { 0 }, { 0 }, { 0 } };
   __pyx_t_17fast_intersection_buffer __pyx_v_buf2 = { 0, 0, { 0 }, { 0 }, { 0 } };
@@ -4016,8 +4031,8 @@ static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObjec
   __Pyx_RefNannySetupContext("intersection", 0);
 
   /* "fast_intersection.pyx":21
- * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2):
- *     """Take the intersection of two sorted arrays."""
+ * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2, difference=False):
+ *     """Take the intersection of two sorted arrays. Or difference if difference is True."""
  *     assert arr1._elemsize == arr2._elemsize             # <<<<<<<<<<<<<<
  *     cdef int size = arr1._elemsize
  * 
@@ -4043,7 +4058,7 @@ static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObjec
   #endif
 
   /* "fast_intersection.pyx":22
- *     """Take the intersection of two sorted arrays."""
+ *     """Take the intersection of two sorted arrays. Or difference if difference is True."""
  *     assert arr1._elemsize == arr2._elemsize
  *     cdef int size = arr1._elemsize             # <<<<<<<<<<<<<<
  * 
@@ -4246,7 +4261,7 @@ static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObjec
  * 
  *         if x < y:             # <<<<<<<<<<<<<<
  *             i += size
- *         elif x > y:
+ *             if difference:
  */
     __pyx_t_3 = PyObject_RichCompare(__pyx_v_x, __pyx_v_y, Py_LT); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 42, __pyx_L1_error)
     __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 42, __pyx_L1_error)
@@ -4257,137 +4272,195 @@ static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObjec
  * 
  *         if x < y:
  *             i += size             # <<<<<<<<<<<<<<
+ *             if difference:
+ *                 write_bytes(out+k, x, size)
+ */
+      __pyx_v_i = (__pyx_v_i + __pyx_v_size);
+
+      /* "fast_intersection.pyx":44
+ *         if x < y:
+ *             i += size
+ *             if difference:             # <<<<<<<<<<<<<<
+ *                 write_bytes(out+k, x, size)
+ *                 k += size
+ */
+      __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_difference); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 44, __pyx_L1_error)
+      if (__pyx_t_4) {
+
+        /* "fast_intersection.pyx":45
+ *             i += size
+ *             if difference:
+ *                 write_bytes(out+k, x, size)             # <<<<<<<<<<<<<<
+ *                 k += size
+ *         elif x > y:
+ */
+        __pyx_t_10 = __Pyx_PyInt_As_size_t(__pyx_v_x); if (unlikely((__pyx_t_10 == (size_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 45, __pyx_L1_error)
+        __pyx_f_17fast_intersection_write_bytes((__pyx_v_out + __pyx_v_k), __pyx_t_10, __pyx_v_size);
+
+        /* "fast_intersection.pyx":46
+ *             if difference:
+ *                 write_bytes(out+k, x, size)
+ *                 k += size             # <<<<<<<<<<<<<<
  *         elif x > y:
  *             j += size
  */
-      __pyx_v_i = (__pyx_v_i + __pyx_v_size);
+        __pyx_v_k = (__pyx_v_k + __pyx_v_size);
+
+        /* "fast_intersection.pyx":44
+ *         if x < y:
+ *             i += size
+ *             if difference:             # <<<<<<<<<<<<<<
+ *                 write_bytes(out+k, x, size)
+ *                 k += size
+ */
+      }
 
       /* "fast_intersection.pyx":42
  *         y = read_bytes(in2+j, size) - offset2
  * 
  *         if x < y:             # <<<<<<<<<<<<<<
  *             i += size
- *         elif x > y:
- */
-      goto __pyx_L7;
-    }
-
-    /* "fast_intersection.pyx":44
- *         if x < y:
- *             i += size
- *         elif x > y:             # <<<<<<<<<<<<<<
- *             j += size
- *         else:
- */
-    __pyx_t_3 = PyObject_RichCompare(__pyx_v_x, __pyx_v_y, Py_GT); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 44, __pyx_L1_error)
-    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 44, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (__pyx_t_4) {
-
-      /* "fast_intersection.pyx":45
- *             i += size
- *         elif x > y:
- *             j += size             # <<<<<<<<<<<<<<
- *         else:
- *             write_bytes(out+k, x, size)
- */
-      __pyx_v_j = (__pyx_v_j + __pyx_v_size);
-
-      /* "fast_intersection.pyx":44
- *         if x < y:
- *             i += size
- *         elif x > y:             # <<<<<<<<<<<<<<
- *             j += size
- *         else:
+ *             if difference:
  */
       goto __pyx_L7;
     }
 
     /* "fast_intersection.pyx":47
+ *                 write_bytes(out+k, x, size)
+ *                 k += size
+ *         elif x > y:             # <<<<<<<<<<<<<<
  *             j += size
  *         else:
- *             write_bytes(out+k, x, size)             # <<<<<<<<<<<<<<
- *             i += size
- *             j += size
  */
-    /*else*/ {
-      __pyx_t_10 = __Pyx_PyInt_As_size_t(__pyx_v_x); if (unlikely((__pyx_t_10 == (size_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 47, __pyx_L1_error)
-      __pyx_f_17fast_intersection_write_bytes((__pyx_v_out + __pyx_v_k), __pyx_t_10, __pyx_v_size);
+    __pyx_t_3 = PyObject_RichCompare(__pyx_v_x, __pyx_v_y, Py_GT); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 47, __pyx_L1_error)
+    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 47, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (__pyx_t_4) {
 
       /* "fast_intersection.pyx":48
- *         else:
- *             write_bytes(out+k, x, size)
- *             i += size             # <<<<<<<<<<<<<<
- *             j += size
- *             k += size
- */
-      __pyx_v_i = (__pyx_v_i + __pyx_v_size);
-
-      /* "fast_intersection.pyx":49
- *             write_bytes(out+k, x, size)
- *             i += size
+ *                 k += size
+ *         elif x > y:
  *             j += size             # <<<<<<<<<<<<<<
- *             k += size
- * 
+ *         else:
+ *             i += size
  */
       __pyx_v_j = (__pyx_v_j + __pyx_v_size);
 
-      /* "fast_intersection.pyx":50
+      /* "fast_intersection.pyx":47
+ *                 write_bytes(out+k, x, size)
+ *                 k += size
+ *         elif x > y:             # <<<<<<<<<<<<<<
+ *             j += size
+ *         else:
+ */
+      goto __pyx_L7;
+    }
+
+    /* "fast_intersection.pyx":50
+ *             j += size
+ *         else:
+ *             i += size             # <<<<<<<<<<<<<<
+ *             j += size
+ *             if not difference:
+ */
+    /*else*/ {
+      __pyx_v_i = (__pyx_v_i + __pyx_v_size);
+
+      /* "fast_intersection.pyx":51
+ *         else:
+ *             i += size
+ *             j += size             # <<<<<<<<<<<<<<
+ *             if not difference:
+ *                 write_bytes(out+k, x, size)
+ */
+      __pyx_v_j = (__pyx_v_j + __pyx_v_size);
+
+      /* "fast_intersection.pyx":52
  *             i += size
  *             j += size
- *             k += size             # <<<<<<<<<<<<<<
- * 
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
+ *             if not difference:             # <<<<<<<<<<<<<<
+ *                 write_bytes(out+k, x, size)
+ *                 k += size
  */
-      __pyx_v_k = (__pyx_v_k + __pyx_v_size);
+      __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_v_difference); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 52, __pyx_L1_error)
+      __pyx_t_11 = (!__pyx_t_4);
+      if (__pyx_t_11) {
+
+        /* "fast_intersection.pyx":53
+ *             j += size
+ *             if not difference:
+ *                 write_bytes(out+k, x, size)             # <<<<<<<<<<<<<<
+ *                 k += size
+ * 
+ */
+        __pyx_t_10 = __Pyx_PyInt_As_size_t(__pyx_v_x); if (unlikely((__pyx_t_10 == (size_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 53, __pyx_L1_error)
+        __pyx_f_17fast_intersection_write_bytes((__pyx_v_out + __pyx_v_k), __pyx_t_10, __pyx_v_size);
+
+        /* "fast_intersection.pyx":54
+ *             if not difference:
+ *                 write_bytes(out+k, x, size)
+ *                 k += size             # <<<<<<<<<<<<<<
+ * 
+ *     result = LowlevelIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
+ */
+        __pyx_v_k = (__pyx_v_k + __pyx_v_size);
+
+        /* "fast_intersection.pyx":52
+ *             i += size
+ *             j += size
+ *             if not difference:             # <<<<<<<<<<<<<<
+ *                 write_bytes(out+k, x, size)
+ *                 k += size
+ */
+      }
     }
     __pyx_L7:;
   }
 
-  /* "fast_intersection.pyx":52
- *             k += size
+  /* "fast_intersection.pyx":56
+ *                 k += size
  * 
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)             # <<<<<<<<<<<<<<
+ *     result = LowlevelIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)             # <<<<<<<<<<<<<<
  *     free(out)
  *     return result
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_DiskIntArray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_LowlevelIntArray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_2 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_1 = __Pyx_PyBytes_FromStringAndSize(__pyx_v_out + 0, __pyx_v_k - 0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyBytes_FromStringAndSize(__pyx_v_out + 0, __pyx_v_k - 0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_bytemap, __pyx_t_1) < 0) __PYX_ERR(0, 52, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_bytemap, __pyx_t_1) < 0) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_size); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_size); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_elemsize_2, __pyx_t_1) < 0) __PYX_ERR(0, 52, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_elemsize_2, __pyx_t_1) < 0) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_sys); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_sys); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_byteorder_2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_byteorder_2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_12);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_byteorder_2, __pyx_t_12) < 0) __PYX_ERR(0, 52, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_byteorder_2, __pyx_t_12) < 0) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-  __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_3, __pyx_empty_tuple, __pyx_t_2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 52, __pyx_L1_error)
+  __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_3, __pyx_empty_tuple, __pyx_t_2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 56, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_12);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_v_result = __pyx_t_12;
   __pyx_t_12 = 0;
 
-  /* "fast_intersection.pyx":53
+  /* "fast_intersection.pyx":57
  * 
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
+ *     result = LowlevelIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
  *     free(out)             # <<<<<<<<<<<<<<
  *     return result
  * 
  */
   free(__pyx_v_out);
 
-  /* "fast_intersection.pyx":54
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
+  /* "fast_intersection.pyx":58
+ *     result = LowlevelIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
  *     free(out)
  *     return result             # <<<<<<<<<<<<<<
  * 
@@ -4401,8 +4474,8 @@ static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObjec
   /* "fast_intersection.pyx":19
  * 
  * 
- * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the intersection of two sorted arrays."""
+ * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2, difference=False):             # <<<<<<<<<<<<<<
+ *     """Take the intersection of two sorted arrays. Or difference if difference is True."""
  *     assert arr1._elemsize == arr2._elemsize
  */
 
@@ -4426,620 +4499,7 @@ static PyObject *__pyx_pf_17fast_intersection_intersection(CYTHON_UNUSED PyObjec
   return __pyx_r;
 }
 
-/* "fast_intersection.pyx":57
- * 
- * 
- * def difference(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the difference between one sorted array and another."""
- *     assert arr1._elemsize == arr2._elemsize
- */
-
-/* Python wrapper */
-static PyObject *__pyx_pw_17fast_intersection_3difference(PyObject *__pyx_self, 
-#if CYTHON_METH_FASTCALL
-PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
-#else
-PyObject *__pyx_args, PyObject *__pyx_kwds
-#endif
-); /*proto*/
-PyDoc_STRVAR(__pyx_doc_17fast_intersection_2difference, "Take the difference between one sorted array and another.");
-static PyMethodDef __pyx_mdef_17fast_intersection_3difference = {"difference", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_17fast_intersection_3difference, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_17fast_intersection_2difference};
-static PyObject *__pyx_pw_17fast_intersection_3difference(PyObject *__pyx_self, 
-#if CYTHON_METH_FASTCALL
-PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
-#else
-PyObject *__pyx_args, PyObject *__pyx_kwds
-#endif
-) {
-  PyObject *__pyx_v_arr1 = 0;
-  PyObject *__pyx_v_start1 = 0;
-  PyObject *__pyx_v_length1 = 0;
-  PyObject *__pyx_v_offset1 = 0;
-  PyObject *__pyx_v_arr2 = 0;
-  PyObject *__pyx_v_start2 = 0;
-  PyObject *__pyx_v_length2 = 0;
-  PyObject *__pyx_v_offset2 = 0;
-  #if !CYTHON_METH_FASTCALL
-  CYTHON_UNUSED const Py_ssize_t __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
-  #endif
-  CYTHON_UNUSED PyObject *const *__pyx_kwvalues = __Pyx_KwValues_FASTCALL(__pyx_args, __pyx_nargs);
-  int __pyx_lineno = 0;
-  const char *__pyx_filename = NULL;
-  int __pyx_clineno = 0;
-  PyObject *__pyx_r = 0;
-  __Pyx_RefNannyDeclarations
-  __Pyx_RefNannySetupContext("difference (wrapper)", 0);
-  {
-    #if CYTHON_USE_MODULE_STATE
-    PyObject **__pyx_pyargnames[] = {&__pyx_n_s_arr1,&__pyx_n_s_start1,&__pyx_n_s_length1,&__pyx_n_s_offset1,&__pyx_n_s_arr2,&__pyx_n_s_start2,&__pyx_n_s_length2,&__pyx_n_s_offset2,0};
-    #else
-    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_arr1,&__pyx_n_s_start1,&__pyx_n_s_length1,&__pyx_n_s_offset1,&__pyx_n_s_arr2,&__pyx_n_s_start2,&__pyx_n_s_length2,&__pyx_n_s_offset2,0};
-    #endif
-    PyObject* values[8] = {0,0,0,0,0,0,0,0};
-    if (__pyx_kwds) {
-      Py_ssize_t kw_args;
-      switch (__pyx_nargs) {
-        case  8: values[7] = __Pyx_Arg_FASTCALL(__pyx_args, 7);
-        CYTHON_FALLTHROUGH;
-        case  7: values[6] = __Pyx_Arg_FASTCALL(__pyx_args, 6);
-        CYTHON_FALLTHROUGH;
-        case  6: values[5] = __Pyx_Arg_FASTCALL(__pyx_args, 5);
-        CYTHON_FALLTHROUGH;
-        case  5: values[4] = __Pyx_Arg_FASTCALL(__pyx_args, 4);
-        CYTHON_FALLTHROUGH;
-        case  4: values[3] = __Pyx_Arg_FASTCALL(__pyx_args, 3);
-        CYTHON_FALLTHROUGH;
-        case  3: values[2] = __Pyx_Arg_FASTCALL(__pyx_args, 2);
-        CYTHON_FALLTHROUGH;
-        case  2: values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
-        CYTHON_FALLTHROUGH;
-        case  1: values[0] = __Pyx_Arg_FASTCALL(__pyx_args, 0);
-        CYTHON_FALLTHROUGH;
-        case  0: break;
-        default: goto __pyx_L5_argtuple_error;
-      }
-      kw_args = __Pyx_NumKwargs_FASTCALL(__pyx_kwds);
-      switch (__pyx_nargs) {
-        case  0:
-        if (likely((values[0] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_arr1)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else goto __pyx_L5_argtuple_error;
-        CYTHON_FALLTHROUGH;
-        case  1:
-        if (likely((values[1] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_start1)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 1); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-        CYTHON_FALLTHROUGH;
-        case  2:
-        if (likely((values[2] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_length1)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 2); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-        CYTHON_FALLTHROUGH;
-        case  3:
-        if (likely((values[3] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_offset1)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 3); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-        CYTHON_FALLTHROUGH;
-        case  4:
-        if (likely((values[4] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_arr2)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 4); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-        CYTHON_FALLTHROUGH;
-        case  5:
-        if (likely((values[5] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_start2)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 5); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-        CYTHON_FALLTHROUGH;
-        case  6:
-        if (likely((values[6] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_length2)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 6); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-        CYTHON_FALLTHROUGH;
-        case  7:
-        if (likely((values[7] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_offset2)) != 0)) kw_args--;
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 57, __pyx_L3_error)
-        else {
-          __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, 7); __PYX_ERR(0, 57, __pyx_L3_error)
-        }
-      }
-      if (unlikely(kw_args > 0)) {
-        const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "difference") < 0)) __PYX_ERR(0, 57, __pyx_L3_error)
-      }
-    } else if (unlikely(__pyx_nargs != 8)) {
-      goto __pyx_L5_argtuple_error;
-    } else {
-      values[0] = __Pyx_Arg_FASTCALL(__pyx_args, 0);
-      values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
-      values[2] = __Pyx_Arg_FASTCALL(__pyx_args, 2);
-      values[3] = __Pyx_Arg_FASTCALL(__pyx_args, 3);
-      values[4] = __Pyx_Arg_FASTCALL(__pyx_args, 4);
-      values[5] = __Pyx_Arg_FASTCALL(__pyx_args, 5);
-      values[6] = __Pyx_Arg_FASTCALL(__pyx_args, 6);
-      values[7] = __Pyx_Arg_FASTCALL(__pyx_args, 7);
-    }
-    __pyx_v_arr1 = values[0];
-    __pyx_v_start1 = values[1];
-    __pyx_v_length1 = values[2];
-    __pyx_v_offset1 = values[3];
-    __pyx_v_arr2 = values[4];
-    __pyx_v_start2 = values[5];
-    __pyx_v_length2 = values[6];
-    __pyx_v_offset2 = values[7];
-  }
-  goto __pyx_L4_argument_unpacking_done;
-  __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("difference", 1, 8, 8, __pyx_nargs); __PYX_ERR(0, 57, __pyx_L3_error)
-  __pyx_L3_error:;
-  __Pyx_AddTraceback("fast_intersection.difference", __pyx_clineno, __pyx_lineno, __pyx_filename);
-  __Pyx_RefNannyFinishContext();
-  return NULL;
-  __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_17fast_intersection_2difference(__pyx_self, __pyx_v_arr1, __pyx_v_start1, __pyx_v_length1, __pyx_v_offset1, __pyx_v_arr2, __pyx_v_start2, __pyx_v_length2, __pyx_v_offset2);
-
-  /* function exit code */
-  __Pyx_RefNannyFinishContext();
-  return __pyx_r;
-}
-
-static PyObject *__pyx_pf_17fast_intersection_2difference(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_arr1, PyObject *__pyx_v_start1, PyObject *__pyx_v_length1, PyObject *__pyx_v_offset1, PyObject *__pyx_v_arr2, PyObject *__pyx_v_start2, PyObject *__pyx_v_length2, PyObject *__pyx_v_offset2) {
-  int __pyx_v_size;
-  __pyx_t_17fast_intersection_buffer __pyx_v_buf1 = { 0, 0, { 0 }, { 0 }, { 0 } };
-  __pyx_t_17fast_intersection_buffer __pyx_v_buf2 = { 0, 0, { 0 }, { 0 }, { 0 } };
-  unsigned char const *__pyx_v_in1;
-  unsigned char const *__pyx_v_in2;
-  size_t __pyx_v_len1;
-  size_t __pyx_v_len2;
-  char *__pyx_v_out;
-  size_t __pyx_v_i;
-  size_t __pyx_v_j;
-  size_t __pyx_v_k;
-  PyObject *__pyx_v_x = NULL;
-  PyObject *__pyx_v_y = NULL;
-  PyObject *__pyx_v_result = NULL;
-  PyObject *__pyx_r = NULL;
-  __Pyx_RefNannyDeclarations
-  PyObject *__pyx_t_1 = NULL;
-  PyObject *__pyx_t_2 = NULL;
-  PyObject *__pyx_t_3 = NULL;
-  int __pyx_t_4;
-  int __pyx_t_5;
-  __pyx_t_17fast_intersection_buffer __pyx_t_6 = { 0, 0, { 0 }, { 0 }, { 0 } };
-  Py_ssize_t __pyx_t_7;
-  size_t __pyx_t_8;
-  size_t __pyx_t_9;
-  size_t __pyx_t_10;
-  int __pyx_t_11;
-  PyObject *__pyx_t_12 = NULL;
-  int __pyx_lineno = 0;
-  const char *__pyx_filename = NULL;
-  int __pyx_clineno = 0;
-  __Pyx_RefNannySetupContext("difference", 0);
-
-  /* "fast_intersection.pyx":59
- * def difference(arr1, start1, length1, offset1, arr2, start2, length2, offset2):
- *     """Take the difference between one sorted array and another."""
- *     assert arr1._elemsize == arr2._elemsize             # <<<<<<<<<<<<<<
- *     cdef int size = arr1._elemsize
- * 
- */
-  #ifndef CYTHON_WITHOUT_ASSERTIONS
-  if (unlikely(!Py_OptimizeFlag)) {
-    __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_v_arr1, __pyx_n_s_elemsize); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 59, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_v_arr2, __pyx_n_s_elemsize); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 59, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_3 = PyObject_RichCompare(__pyx_t_1, __pyx_t_2, Py_EQ); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 59, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 59, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (unlikely(!__pyx_t_4)) {
-      __Pyx_Raise(__pyx_builtin_AssertionError, 0, 0, 0);
-      __PYX_ERR(0, 59, __pyx_L1_error)
-    }
-  }
-  #else
-  if ((1)); else __PYX_ERR(0, 59, __pyx_L1_error)
-  #endif
-
-  /* "fast_intersection.pyx":60
- *     """Take the difference between one sorted array and another."""
- *     assert arr1._elemsize == arr2._elemsize
- *     cdef int size = arr1._elemsize             # <<<<<<<<<<<<<<
- * 
- *     cdef buffer buf1 = to_buffer(arr1, start1, length1)
- */
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_arr1, __pyx_n_s_elemsize); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 60, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_5 = __Pyx_PyInt_As_int(__pyx_t_3); if (unlikely((__pyx_t_5 == (int)-1) && PyErr_Occurred())) __PYX_ERR(0, 60, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_v_size = __pyx_t_5;
-
-  /* "fast_intersection.pyx":62
- *     cdef int size = arr1._elemsize
- * 
- *     cdef buffer buf1 = to_buffer(arr1, start1, length1)             # <<<<<<<<<<<<<<
- *     cdef buffer buf2 = to_buffer(arr2, start2, length2)
- * 
- */
-  __pyx_t_6 = __pyx_f_17fast_intersection_to_buffer(__pyx_v_arr1, __pyx_v_start1, __pyx_v_length1); if (unlikely(!__pyx_t_6.memview)) __PYX_ERR(0, 62, __pyx_L1_error)
-  __pyx_v_buf1 = __pyx_t_6;
-  __pyx_t_6.memview = NULL;
-  __pyx_t_6.data = NULL;
-
-  /* "fast_intersection.pyx":63
- * 
- *     cdef buffer buf1 = to_buffer(arr1, start1, length1)
- *     cdef buffer buf2 = to_buffer(arr2, start2, length2)             # <<<<<<<<<<<<<<
- * 
- *     cdef const unsigned char* in1 = &buf1[0]
- */
-  __pyx_t_6 = __pyx_f_17fast_intersection_to_buffer(__pyx_v_arr2, __pyx_v_start2, __pyx_v_length2); if (unlikely(!__pyx_t_6.memview)) __PYX_ERR(0, 63, __pyx_L1_error)
-  __pyx_v_buf2 = __pyx_t_6;
-  __pyx_t_6.memview = NULL;
-  __pyx_t_6.data = NULL;
-
-  /* "fast_intersection.pyx":65
- *     cdef buffer buf2 = to_buffer(arr2, start2, length2)
- * 
- *     cdef const unsigned char* in1 = &buf1[0]             # <<<<<<<<<<<<<<
- *     cdef const unsigned char* in2 = &buf2[0]
- *     cdef size_t len1 = buf1.nbytes
- */
-  __pyx_t_7 = 0;
-  __pyx_t_5 = -1;
-  if (__pyx_t_7 < 0) {
-    __pyx_t_7 += __pyx_v_buf1.shape[0];
-    if (unlikely(__pyx_t_7 < 0)) __pyx_t_5 = 0;
-  } else if (unlikely(__pyx_t_7 >= __pyx_v_buf1.shape[0])) __pyx_t_5 = 0;
-  if (unlikely(__pyx_t_5 != -1)) {
-    __Pyx_RaiseBufferIndexError(__pyx_t_5);
-    __PYX_ERR(0, 65, __pyx_L1_error)
-  }
-  __pyx_v_in1 = (&(*((unsigned char const  *) ( /* dim=0 */ ((char *) (((unsigned char const  *) __pyx_v_buf1.data) + __pyx_t_7)) ))));
-
-  /* "fast_intersection.pyx":66
- * 
- *     cdef const unsigned char* in1 = &buf1[0]
- *     cdef const unsigned char* in2 = &buf2[0]             # <<<<<<<<<<<<<<
- *     cdef size_t len1 = buf1.nbytes
- *     cdef size_t len2 = buf2.nbytes
- */
-  __pyx_t_7 = 0;
-  __pyx_t_5 = -1;
-  if (__pyx_t_7 < 0) {
-    __pyx_t_7 += __pyx_v_buf2.shape[0];
-    if (unlikely(__pyx_t_7 < 0)) __pyx_t_5 = 0;
-  } else if (unlikely(__pyx_t_7 >= __pyx_v_buf2.shape[0])) __pyx_t_5 = 0;
-  if (unlikely(__pyx_t_5 != -1)) {
-    __Pyx_RaiseBufferIndexError(__pyx_t_5);
-    __PYX_ERR(0, 66, __pyx_L1_error)
-  }
-  __pyx_v_in2 = (&(*((unsigned char const  *) ( /* dim=0 */ ((char *) (((unsigned char const  *) __pyx_v_buf2.data) + __pyx_t_7)) ))));
-
-  /* "fast_intersection.pyx":67
- *     cdef const unsigned char* in1 = &buf1[0]
- *     cdef const unsigned char* in2 = &buf2[0]
- *     cdef size_t len1 = buf1.nbytes             # <<<<<<<<<<<<<<
- *     cdef size_t len2 = buf2.nbytes
- * 
- */
-  __pyx_t_3 = __pyx_memoryview_fromslice(__pyx_v_buf1, 1, (PyObject *(*)(char *)) __pyx_memview_get_unsigned_char__const__, (int (*)(char *, PyObject *)) NULL, 0);; if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 67, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_nbytes); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 67, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_8 = __Pyx_PyInt_As_size_t(__pyx_t_2); if (unlikely((__pyx_t_8 == (size_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 67, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_v_len1 = __pyx_t_8;
-
-  /* "fast_intersection.pyx":68
- *     cdef const unsigned char* in2 = &buf2[0]
- *     cdef size_t len1 = buf1.nbytes
- *     cdef size_t len2 = buf2.nbytes             # <<<<<<<<<<<<<<
- * 
- *     out = <char*>malloc(max(len1, len2))
- */
-  __pyx_t_2 = __pyx_memoryview_fromslice(__pyx_v_buf2, 1, (PyObject *(*)(char *)) __pyx_memview_get_unsigned_char__const__, (int (*)(char *, PyObject *)) NULL, 0);; if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 68, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_nbytes); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 68, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_8 = __Pyx_PyInt_As_size_t(__pyx_t_3); if (unlikely((__pyx_t_8 == (size_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 68, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_v_len2 = __pyx_t_8;
-
-  /* "fast_intersection.pyx":70
- *     cdef size_t len2 = buf2.nbytes
- * 
- *     out = <char*>malloc(max(len1, len2))             # <<<<<<<<<<<<<<
- * 
- *     cdef size_t i = 0
- */
-  __pyx_t_8 = __pyx_v_len2;
-  __pyx_t_9 = __pyx_v_len1;
-  if ((__pyx_t_8 > __pyx_t_9)) {
-    __pyx_t_10 = __pyx_t_8;
-  } else {
-    __pyx_t_10 = __pyx_t_9;
-  }
-  __pyx_v_out = ((char *)malloc(__pyx_t_10));
-
-  /* "fast_intersection.pyx":72
- *     out = <char*>malloc(max(len1, len2))
- * 
- *     cdef size_t i = 0             # <<<<<<<<<<<<<<
- *     cdef size_t j = 0
- *     cdef size_t k = 0
- */
-  __pyx_v_i = 0;
-
-  /* "fast_intersection.pyx":73
- * 
- *     cdef size_t i = 0
- *     cdef size_t j = 0             # <<<<<<<<<<<<<<
- *     cdef size_t k = 0
- * 
- */
-  __pyx_v_j = 0;
-
-  /* "fast_intersection.pyx":74
- *     cdef size_t i = 0
- *     cdef size_t j = 0
- *     cdef size_t k = 0             # <<<<<<<<<<<<<<
- * 
- *     while i < len1 and j < len2:
- */
-  __pyx_v_k = 0;
-
-  /* "fast_intersection.pyx":76
- *     cdef size_t k = 0
- * 
- *     while i < len1 and j < len2:             # <<<<<<<<<<<<<<
- *         x = read_bytes(in1+i, size) - offset1
- *         y = read_bytes(in2+j, size) - offset2
- */
-  while (1) {
-    __pyx_t_11 = (__pyx_v_i < __pyx_v_len1);
-    if (__pyx_t_11) {
-    } else {
-      __pyx_t_4 = __pyx_t_11;
-      goto __pyx_L5_bool_binop_done;
-    }
-    __pyx_t_11 = (__pyx_v_j < __pyx_v_len2);
-    __pyx_t_4 = __pyx_t_11;
-    __pyx_L5_bool_binop_done:;
-    if (!__pyx_t_4) break;
-
-    /* "fast_intersection.pyx":77
- * 
- *     while i < len1 and j < len2:
- *         x = read_bytes(in1+i, size) - offset1             # <<<<<<<<<<<<<<
- *         y = read_bytes(in2+j, size) - offset2
- * 
- */
-    __pyx_t_3 = __Pyx_PyInt_FromSize_t(__pyx_f_17fast_intersection_read_bytes((__pyx_v_in1 + __pyx_v_i), __pyx_v_size)); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 77, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-    __pyx_t_2 = PyNumber_Subtract(__pyx_t_3, __pyx_v_offset1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 77, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_2);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __Pyx_XDECREF_SET(__pyx_v_x, __pyx_t_2);
-    __pyx_t_2 = 0;
-
-    /* "fast_intersection.pyx":78
- *     while i < len1 and j < len2:
- *         x = read_bytes(in1+i, size) - offset1
- *         y = read_bytes(in2+j, size) - offset2             # <<<<<<<<<<<<<<
- * 
- *         if x < y:
- */
-    __pyx_t_2 = __Pyx_PyInt_FromSize_t(__pyx_f_17fast_intersection_read_bytes((__pyx_v_in2 + __pyx_v_j), __pyx_v_size)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 78, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_3 = PyNumber_Subtract(__pyx_t_2, __pyx_v_offset2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 78, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-    __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __Pyx_XDECREF_SET(__pyx_v_y, __pyx_t_3);
-    __pyx_t_3 = 0;
-
-    /* "fast_intersection.pyx":80
- *         y = read_bytes(in2+j, size) - offset2
- * 
- *         if x < y:             # <<<<<<<<<<<<<<
- *             write_bytes(out+k, x, size)
- *             i += size
- */
-    __pyx_t_3 = PyObject_RichCompare(__pyx_v_x, __pyx_v_y, Py_LT); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 80, __pyx_L1_error)
-    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 80, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (__pyx_t_4) {
-
-      /* "fast_intersection.pyx":81
- * 
- *         if x < y:
- *             write_bytes(out+k, x, size)             # <<<<<<<<<<<<<<
- *             i += size
- *             k += size
- */
-      __pyx_t_10 = __Pyx_PyInt_As_size_t(__pyx_v_x); if (unlikely((__pyx_t_10 == (size_t)-1) && PyErr_Occurred())) __PYX_ERR(0, 81, __pyx_L1_error)
-      __pyx_f_17fast_intersection_write_bytes((__pyx_v_out + __pyx_v_k), __pyx_t_10, __pyx_v_size);
-
-      /* "fast_intersection.pyx":82
- *         if x < y:
- *             write_bytes(out+k, x, size)
- *             i += size             # <<<<<<<<<<<<<<
- *             k += size
- *         elif x > y:
- */
-      __pyx_v_i = (__pyx_v_i + __pyx_v_size);
-
-      /* "fast_intersection.pyx":83
- *             write_bytes(out+k, x, size)
- *             i += size
- *             k += size             # <<<<<<<<<<<<<<
- *         elif x > y:
- *             j += size
- */
-      __pyx_v_k = (__pyx_v_k + __pyx_v_size);
-
-      /* "fast_intersection.pyx":80
- *         y = read_bytes(in2+j, size) - offset2
- * 
- *         if x < y:             # <<<<<<<<<<<<<<
- *             write_bytes(out+k, x, size)
- *             i += size
- */
-      goto __pyx_L7;
-    }
-
-    /* "fast_intersection.pyx":84
- *             i += size
- *             k += size
- *         elif x > y:             # <<<<<<<<<<<<<<
- *             j += size
- *         else:
- */
-    __pyx_t_3 = PyObject_RichCompare(__pyx_v_x, __pyx_v_y, Py_GT); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 84, __pyx_L1_error)
-    __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 84, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    if (__pyx_t_4) {
-
-      /* "fast_intersection.pyx":85
- *             k += size
- *         elif x > y:
- *             j += size             # <<<<<<<<<<<<<<
- *         else:
- *             i += size
- */
-      __pyx_v_j = (__pyx_v_j + __pyx_v_size);
-
-      /* "fast_intersection.pyx":84
- *             i += size
- *             k += size
- *         elif x > y:             # <<<<<<<<<<<<<<
- *             j += size
- *         else:
- */
-      goto __pyx_L7;
-    }
-
-    /* "fast_intersection.pyx":87
- *             j += size
- *         else:
- *             i += size             # <<<<<<<<<<<<<<
- *             j += size
- * 
- */
-    /*else*/ {
-      __pyx_v_i = (__pyx_v_i + __pyx_v_size);
-
-      /* "fast_intersection.pyx":88
- *         else:
- *             i += size
- *             j += size             # <<<<<<<<<<<<<<
- * 
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
- */
-      __pyx_v_j = (__pyx_v_j + __pyx_v_size);
-    }
-    __pyx_L7:;
-  }
-
-  /* "fast_intersection.pyx":90
- *             j += size
- * 
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)             # <<<<<<<<<<<<<<
- *     free(out)
- *     return result
- */
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_DiskIntArray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_2 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  __pyx_t_1 = __Pyx_PyBytes_FromStringAndSize(__pyx_v_out + 0, __pyx_v_k - 0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_bytemap, __pyx_t_1) < 0) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_1 = __Pyx_PyInt_From_int(__pyx_v_size); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_elemsize_2, __pyx_t_1) < 0) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_sys); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_byteorder_2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_12);
-  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_byteorder_2, __pyx_t_12) < 0) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-  __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_3, __pyx_empty_tuple, __pyx_t_2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 90, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_12);
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_v_result = __pyx_t_12;
-  __pyx_t_12 = 0;
-
-  /* "fast_intersection.pyx":91
- * 
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
- *     free(out)             # <<<<<<<<<<<<<<
- *     return result
- * 
- */
-  free(__pyx_v_out);
-
-  /* "fast_intersection.pyx":92
- *     result = DiskIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
- *     free(out)
- *     return result             # <<<<<<<<<<<<<<
- * 
- * 
- */
-  __Pyx_XDECREF(__pyx_r);
-  __Pyx_INCREF(__pyx_v_result);
-  __pyx_r = __pyx_v_result;
-  goto __pyx_L0;
-
-  /* "fast_intersection.pyx":57
- * 
- * 
- * def difference(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the difference between one sorted array and another."""
- *     assert arr1._elemsize == arr2._elemsize
- */
-
-  /* function exit code */
-  __pyx_L1_error:;
-  __Pyx_XDECREF(__pyx_t_1);
-  __Pyx_XDECREF(__pyx_t_2);
-  __Pyx_XDECREF(__pyx_t_3);
-  __PYX_XCLEAR_MEMVIEW(&__pyx_t_6, 1);
-  __Pyx_XDECREF(__pyx_t_12);
-  __Pyx_AddTraceback("fast_intersection.difference", __pyx_clineno, __pyx_lineno, __pyx_filename);
-  __pyx_r = NULL;
-  __pyx_L0:;
-  __PYX_XCLEAR_MEMVIEW(&__pyx_v_buf1, 1);
-  __PYX_XCLEAR_MEMVIEW(&__pyx_v_buf2, 1);
-  __Pyx_XDECREF(__pyx_v_x);
-  __Pyx_XDECREF(__pyx_v_y);
-  __Pyx_XDECREF(__pyx_v_result);
-  __Pyx_XGIVEREF(__pyx_r);
-  __Pyx_RefNannyFinishContext();
-  return __pyx_r;
-}
-
-/* "fast_intersection.pyx":99
+/* "fast_intersection.pyx":65
  * 
  * 
  * cdef inline size_t read_bytes(const void *ptr, int size):             # <<<<<<<<<<<<<<
@@ -5053,7 +4513,7 @@ static CYTHON_INLINE size_t __pyx_f_17fast_intersection_read_bytes(void const *_
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("read_bytes", 0);
 
-  /* "fast_intersection.pyx":101
+  /* "fast_intersection.pyx":67
  * cdef inline size_t read_bytes(const void *ptr, int size):
  *     """Read an integer of the given number of bytes from a pointer."""
  *     cdef size_t result = 0             # <<<<<<<<<<<<<<
@@ -5062,7 +4522,7 @@ static CYTHON_INLINE size_t __pyx_f_17fast_intersection_read_bytes(void const *_
  */
   __pyx_v_result = 0;
 
-  /* "fast_intersection.pyx":102
+  /* "fast_intersection.pyx":68
  *     """Read an integer of the given number of bytes from a pointer."""
  *     cdef size_t result = 0
  *     memcpy(&result, ptr, size)             # <<<<<<<<<<<<<<
@@ -5071,7 +4531,7 @@ static CYTHON_INLINE size_t __pyx_f_17fast_intersection_read_bytes(void const *_
  */
   (void)(memcpy((&__pyx_v_result), __pyx_v_ptr, __pyx_v_size));
 
-  /* "fast_intersection.pyx":103
+  /* "fast_intersection.pyx":69
  *     cdef size_t result = 0
  *     memcpy(&result, ptr, size)
  *     return result             # <<<<<<<<<<<<<<
@@ -5081,7 +4541,7 @@ static CYTHON_INLINE size_t __pyx_f_17fast_intersection_read_bytes(void const *_
   __pyx_r = __pyx_v_result;
   goto __pyx_L0;
 
-  /* "fast_intersection.pyx":99
+  /* "fast_intersection.pyx":65
  * 
  * 
  * cdef inline size_t read_bytes(const void *ptr, int size):             # <<<<<<<<<<<<<<
@@ -5095,7 +4555,7 @@ static CYTHON_INLINE size_t __pyx_f_17fast_intersection_read_bytes(void const *_
   return __pyx_r;
 }
 
-/* "fast_intersection.pyx":106
+/* "fast_intersection.pyx":72
  * 
  * 
  * cdef inline void write_bytes(void *ptr, size_t value, int size):             # <<<<<<<<<<<<<<
@@ -5107,14 +4567,14 @@ static CYTHON_INLINE void __pyx_f_17fast_intersection_write_bytes(void *__pyx_v_
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("write_bytes", 0);
 
-  /* "fast_intersection.pyx":108
+  /* "fast_intersection.pyx":74
  * cdef inline void write_bytes(void *ptr, size_t value, int size):
  *     """Write an integer of the given number of bytes to a pointer."""
  *     memcpy(ptr, &value, size)             # <<<<<<<<<<<<<<
  */
   (void)(memcpy(__pyx_v_ptr, (&__pyx_v_value), __pyx_v_size));
 
-  /* "fast_intersection.pyx":106
+  /* "fast_intersection.pyx":72
  * 
  * 
  * cdef inline void write_bytes(void *ptr, size_t value, int size):             # <<<<<<<<<<<<<<
@@ -19461,7 +18921,6 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, __pyx_k_Cannot_index_with_type, sizeof(__pyx_k_Cannot_index_with_type), 0, 1, 0, 0},
   {0, __pyx_k_Cannot_transpose_memoryview_with, sizeof(__pyx_k_Cannot_transpose_memoryview_with), 0, 0, 1, 0},
   {0, __pyx_k_Dimension_d_is_not_direct, sizeof(__pyx_k_Dimension_d_is_not_direct), 0, 0, 1, 0},
-  {0, __pyx_k_DiskIntArray, sizeof(__pyx_k_DiskIntArray), 0, 0, 1, 1},
   {0, __pyx_k_Ellipsis, sizeof(__pyx_k_Ellipsis), 0, 0, 1, 1},
   {0, __pyx_k_Empty_shape_tuple_for_cython_arr, sizeof(__pyx_k_Empty_shape_tuple_for_cython_arr), 0, 0, 1, 0},
   {0, __pyx_k_Incompatible_checksums_0x_x_vs_0, sizeof(__pyx_k_Incompatible_checksums_0x_x_vs_0), 0, 0, 1, 0},
@@ -19470,6 +18929,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, __pyx_k_Indirect_dimensions_not_supporte, sizeof(__pyx_k_Indirect_dimensions_not_supporte), 0, 0, 1, 0},
   {0, __pyx_k_Invalid_mode_expected_c_or_fortr, sizeof(__pyx_k_Invalid_mode_expected_c_or_fortr), 0, 1, 0, 0},
   {0, __pyx_k_Invalid_shape_in_axis, sizeof(__pyx_k_Invalid_shape_in_axis), 0, 1, 0, 0},
+  {0, __pyx_k_LowlevelIntArray, sizeof(__pyx_k_LowlevelIntArray), 0, 0, 1, 1},
   {0, __pyx_k_MemoryError, sizeof(__pyx_k_MemoryError), 0, 0, 1, 1},
   {0, __pyx_k_MemoryView_of_r_at_0x_x, sizeof(__pyx_k_MemoryView_of_r_at_0x_x), 0, 0, 1, 0},
   {0, __pyx_k_MemoryView_of_r_object, sizeof(__pyx_k_MemoryView_of_r_object), 0, 0, 1, 0},
@@ -19613,7 +19073,6 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_kp_u_Cannot_index_with_type, __pyx_k_Cannot_index_with_type, sizeof(__pyx_k_Cannot_index_with_type), 0, 1, 0, 0},
   {&__pyx_kp_s_Cannot_transpose_memoryview_with, __pyx_k_Cannot_transpose_memoryview_with, sizeof(__pyx_k_Cannot_transpose_memoryview_with), 0, 0, 1, 0},
   {&__pyx_kp_s_Dimension_d_is_not_direct, __pyx_k_Dimension_d_is_not_direct, sizeof(__pyx_k_Dimension_d_is_not_direct), 0, 0, 1, 0},
-  {&__pyx_n_s_DiskIntArray, __pyx_k_DiskIntArray, sizeof(__pyx_k_DiskIntArray), 0, 0, 1, 1},
   {&__pyx_n_s_Ellipsis, __pyx_k_Ellipsis, sizeof(__pyx_k_Ellipsis), 0, 0, 1, 1},
   {&__pyx_kp_s_Empty_shape_tuple_for_cython_arr, __pyx_k_Empty_shape_tuple_for_cython_arr, sizeof(__pyx_k_Empty_shape_tuple_for_cython_arr), 0, 0, 1, 0},
   {&__pyx_kp_s_Incompatible_checksums_0x_x_vs_0, __pyx_k_Incompatible_checksums_0x_x_vs_0, sizeof(__pyx_k_Incompatible_checksums_0x_x_vs_0), 0, 0, 1, 0},
@@ -19622,6 +19081,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {&__pyx_kp_s_Indirect_dimensions_not_supporte, __pyx_k_Indirect_dimensions_not_supporte, sizeof(__pyx_k_Indirect_dimensions_not_supporte), 0, 0, 1, 0},
   {&__pyx_kp_u_Invalid_mode_expected_c_or_fortr, __pyx_k_Invalid_mode_expected_c_or_fortr, sizeof(__pyx_k_Invalid_mode_expected_c_or_fortr), 0, 1, 0, 0},
   {&__pyx_kp_u_Invalid_shape_in_axis, __pyx_k_Invalid_shape_in_axis, sizeof(__pyx_k_Invalid_shape_in_axis), 0, 1, 0, 0},
+  {&__pyx_n_s_LowlevelIntArray, __pyx_k_LowlevelIntArray, sizeof(__pyx_k_LowlevelIntArray), 0, 0, 1, 1},
   {&__pyx_n_s_MemoryError, __pyx_k_MemoryError, sizeof(__pyx_k_MemoryError), 0, 0, 1, 1},
   {&__pyx_kp_s_MemoryView_of_r_at_0x_x, __pyx_k_MemoryView_of_r_at_0x_x, sizeof(__pyx_k_MemoryView_of_r_at_0x_x), 0, 0, 1, 0},
   {&__pyx_kp_s_MemoryView_of_r_object, __pyx_k_MemoryView_of_r_object, sizeof(__pyx_k_MemoryView_of_r_object), 0, 0, 1, 0},
@@ -19817,23 +19277,17 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   /* "fast_intersection.pyx":19
  * 
  * 
- * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the intersection of two sorted arrays."""
+ * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2, difference=False):             # <<<<<<<<<<<<<<
+ *     """Take the intersection of two sorted arrays. Or difference if difference is True."""
  *     assert arr1._elemsize == arr2._elemsize
  */
-  __pyx_tuple__9 = PyTuple_Pack(22, __pyx_n_s_arr1, __pyx_n_s_start1, __pyx_n_s_length1, __pyx_n_s_offset1, __pyx_n_s_arr2, __pyx_n_s_start2, __pyx_n_s_length2, __pyx_n_s_offset2, __pyx_n_s_size, __pyx_n_s_buf1, __pyx_n_s_buf2, __pyx_n_s_in1, __pyx_n_s_in2, __pyx_n_s_len1, __pyx_n_s_len2, __pyx_n_s_out, __pyx_n_s_i, __pyx_n_s_j, __pyx_n_s_k, __pyx_n_s_x, __pyx_n_s_y, __pyx_n_s_result); if (unlikely(!__pyx_tuple__9)) __PYX_ERR(0, 19, __pyx_L1_error)
+  __pyx_tuple__9 = PyTuple_Pack(23, __pyx_n_s_arr1, __pyx_n_s_start1, __pyx_n_s_length1, __pyx_n_s_offset1, __pyx_n_s_arr2, __pyx_n_s_start2, __pyx_n_s_length2, __pyx_n_s_offset2, __pyx_n_s_difference, __pyx_n_s_size, __pyx_n_s_buf1, __pyx_n_s_buf2, __pyx_n_s_in1, __pyx_n_s_in2, __pyx_n_s_len1, __pyx_n_s_len2, __pyx_n_s_out, __pyx_n_s_i, __pyx_n_s_j, __pyx_n_s_k, __pyx_n_s_x, __pyx_n_s_y, __pyx_n_s_result); if (unlikely(!__pyx_tuple__9)) __PYX_ERR(0, 19, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__9);
   __Pyx_GIVEREF(__pyx_tuple__9);
-  __pyx_codeobj__10 = (PyObject*)__Pyx_PyCode_New(8, 0, 0, 22, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__9, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_fast_intersection_pyx, __pyx_n_s_intersection, 19, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__10)) __PYX_ERR(0, 19, __pyx_L1_error)
-
-  /* "fast_intersection.pyx":57
- * 
- * 
- * def difference(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the difference between one sorted array and another."""
- *     assert arr1._elemsize == arr2._elemsize
- */
-  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(8, 0, 0, 22, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__9, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_fast_intersection_pyx, __pyx_n_s_difference, 57, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 57, __pyx_L1_error)
+  __pyx_codeobj__10 = (PyObject*)__Pyx_PyCode_New(9, 0, 0, 23, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__9, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_fast_intersection_pyx, __pyx_n_s_intersection, 19, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__10)) __PYX_ERR(0, 19, __pyx_L1_error)
+  __pyx_tuple__11 = PyTuple_Pack(1, ((PyObject *)Py_False)); if (unlikely(!__pyx_tuple__11)) __PYX_ERR(0, 19, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__11);
+  __Pyx_GIVEREF(__pyx_tuple__11);
 
   /* "View.MemoryView":100
  * cdef object __pyx_collections_abc_Sequence "__pyx_collections_abc_Sequence"
@@ -19956,15 +19410,15 @@ static CYTHON_SMALL_CODE int __Pyx_InitConstants(void) {
   if (__Pyx_InitString(__pyx_string_tab[8], &__pyx_kp_u_Cannot_index_with_type) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   if (__Pyx_InitString(__pyx_string_tab[9], &__pyx_kp_s_Cannot_transpose_memoryview_with) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   if (__Pyx_InitString(__pyx_string_tab[10], &__pyx_kp_s_Dimension_d_is_not_direct) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[11], &__pyx_n_s_DiskIntArray) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[12], &__pyx_n_s_Ellipsis) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[13], &__pyx_kp_s_Empty_shape_tuple_for_cython_arr) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[14], &__pyx_kp_s_Incompatible_checksums_0x_x_vs_0) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[15], &__pyx_n_s_IndexError) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[16], &__pyx_kp_s_Index_out_of_bounds_axis_d) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[17], &__pyx_kp_s_Indirect_dimensions_not_supporte) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[18], &__pyx_kp_u_Invalid_mode_expected_c_or_fortr) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
-  if (__Pyx_InitString(__pyx_string_tab[19], &__pyx_kp_u_Invalid_shape_in_axis) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[11], &__pyx_n_s_Ellipsis) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[12], &__pyx_kp_s_Empty_shape_tuple_for_cython_arr) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[13], &__pyx_kp_s_Incompatible_checksums_0x_x_vs_0) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[14], &__pyx_n_s_IndexError) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[15], &__pyx_kp_s_Index_out_of_bounds_axis_d) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[16], &__pyx_kp_s_Indirect_dimensions_not_supporte) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[17], &__pyx_kp_u_Invalid_mode_expected_c_or_fortr) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[18], &__pyx_kp_u_Invalid_shape_in_axis) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
+  if (__Pyx_InitString(__pyx_string_tab[19], &__pyx_n_s_LowlevelIntArray) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   if (__Pyx_InitString(__pyx_string_tab[20], &__pyx_n_s_MemoryError) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   if (__Pyx_InitString(__pyx_string_tab[21], &__pyx_kp_s_MemoryView_of_r_at_0x_x) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   if (__Pyx_InitString(__pyx_string_tab[22], &__pyx_kp_s_MemoryView_of_r_object) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
@@ -20617,27 +20071,27 @@ if (!__Pyx_RefNanny) {
   /* "fast_intersection.pyx":3
  * # cython: language_level=3
  * 
- * from disk import DiskIntArray             # <<<<<<<<<<<<<<
+ * from disk import LowlevelIntArray             # <<<<<<<<<<<<<<
  * import sys
  * 
  */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_INCREF(__pyx_n_s_DiskIntArray);
-  __Pyx_GIVEREF(__pyx_n_s_DiskIntArray);
-  PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_DiskIntArray);
+  __Pyx_INCREF(__pyx_n_s_LowlevelIntArray);
+  __Pyx_GIVEREF(__pyx_n_s_LowlevelIntArray);
+  PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_LowlevelIntArray);
   __pyx_t_3 = __Pyx_Import(__pyx_n_s_disk, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_DiskIntArray); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 3, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_LowlevelIntArray); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_DiskIntArray, __pyx_t_2) < 0) __PYX_ERR(0, 3, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_LowlevelIntArray, __pyx_t_2) < 0) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "fast_intersection.pyx":4
  * 
- * from disk import DiskIntArray
+ * from disk import LowlevelIntArray
  * import sys             # <<<<<<<<<<<<<<
  * 
  * from libc.stdlib cimport malloc, free
@@ -20650,31 +20104,20 @@ if (!__Pyx_RefNanny) {
   /* "fast_intersection.pyx":19
  * 
  * 
- * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the intersection of two sorted arrays."""
+ * def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2, difference=False):             # <<<<<<<<<<<<<<
+ *     """Take the intersection of two sorted arrays. Or difference if difference is True."""
  *     assert arr1._elemsize == arr2._elemsize
  */
   __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_17fast_intersection_1intersection, 0, __pyx_n_s_intersection, NULL, __pyx_n_s_fast_intersection, __pyx_d, ((PyObject *)__pyx_codeobj__10)); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 19, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_3, __pyx_tuple__11);
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_intersection, __pyx_t_3) < 0) __PYX_ERR(0, 19, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-
-  /* "fast_intersection.pyx":57
- * 
- * 
- * def difference(arr1, start1, length1, offset1, arr2, start2, length2, offset2):             # <<<<<<<<<<<<<<
- *     """Take the difference between one sorted array and another."""
- *     assert arr1._elemsize == arr2._elemsize
- */
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_17fast_intersection_3difference, 0, __pyx_n_s_difference, NULL, __pyx_n_s_fast_intersection, __pyx_d, ((PyObject *)__pyx_codeobj__11)); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 57, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_difference, __pyx_t_3) < 0) __PYX_ERR(0, 57, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "fast_intersection.pyx":1
  * # cython: language_level=3             # <<<<<<<<<<<<<<
  * 
- * from disk import DiskIntArray
+ * from disk import LowlevelIntArray
  */
   __pyx_t_3 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
