@@ -35,6 +35,8 @@ class DiskIntArray(Sequence):
     _elemsize : int
     _byteorder : ByteOrder
 
+    _append_ptr : int
+
     def __init__(self, path : Path):
         for n, c in self.typecodes.items(): assert array(c).itemsize == n
 
@@ -87,6 +89,33 @@ class DiskIntArray(Sequence):
             return iter(self._mview)
         except AttributeError:
             return self._slice(slice(None))
+
+    def reset_append(self):
+        self._append_ptr = 0
+
+    def append(self, val:int):
+        try:
+            self._mview[self._append_ptr] = val
+        except AttributeError:
+            i = self._append_ptr * self._elemsize
+            self._mmap[i : i+self._elemsize] = val.to_bytes(self._elemsize, byteorder=self._byteorder)
+        self._append_ptr += 1
+
+    def truncate_append(self):
+        self._file.truncate(self._append_ptr * self._elemsize)
+        try:
+            self._mview.release()
+        except AttributeError:
+            pass
+        self._mmap.close()
+        self._mmap = mmap(self._file.fileno(), 0)
+        self._length = len(self._mmap) // self._elemsize
+        if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
+            typecode = self.typecodes[self._elemsize]
+            self._mview = memoryview(self._mmap).cast(typecode)
+            self.array = self._mview
+        else:
+            self.array = self
 
     def __enter__(self) -> Union[memoryview, 'DiskIntArray']:
         return self.array
