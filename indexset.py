@@ -167,15 +167,6 @@ class IndexSet:
                 result.append(val)
         self._finalise_result(result)
 
-    @staticmethod
-    def _filter_values_in_place(values:List[int], check:Callable[[int],bool]):
-        filtered = 0
-        for val in values:
-            if check(val):
-                values[filtered] = val
-                filtered += 1
-        del values[filtered:]
-
     def __contains__(self, elem:int) -> bool:
         values = self.values
         offset = self.offset
