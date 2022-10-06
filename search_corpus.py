@@ -5,6 +5,7 @@ import itertools
 import logging
 from typing import List, Tuple
 
+from disk import DiskIntArray, DiskIntArrayBuilder
 from index import Index
 from indexset import IndexSet
 from corpus import Corpus
@@ -62,19 +63,21 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         used_queries.append(subq)
 
     if args.filter:
-        intersection.filter(query.check_position)
+        intersection.filter_update(query.check_position, args.file)
         logging.info(f"Filtering positions: {intersection}")
 
     if args.sentences:
-        intersection = IndexSet([
-            sent for sent, _group in itertools.groupby(
-                corpus.get_sentence_from_position(pos) for pos in intersection
-            )
-        ])
+        sentences = [sent for sent, _group in itertools.groupby(
+                        corpus.get_sentence_from_position(pos) for pos in intersection
+                    )]
+        if args.file:
+            DiskIntArrayBuilder.build(args.file, sentences)
+            sentences = DiskIntArray(args.file)
+        intersection = IndexSet(sentences)
         logging.info(f"Converting to sentences: {intersection}")
 
         if args.filter:
-            intersection.filter(query.check_sentence)
+            intersection.filter_update(query.check_sentence, args.file)
             logging.info(f"Filtering sentences: {intersection}")
 
     logging.debug(f"Result file: {intersection.path}")
