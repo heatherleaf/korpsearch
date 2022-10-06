@@ -28,15 +28,15 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
     maxwidth = max(len(str(subq)) for subq, _ in subqueries)
     for subq, index in subqueries:
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
-            logging.debug(f"    -- subsumed: {subq}")
+            logging.debug(f"     -- subsumed: {subq}")
             continue
         try:
             results : IndexSet = index.search(subq.instance(), offset=subq.offset())
         except KeyError:
-            logging.debug(f"    -- {subq.instance()} not found: {subq}")
+            logging.debug(f"     -- {subq.instance()} not found: {subq}")
             continue
         search_results.append((subq, results))
-        logging.info(f"    {subq!s:{maxwidth}} = {results}")
+        logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
     search_results.sort(key=lambda r: len(r[-1]))
     if search_results[0][0].is_negative():
@@ -46,23 +46,20 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
     for i, (subq, results) in enumerate(search_results, 1):
-        logging.debug(f"    {subq!s:{maxwidth}} : {len(results)} elements")
+        logging.debug(f"     {subq!s:{maxwidth}} : {len(results)} elements")
 
     subq, intersection = search_results[0]
     assert not subq.is_negative()
     logging.info(f"Intersecting {len(search_results)} search results:")
-    logging.info(f"    {subq!s:{maxwidth}} = {intersection}")
+    logging.info(f"     {subq!s:{maxwidth}} = {intersection}")
     used_queries = [subq]
     for subq, results in search_results[1:]:
         if subq.subsumed_by(used_queries):
-            logging.debug(f"    -- subsumed: {subq}")
+            logging.debug(f"     -- subsumed: {subq}")
             continue
-        result_file = args.file
-        intersection_type = intersection.intersection_update(results, result_file, use_internal=args.internal_intersection, difference=subq.is_negative())
-        logging.info(f" /\\ {subq!s:{maxwidth}} = {intersection}")
-        logging.debug(f"    -- intersection type: {intersection_type} --> result file: {intersection.path}")
+        intersection_type = intersection.intersection_update(results, args.file, use_internal=args.internal_intersection, difference=subq.is_negative())
+        logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
-    logging.debug(f"Result file: {intersection.path}")
 
     if args.filter:
         intersection.filter(query.check_position)
@@ -79,6 +76,8 @@ def search_corpus(corpus:Corpus, args:argparse.Namespace):
         if args.filter:
             intersection.filter(query.check_sentence)
             logging.info(f"Filtering sentences: {intersection}")
+
+    logging.debug(f"Result file: {intersection.path}")
 
     if not args.print:
         print(intersection)
