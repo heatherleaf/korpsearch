@@ -41,7 +41,7 @@ class IndexSet:
         self.start = start
         self.offset = offset
         self.size = size
-        if isinstance(values, list) and size < 0:
+        if size < 0:
             self.size = len(values) - start
         while self.values[self.start] < self.offset:
             self.start += 1
@@ -53,9 +53,12 @@ class IndexSet:
 
     def __str__(self) -> str:
         MAX = 5
-        if len(self) <= MAX:
-            return "{" + ", ".join(str(n) for n in self) + "}"
-        return f"{{{', '.join(str(n) for n in itertools.islice(self, MAX))}, ... (N={len(self)})}}"
+        s = ', '.join(str(n) for n in itertools.islice(self, MAX))
+        if len(self) > MAX:
+            s += f", ... (N={len(self)})"
+        if self.path:
+            s += f" @ {self.path}"
+        return "{" + s + "}"
 
     def __iter__(self) -> Iterator[int]:
         offset = self.offset
