@@ -67,8 +67,9 @@ class IndexSet:
 
 
     def intersection_update(self, other:'IndexSet', resultpath:Optional[Path]=None, use_internal:bool=False, difference:bool=False) -> str:
+        # The returned string is ONLY for debugging purposes, and can safely be ignored
         if len(other) > len(self) * self._min_size_difference_for_contains:
-            result = self._init_result(other, resultpath)
+            result = self._init_result(resultpath, other)
             self._intersection_lookup(other, result, difference)
             self._finalise_result(result)
             return 'lookup'
@@ -79,12 +80,12 @@ class IndexSet:
                 self._finalise_result(result)
                 return 'external'
 
-        result = self._init_result(other, resultpath)
+        result = self._init_result(resultpath, other)
         self._intersection_internal(other, result, difference)
         self._finalise_result(result)
         return 'internal'
 
-    def _init_result(self, other:'IndexSet', resultpath:Optional[Path]) -> IndexSetValuesBuilder:
+    def _init_result(self, resultpath:Optional[Path], other:Optional['IndexSet']=None) -> IndexSetValuesBuilder:
         if not resultpath:
             return []
         elif self.path and DiskIntArray.getpath(resultpath) == DiskIntArray.getpath(self.path):
@@ -92,7 +93,8 @@ class IndexSet:
             self.values.reset_append()
             return self.values
         else:
-            if other.path: assert DiskIntArray.getpath(resultpath) != DiskIntArray.getpath(other.path)
+            if other and other.path: 
+                assert DiskIntArray.getpath(resultpath) != DiskIntArray.getpath(other.path)
             return DiskIntArrayBuilder(resultpath)
 
     def _finalise_result(self, result:IndexSetValuesBuilder):
@@ -158,14 +160,12 @@ class IndexSet:
             return
 
 
-    def filter(self, check:Callable[[int],bool]):
-        if isinstance(self.values, list):
-            self._filter_values_in_place(self.values, check)
-        else:
-            self.values = [elem for elem in self if check(elem)]
-        self.start = 0
-        self.size = len(self.values)
-        self.offset = 0
+    def filter_update(self, check:Callable[[int],bool], resultpath:Optional[Path]=None):
+        result = self._init_result(resultpath)
+        for val in self.values:
+            if check(val):
+                result.append(val)
+        self._finalise_result(result)
 
     @staticmethod
     def _filter_values_in_place(values:List[int], check:Callable[[int],bool]):
