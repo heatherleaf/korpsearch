@@ -310,9 +310,10 @@ class Index:
                 sort.quicksort(
                     bytes_array,
                     pivotselector = sort.random_pivot, 
+                    # pivotselector = sort.take_first_pivot, 
                     # pivotselector = sort.median_of_three,
                     # pivotselector = sort.tukey_ninther,
-                    cutoff = 100_000,
+                    cutoff = 5_000_000,
                 )
 
         logging.debug(f"Creating suffix array")
