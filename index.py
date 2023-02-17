@@ -2,6 +2,7 @@
 from typing import Tuple, List, Iterator, Callable, Union, Collection, Sequence, NamedTuple
 from functools import total_ordering
 from types import TracebackType
+import shutil
 import logging
 import subprocess
 
@@ -11,6 +12,9 @@ from indexset import IndexSet
 import sort
 from util import progress_bar, min_bytes_to_store_values
 
+
+# Possible sorting alternatives, the first is the default:
+SORTER_CHOICES = ['tmpfile', 'internal', 'java', 'lmdb']
 
 ################################################################################
 ## Literals, templates and instances
@@ -232,8 +236,8 @@ class Index:
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False, external_sort:bool=False):
-        logging.debug(f"Building index for {template}")
+    def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False, sorter:str=SORTER_CHOICES[0]):
+        logging.debug(f"Building index for {template}, using sorter '{sorter}'")
         index_path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
 
@@ -280,12 +284,11 @@ class Index:
                 for lit in template.literals
             )
 
-        tmpfile = index_path.parent / 'index.tmp'
         bytesize = min_bytes_to_store_values(index_size)
         rowsize = bytesize * (1 + len(template))
 
-        with open(tmpfile, 'wb') as OUT:
-            skipped_instances : int = 0
+        def collect_positions(collect):
+            skipped_instances = 0
             for pos in progress_bar(range(index_size), desc="Collecting positions"):
                 instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
                 if all(instance_values) and test_literals(pos):
@@ -295,36 +298,70 @@ class Index:
                             ):
                         skipped_instances += 1
                     else:
-                        for val in instance_values:
-                            OUT.write(val.index.to_bytes(bytesize, 'big'))
-                        OUT.write(pos.to_bytes(bytesize, 'big'))
+                        collect(
+                            b''.join(val.index.to_bytes(bytesize, 'big') for val in instance_values) +
+                            pos.to_bytes(bytesize, 'big')
+                        )
             if skipped_instances:
                 logging.info(f"Skipped {skipped_instances} low-frequency instances")
-            nr_rows = OUT.tell() // rowsize
-
-        logging.debug(f"Sorting {nr_rows} rows.")
-        if external_sort:
-            subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), 'random', '100000'])
-        else:
-            with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
-                sort.quicksort(
-                    bytes_array,
-                    pivotselector = sort.random_pivot, 
-                    # pivotselector = sort.take_first_pivot, 
-                    # pivotselector = sort.median_of_three,
-                    # pivotselector = sort.tukey_ninther,
-                    cutoff = 5_000_000,
-                )
-
-        logging.debug(f"Creating suffix array")
-        with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-            with open(tmpfile, 'rb') as IN:
-                while (row := IN.read(rowsize)):
+    
+        if sorter == 'internal':
+            tmplist = []
+            collect_positions(tmplist.append)
+            nr_rows = len(tmplist)
+            logging.debug(f"Sorting {nr_rows} rows.")
+            tmplist.sort()
+            logging.debug(f"Creating suffix array")
+            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+                for row in tmplist:
                     pos = int.from_bytes(row[-bytesize:], 'big')
                     suffix_array.append(pos)
 
-        if not keep_tmpfiles:
-            tmpfile.unlink()
+        elif sorter == 'lmdb':
+            import lmdb
+            tmpdir = index_path.parent / 'index.tmpdb'
+            if tmpdir.exists():
+                shutil.rmtree(tmpdir)
+            env = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)
+            with env.begin(write=True) as DB:
+                collect_positions(lambda row: DB.put(row, b''))
+            logging.debug(f"Creating suffix array")
+            with env.begin() as DB:
+                with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+                    for row, _ in DB.cursor():
+                        pos = int.from_bytes(row[-bytesize:], 'big')
+                        suffix_array.append(pos)
+            nr_rows = env.stat()['entries']
+            env.close()
+            if not keep_tmpfiles:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+
+        else:
+            tmpfile = index_path.parent / 'index.tmp'
+            with open(tmpfile, 'wb') as OUT:
+                collect_positions(OUT.write)
+                nr_rows = OUT.tell() // rowsize
+
+            logging.debug(f"Sorting {nr_rows} rows.")
+            if sorter == 'java':
+                subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), 'random', '100000'])
+            else:
+                with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
+                    sort.quicksort(
+                        bytes_array,
+                        pivotselector = sort.random_pivot, # take_first_pivot, median_of_three, tukey_ninther
+                        cutoff = 5_000_000,
+                    )
+
+            logging.debug(f"Creating suffix array")
+            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+                with open(tmpfile, 'rb') as IN:
+                    while (row := IN.read(rowsize)):
+                        pos = int.from_bytes(row[-bytesize:], 'big')
+                        suffix_array.append(pos)
+
+            if not keep_tmpfiles:
+                tmpfile.unlink()
 
         logging.info(f"Built index for {template}, with {nr_rows} rows")
 

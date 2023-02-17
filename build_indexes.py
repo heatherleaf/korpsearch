@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterator
 import logging
 
-from index import Literal, TemplateLiteral, Template, Index
+from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES
 from corpus import Corpus
 from util import setup_logger
 
@@ -58,7 +58,7 @@ def main(args:argparse.Namespace):
                         corpus, template, 
                         min_frequency=args.min_frequency, 
                         keep_tmpfiles=args.keep_tmpfiles, 
-                        external_sort=args.external_sort,
+                        sorter=args.sorter,
                     )
                 logging.info(f"Created {len(templates)} query indexes")
 
@@ -126,8 +126,8 @@ parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', co
 parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
     help='silent (no output)')
 
-parser.add_argument('--external-sort', '-e', action='store_true', 
-    help='sort using external program (DiskFixedSizeArray.jar)')
+parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
+    help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]}')
 parser.add_argument('--keep-tmpfiles', action='store_true', 
     help='keep temporary files')
 
