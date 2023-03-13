@@ -2,6 +2,7 @@
 from typing import Tuple, List, Iterator, Callable, Union, Collection, Sequence, NamedTuple
 from functools import total_ordering
 from types import TracebackType
+from pathlib import Path
 import shutil
 import logging
 import subprocess
@@ -72,7 +73,10 @@ class Template:
         assert self.literals == tuple(sorted(literals)),           f"Duplicate literal(s): {self}"
         assert len(self.template) > 0,                             f"Empty template: {self}"
         assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0: {self}"
-        assert all(lit.negative for lit in self.literals),         f"Positive template literal(s): {self}"
+        if self.literals:
+            assert all(lit.negative for lit in self.literals),     f"Positive template literal(s): {self}"
+            assert all(0 <= lit.offset <= self.maxdelta() for lit in self.literals), \
+                                                                   f"Literal offset must be within 0...{self.maxdelta()}: {self}"
 
     def maxdelta(self):
         return max(t.offset for t in self.template)
@@ -237,131 +241,171 @@ class Index:
 
     @staticmethod
     def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False, sorter:str=SORTER_CHOICES[0]):
-        logging.debug(f"Building index for {template}, using sorter '{sorter}'")
-        index_path = Index.indexpath(corpus, template)
+        index_path : Path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
-
-        maxdelta = template.maxdelta()
-        index_size = len(corpus) - maxdelta
-
-        unary_indexes : List[Index] = []
-        if min_frequency > 0 and len(template) > 1:
-            unary_indexes = [
-                Index(corpus, Template([TemplateLiteral(0, tmpl.feature)])) 
-                for tmpl in template
-            ]
-
-        def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
-            # This is an optimised version of:
-            # >>> start, end = unary.lookup_instance(x); return end-start >= min_frequency
-            searchkey = unary.search_key
-            start, end = 0, len(unary)-1
-            while start <= end:
-                mid = (start + end) // 2
-                key = searchkey(mid)
-                if key < unary_key: 
-                    start = mid + 1
-                else:
-                    end = mid - 1
-            end = start + min_frequency - 1
-            return end < len(unary.index) and searchkey(end) == unary_key
-
-        assert all(lit.negative for lit in template.literals), \
-            f"Cannot handle positive template literals: {template}"
-        if len(template.literals) == 0:
-            test_literals = lambda pos: True
-        elif len(template.literals) == 1:
-            [(_neg1, off1, feat1, val1)] = template.literals
-            test_literals = lambda pos: corpus.tokens[feat1][pos+off1] != val1
-        elif len(template.literals) == 2:
-            [(_neg1, off1, feat1, val1), (_neg2, off2, feat2, val2)] = template.literals
-            test_literals = lambda pos: \
-                corpus.tokens[feat1][pos+off1] != val1 and corpus.tokens[feat2][pos+off2] != val2
+        if len(template) == 1 and not template.literals:
+            build_simple_unary_index(corpus, index_path, template, keep_tmpfiles, sorter)
         else:
-            # The above three are just optimisations of the following generic test function:
-            test_literals = lambda pos: all(
-                corpus.tokens[lit.feature][pos+lit.offset] != lit.value
-                for lit in template.literals
+            build_general_index(corpus, index_path, template, min_frequency, keep_tmpfiles, sorter)
+
+        with DiskIntArray(index_path) as suffix_array:
+            logging.info(f"Built index for {template}, with {len(suffix_array)} elements")
+
+
+###################################################################################################
+## Different ways of building different indexes
+
+def build_simple_unary_index(corpus:Corpus, index_path:Path, template:Template, keep_tmpfiles:bool, sorter:str):
+    logging.debug(f"Building simple unary index for {template} @ {index_path}, using sorter '{sorter}'")
+    assert len(template) == 1 and not template.literals
+    index_size = len(corpus)
+    bytesize = min_bytes_to_store_values(index_size)
+    rowsize = bytesize * (1 + len(template))
+    tmpl : TemplateLiteral = template.template[0]
+
+    def collect_positions(collect):
+        for pos in progress_bar(range(index_size), desc="Collecting positions"):
+            instance_value = corpus.tokens[tmpl.feature][pos+tmpl.offset]
+            if instance_value:
+                collect(
+                    instance_value.index.to_bytes(bytesize, 'big') +
+                    pos.to_bytes(bytesize, 'big')
+                )
+
+    collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
+
+
+def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_frequency:int, keep_tmpfiles:bool, sorter:str):
+    logging.debug(f"Building index for {template} @ {index_path}, using sorter '{sorter}'")
+    index_size = len(corpus) - template.maxdelta()
+    bytesize = min_bytes_to_store_values(index_size)
+    rowsize = bytesize * (1 + len(template))
+
+    unary_indexes : List[Index] = []
+    if min_frequency > 0 and len(template) > 1:
+        unary_indexes = [
+            Index(corpus, Template([TemplateLiteral(0, tmpl.feature)])) 
+            for tmpl in template
+        ]
+
+    def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
+        # This is an optimised version of:
+        # >>> start, end = unary.lookup_instance(x); return end-start >= min_frequency
+        searchkey = unary.search_key
+        start, end = 0, len(unary)-1
+        while start <= end:
+            mid = (start + end) // 2
+            key = searchkey(mid)
+            if key < unary_key: 
+                start = mid + 1
+            else:
+                end = mid - 1
+        end = start + min_frequency - 1
+        return end < len(unary.index) and searchkey(end) == unary_key
+
+    assert all(lit.negative for lit in template.literals), \
+        f"Cannot handle positive template literals: {template}"
+    if len(template.literals) == 0:
+        test_literals = lambda pos: True
+    elif len(template.literals) == 1:
+        [(_neg1, off1, feat1, val1)] = template.literals
+        test_literals = lambda pos: corpus.tokens[feat1][pos+off1] != val1
+    elif len(template.literals) == 2:
+        [(_neg1, off1, feat1, val1), (_neg2, off2, feat2, val2)] = template.literals
+        test_literals = lambda pos: \
+            corpus.tokens[feat1][pos+off1] != val1 and corpus.tokens[feat2][pos+off2] != val2
+    else:
+        # The above three are just optimisations of the following generic test function:
+        test_literals = lambda pos: all(
+            corpus.tokens[lit.feature][pos+lit.offset] != lit.value
+            for lit in template.literals
+        )
+
+    def collect_positions(collect):
+        skipped_instances = 0
+        for pos in progress_bar(range(index_size), desc="Collecting positions"):
+            instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
+            if all(instance_values) and test_literals(pos):
+                if unary_indexes and not all(
+                            unary_min_frequency(unary, val, min_frequency)
+                            for val, unary in zip(instance_values, unary_indexes)
+                        ):
+                    skipped_instances += 1
+                else:
+                    collect(
+                        b''.join(val.index.to_bytes(bytesize, 'big') for val in instance_values) +
+                        pos.to_bytes(bytesize, 'big')
+                    )
+        if skipped_instances:
+            logging.info(f"Skipped {skipped_instances} low-frequency instances")
+
+    collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
+
+
+def collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter):
+    if sorter == 'internal':
+        collect_and_sort_internally(collect_positions, index_path, index_size, bytesize)
+    elif sorter == 'lmdb':
+        collect_and_sort_lmdb(collect_positions, index_path, index_size, bytesize, keep_tmpfiles)
+    else:
+        collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
+
+
+def collect_and_sort_internally(collect_positions, index_path, index_size, bytesize):
+    tmplist = []
+    collect_positions(tmplist.append)
+    logging.debug(f"Sorting {len(tmplist)} rows.")
+    tmplist.sort()
+    logging.debug(f"Creating suffix array")
+    with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+        for row in tmplist:
+            pos = int.from_bytes(row[-bytesize:], 'big')
+            suffix_array.append(pos)
+
+
+def collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter):
+    tmpfile = index_path.parent / 'index.tmp'
+    with open(tmpfile, 'wb') as OUT:
+        collect_positions(OUT.write)
+        nr_rows = OUT.tell() // rowsize
+
+    logging.debug(f"Sorting {nr_rows} rows.")
+    if sorter == 'java':
+        subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), 'random', '100000'])
+    else:
+        with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
+            sort.quicksort(
+                bytes_array,
+                pivotselector = sort.random_pivot, # take_first_pivot, median_of_three, tukey_ninther
+                cutoff = 5_000_000,
             )
 
-        bytesize = min_bytes_to_store_values(index_size)
-        rowsize = bytesize * (1 + len(template))
+    logging.debug(f"Creating suffix array")
+    with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+        with open(tmpfile, 'rb') as IN:
+            while (row := IN.read(rowsize)):
+                pos = int.from_bytes(row[-bytesize:], 'big')
+                suffix_array.append(pos)
 
-        def collect_positions(collect):
-            skipped_instances = 0
-            for pos in progress_bar(range(index_size), desc="Collecting positions"):
-                instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
-                if all(instance_values) and test_literals(pos):
-                    if unary_indexes and not all(
-                                unary_min_frequency(unary, val, min_frequency)
-                                for val, unary in zip(instance_values, unary_indexes)
-                            ):
-                        skipped_instances += 1
-                    else:
-                        collect(
-                            b''.join(val.index.to_bytes(bytesize, 'big') for val in instance_values) +
-                            pos.to_bytes(bytesize, 'big')
-                        )
-            if skipped_instances:
-                logging.info(f"Skipped {skipped_instances} low-frequency instances")
-    
-        if sorter == 'internal':
-            tmplist = []
-            collect_positions(tmplist.append)
-            nr_rows = len(tmplist)
-            logging.debug(f"Sorting {nr_rows} rows.")
-            tmplist.sort()
-            logging.debug(f"Creating suffix array")
-            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-                for row in tmplist:
-                    pos = int.from_bytes(row[-bytesize:], 'big')
-                    suffix_array.append(pos)
+    if not keep_tmpfiles:
+        tmpfile.unlink()
 
-        elif sorter == 'lmdb':
-            import lmdb
-            tmpdir = index_path.parent / 'index.tmpdb'
-            if tmpdir.exists():
-                shutil.rmtree(tmpdir)
-            env = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)
-            with env.begin(write=True) as DB:
-                collect_positions(lambda row: DB.put(row, b''))
-            logging.debug(f"Creating suffix array")
-            with env.begin() as DB:
-                with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-                    for row, _ in DB.cursor():
-                        pos = int.from_bytes(row[-bytesize:], 'big')
-                        suffix_array.append(pos)
-            nr_rows = env.stat()['entries']
-            env.close()
-            if not keep_tmpfiles:
-                shutil.rmtree(tmpdir, ignore_errors=True)
 
-        else:
-            tmpfile = index_path.parent / 'index.tmp'
-            with open(tmpfile, 'wb') as OUT:
-                collect_positions(OUT.write)
-                nr_rows = OUT.tell() // rowsize
-
-            logging.debug(f"Sorting {nr_rows} rows.")
-            if sorter == 'java':
-                subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), 'random', '100000'])
-            else:
-                with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
-                    sort.quicksort(
-                        bytes_array,
-                        pivotselector = sort.random_pivot, # take_first_pivot, median_of_three, tukey_ninther
-                        cutoff = 5_000_000,
-                    )
-
-            logging.debug(f"Creating suffix array")
-            with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-                with open(tmpfile, 'rb') as IN:
-                    while (row := IN.read(rowsize)):
-                        pos = int.from_bytes(row[-bytesize:], 'big')
-                        suffix_array.append(pos)
-
-            if not keep_tmpfiles:
-                tmpfile.unlink()
-
-        logging.info(f"Built index for {template}, with {nr_rows} rows")
+def collect_and_sort_lmdb(collect_positions, index_path, index_size, bytesize, keep_tmpfiles):
+    import lmdb
+    tmpdir = index_path.parent / 'index.tmpdb'
+    if tmpdir.exists():
+        shutil.rmtree(tmpdir)
+    env = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)
+    with env.begin(write=True) as DB:
+        collect_positions(lambda row: DB.put(row, b''))
+    logging.debug(f"Creating suffix array")
+    with env.begin() as DB:
+        with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+            for row, _ in DB.cursor():
+                pos = int.from_bytes(row[-bytesize:], 'big')
+                suffix_array.append(pos)
+    env.close()
+    if not keep_tmpfiles:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
