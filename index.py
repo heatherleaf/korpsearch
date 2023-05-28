@@ -69,14 +69,17 @@ class Template:
     def __init__(self, template:Sequence[TemplateLiteral], literals:Collection[Literal]=[]):
         self.template = tuple(template)
         self.literals = tuple(sorted(set(literals)))
-        assert self.template == tuple(sorted(set(self.template))), f"Unsorted template: {self}"
-        assert self.literals == tuple(sorted(literals)),           f"Duplicate literal(s): {self}"
-        assert len(self.template) > 0,                             f"Empty template: {self}"
-        assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0: {self}"
-        if self.literals:
-            assert all(lit.negative for lit in self.literals),     f"Positive template literal(s): {self}"
-            assert all(0 <= lit.offset <= self.maxdelta() for lit in self.literals), \
-                                                                   f"Literal offset must be within 0...{self.maxdelta()}: {self}"
+        try:
+            assert self.template == tuple(sorted(set(self.template))), f"Unsorted template"
+            assert self.literals == tuple(sorted(literals)),           f"Duplicate literal(s)"
+            assert len(self.template) > 0,                             f"Empty template"
+            assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0"
+            if self.literals:
+                assert all(lit.negative for lit in self.literals),     f"Positive template literal(s)"
+                assert all(0 <= lit.offset <= self.maxdelta() 
+                           for lit in self.literals),                  f"Literal offset must be within 0...{self.maxdelta()}"
+        except AssertionError:
+            raise ValueError(f"Invalid template: {self}")
 
     def maxdelta(self):
         return max(t.offset for t in self.template)
