@@ -27,13 +27,12 @@ class Corpus:
     path : Path
 
     def __init__(self, corpus:Path):
-        basedir : Path = corpus.with_suffix(self.dir_suffix)
-        self.path = corpus
-        with open(basedir / self.features_file, 'r') as IN:
+        self.path : Path = corpus.with_suffix(self.dir_suffix)
+        with open(self.path / self.features_file, 'r') as IN:
             self.features = json.load(IN)
-        self.sentence_pointers = DiskIntArray(basedir / self.sentences_path)
+        self.sentence_pointers = DiskIntArray(self.path / self.sentences_path)
         self.tokens = {
-            feature: DiskStringArray(basedir / (self.feature_prefix + feature) / feature)
+            feature: DiskStringArray(self.path / (self.feature_prefix + feature) / feature)
             for feature in self.features
         }
         assert all(
@@ -42,6 +41,9 @@ class Corpus:
         
     def __str__(self) -> str:
         return f"[Corpus: {self.path.stem}]"
+
+    def __repr__(self) -> str:
+        return f"Corpus({self.path})"
 
     def __len__(self) -> int:
         return len(self.tokens[self.features[0]])

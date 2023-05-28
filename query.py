@@ -53,6 +53,9 @@ class Query:
     def __str__(self) -> str:
         return '[' + ']&['.join(map(str, self.literals)) + ']'
 
+    def __repr__(self) -> str:
+        return f"Query({self.literals})"
+
     def __len__(self) -> int:
         return len(self.literals)
 
