@@ -19,8 +19,9 @@ class Query:
     literals : List[Literal]
     features : Set[str]
     featured_query : Dict[str, List[Tuple[bool, int, InternedString]]]
+    template : Template
 
-    def __init__(self, corpus:Corpus, literals:Sequence[Literal], no_sentence_breaks=True):
+    def __init__(self, corpus:Corpus, literals:Sequence[Literal]):
         self.corpus = corpus
         self.literals = sorted(set(literals))
         self.features = {lit.feature for lit in self.literals}
@@ -36,6 +37,18 @@ class Query:
             self.featured_query[lit.feature].append(
                 (lit.negative, lit.offset, lit.value)
             )
+
+        # We precompute the associated query template. It raises a ValueError if it's not valid.
+        if self.is_negative():
+            self.template = Template(
+                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.negative_literals()],
+            )
+        else:
+            self.template = Template(
+                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
+                [Literal(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
+            )
+
 
     def __str__(self) -> str:
         return '[' + ']&['.join(map(str, self.literals)) + ']'
@@ -64,17 +77,6 @@ class Query:
     def negative_literals(self) -> List[Literal]:
         return [lit for lit in self.literals if lit.negative]
 
-    def template(self) -> Template:
-        if self.is_negative():
-            return Template(
-                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.negative_literals()],
-            )
-        else:
-            return Template(
-                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
-                [Literal(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
-            )
-
     def instance(self) -> Instance:
         if self.is_negative():
             return Instance([lit.value for lit in self.negative_literals()])
@@ -82,7 +84,7 @@ class Query:
             return Instance([lit.value for lit in self.positive_literals()])
 
     def index(self) -> Index:
-        return Index(self.corpus, self.template())
+        return Index(self.corpus, self.template)
 
     def subqueries(self) -> Iterator['Query']:
         # Subqueries are generated in decreasing order of complexity
@@ -137,4 +139,4 @@ class Query:
             svalue = corpus.intern(sfeature, corpus.sentence_start_value)
             for offset in range(1, len(tokens)):
                 query.append(Literal(True, offset, sfeature, svalue))
-        return Query(corpus, query, no_sentence_breaks)
+        return Query(corpus, query)
