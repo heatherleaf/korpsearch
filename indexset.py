@@ -36,17 +36,16 @@ class IndexSet:
     path : Optional[Path]
 
     def __init__(self, values:IndexSetValuesType, start:int=0, size:int=-1, offset:int=0):
+        if size < 0:
+            size = len(values) - start
+        while size > 0 and values[start] < offset:
+            start += 1
+            size -= 1
         self.values = values
         self.path = values.path if isinstance(values, DiskIntArray) else None
         self.start = start
         self.offset = offset
         self.size = size
-        if size < 0:
-            self.size = len(values) - start
-        while self.values[self.start] < self.offset:
-            self.start += 1
-            self.size -= 1
-        assert self.size > 0
 
     def __len__(self) -> int:
         return self.size

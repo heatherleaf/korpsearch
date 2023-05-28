@@ -29,7 +29,7 @@ class DiskIntArray(Sequence):
     path : Optional[Path]
 
     _file : BinaryIO
-    _mmap : mmap
+    _mmap : Union[mmap, bytearray]
     _mview : memoryview
     _length : int
     _elemsize : int
@@ -46,7 +46,10 @@ class DiskIntArray(Sequence):
         self._file = open(self.path, 'r+b')
         self._elemsize = config['elemsize']
         self._byteorder = config['byteorder']
-        self._mmap = mmap(self._file.fileno(), 0)
+        try:
+            self._mmap = mmap(self._file.fileno(), 0)
+        except ValueError:  # "cannot mmap an empty file"
+            self._mmap = bytearray(b'')
 
         self._length = len(self._mmap) // self._elemsize
         assert len(self._mmap) % self._elemsize == 0, \
@@ -107,8 +110,14 @@ class DiskIntArray(Sequence):
             self._mview.release()
         except AttributeError:
             pass
-        self._mmap.close()
-        self._mmap = mmap(self._file.fileno(), 0)
+        try:
+            self._mmap.close()  # type: ignore
+        except AttributeError:
+            pass
+        try:
+            self._mmap = mmap(self._file.fileno(), 0)
+        except ValueError:  # "cannot mmap an empty file"
+            self._mmap = bytearray(b'')
         self._length = len(self._mmap) // self._elemsize
         if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
             typecode = self.typecodes[self._elemsize]
@@ -128,7 +137,10 @@ class DiskIntArray(Sequence):
             self._mview.release()
         except AttributeError:
             pass
-        self._mmap.close()
+        try:
+            self._mmap.close()  # type: ignore
+        except AttributeError:
+            pass
         try:
             self._file.close()
         except AttributeError:
