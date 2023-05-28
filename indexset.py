@@ -64,6 +64,20 @@ class IndexSet:
         for val in self.values[self.start:self.start+self.size]:
             yield val - offset
 
+    def __getitem__(self, i:int) -> int:
+        if i < 0 or i >= self.size:
+            raise IndexError("IndexSet index out of range")
+        return self.values[self.start+i] - self.offset
+
+    def slice(self, start:int, end:int) -> Iterator[int]:
+        if start < 0 or start >= self.size:
+            raise IndexError("IndexSet index out of range")
+        end = min(end, self.size)
+        start += self.start
+        end += self.start
+        offset = self.offset
+        for val in self.values[start:end]:
+            yield val - offset
 
     def intersection_update(self, other:'IndexSet', resultpath:Optional[Path]=None, use_internal:bool=False, difference:bool=False) -> str:
         # The returned string is ONLY for debugging purposes, and can safely be ignored
