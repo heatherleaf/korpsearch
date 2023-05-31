@@ -40,7 +40,7 @@ def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     return query_dir / query_hash
 
 
-def run_query(corpus:Corpus, query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
+def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
     search_results : List[Tuple[Query, IndexSet]]= []
     subqueries : List[Tuple[Query, Index]] = []
     for subq in query.subqueries():
@@ -110,12 +110,12 @@ def search_corpus(corpus:Corpus, query:Query, args:argparse.Namespace) -> IndexS
                 results = IndexSet(DiskIntArray(unfiltered_results_file))
                 logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
             except (FileNotFoundError, AssertionError):
-                results = run_query(corpus, query, unfiltered_results_file, args.internal_intersection)
+                results = run_query(query, unfiltered_results_file, args.internal_intersection)
             logging.debug(f"Unfiltered results: {results}")
             results.filter_update(query.check_position, final_results_file)
 
         else:
-            results = run_query(corpus, query, final_results_file, args.internal_intersection)
+            results = run_query(query, final_results_file, args.internal_intersection)
 
     return results
 
