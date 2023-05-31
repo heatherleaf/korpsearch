@@ -1,10 +1,10 @@
 
-import argparse
 import hashlib
 from pathlib import Path
 import logging
 import json
 import time
+from argparse import Namespace
 from typing import List, Tuple
 
 from disk import DiskIntArray
@@ -12,7 +12,6 @@ from index import Index
 from indexset import IndexSet
 from corpus import Corpus
 from query import Query
-from util import setup_logger
 
 BASE_DIR = Path('private/api-queries')
 INFO_FILE = Path('__info__')
@@ -93,110 +92,78 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     return intersection
 
 
-def search_corpus(corpus:Corpus, query:Query, args:argparse.Namespace) -> IndexSet:
+def search_corpus(corpus:Corpus, query:Query, filter_results:bool, 
+                  no_cache:bool, internal_intersection:bool) -> IndexSet:
     unfiltered_results_file = hash_query(corpus, query)
-    final_results_file = hash_query(corpus, query, filter=args.filter)
+    final_results_file = hash_query(corpus, query, filter=filter_results)
 
     try:
-        assert not args.no_cache
+        assert not no_cache
         results = IndexSet(DiskIntArray(final_results_file))
         logging.debug(f"Using cached results file: {final_results_file}")
 
     except (FileNotFoundError, AssertionError):
-        if args.filter:
+        if filter_results:
             assert unfiltered_results_file != final_results_file
             try:
-                assert not args.no_cache
+                assert not no_cache
                 results = IndexSet(DiskIntArray(unfiltered_results_file))
                 logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
             except (FileNotFoundError, AssertionError):
-                results = run_query(query, unfiltered_results_file, args.internal_intersection)
+                results = run_query(query, unfiltered_results_file, internal_intersection)
             logging.debug(f"Unfiltered results: {results}")
             results.filter_update(query.check_position, final_results_file)
 
         else:
-            results = run_query(query, final_results_file, args.internal_intersection)
+            results = run_query(query, final_results_file, internal_intersection)
 
     return results
 
 
-def main(corpus:Corpus, args:argparse.Namespace):
+def main_search(corpus:Corpus, args:Namespace) -> dict:
     out = {}
     start_time = time.time()
 
     query = Query.parse(corpus, args.query, args.no_sentence_breaks)
     logging.info(f"Query: {query}, {query.offset()}")
 
-    results = search_corpus(corpus, query, args)
+    results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
     logging.info(f"Results: {results}")
     out['total-matches'] = len(results)
 
-    if args.print:
-        if args.features:
-            features_to_show = args.features
-        else:
-            features_to_show = [
-                feat for feat in corpus.features 
-                if feat in query.features 
-                if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
-            ]
+    if args.features:
+        features_to_show = args.features
+    else:
+        features_to_show = [
+            feat for feat in corpus.features 
+            if feat in query.features 
+            if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
+        ]
 
-        match_length = query.max_offset()
-        matches = []
-        try:
-            for match_pos in results.slice(args.start, args.start+args.max):
-                sentence = corpus.get_sentence_from_position(match_pos)
-                match_start = match_pos - corpus.sentence_pointers[sentence]
-                tokens = [
-                    {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
-                    for p in corpus.sentence_positions(sentence)
-                ]
-                
-                matches.append({
-                    'pos': match_pos,
-                    'sentence': sentence,
-                    'start': match_start,
-                    'length': match_length,
-                    'tokens': tokens,
-                })
-        except IndexError:
-            pass
-        if matches:
-            out['first-match'] = args.start
-        out['len-matches'] = len(matches)
-        out['matches'] = matches
+    match_length = query.max_offset() + 1
+    matches = []
+    try:
+        for match_pos in results.slice(args.start, args.start+args.max):
+            sentence = corpus.get_sentence_from_position(match_pos)
+            match_start = match_pos - corpus.sentence_pointers[sentence]
+            tokens = [
+                {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
+                for p in corpus.sentence_positions(sentence)
+            ]
+            
+            matches.append({
+                'pos': match_pos,
+                'sentence': sentence,
+                'start': match_start,
+                'length': match_length,
+                'tokens': tokens,
+            })
+    except IndexError:
+        pass
+    if matches:
+        out['first-match'] = args.start
+    out['len-matches'] = len(matches)
+    out['matches'] = matches
 
     out['time'] = time.time() - start_time
-    print(json.dumps(out))
-
-
-################################################################################
-## Main
-
-parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--corpus', '-c', type=Path, required=True, help='path to compiled corpus')
-parser.add_argument('--query', '-q', type=str, required=True, help='the query')
-
-parser.add_argument('--print', '-p', action='store_true', help='print results')
-parser.add_argument('--start', '-s', type=int, default=0, help='index of first result (default: 0)')
-parser.add_argument('--max', '-m', type=int, default=10, help='max number of results (default: 10)')
-parser.add_argument('--features', '-f', type=str, nargs='+', help='features to show (default: the ones in the query)')
-
-parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
-parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, 
-    help='verbose output')
-parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING, 
-    help='debugging output')
-
-parser.add_argument('--no-sentence-breaks', action='store_true', 
-    help="don't care about sentence breaks (default: do care)")
-parser.add_argument('--internal-intersection', action='store_true', 
-    help='use internal (slow) intersection implementation')
-parser.add_argument('--filter', action='store_true', 
-    help='filter the final results (should not be necessary, and can take time)')
-
-if __name__ == '__main__':
-    args = parser.parse_args()
-    setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=args.loglevel)
-    with Corpus(args.corpus) as corpus:
-        main(corpus, args)
+    return out
