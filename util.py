@@ -78,9 +78,9 @@ class RelativeTimeFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(format:str, timedivider:int=1000, loglevel:int=logging.WARNING):
+def setup_logger(format:str, timedivider:int=1000, loglevel:int=logging.WARNING, logfile:Optional[Path]=None):
     formatter = RelativeTimeFormatter(format, style='{', divider=timedivider)
-    logging.basicConfig(level=loglevel)
+    logging.basicConfig(level=loglevel, filename=logfile)
     logging.root.handlers[0].setFormatter(formatter)
 
 
