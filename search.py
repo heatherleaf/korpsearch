@@ -128,12 +128,11 @@ def main_search(args:Namespace) -> dict:
         query = Query.parse(corpus, args.query, args.no_sentence_breaks)
         logging.info(f"Query: {query}, {query.offset()}")
 
-        results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
-        logging.info(f"Results: {results}")
-        out['total-matches'] = len(results)
-
-        if args.features:
-            features_to_show = args.features
+        if args.show:
+            features_to_show = args.show.split(',')
+            for f in features_to_show:
+                if f not in corpus.features:
+                    raise ValueError(f"Unknown feature: {f}")
         else:
             features_to_show = [
                 feat for feat in corpus.features 
@@ -141,10 +140,14 @@ def main_search(args:Namespace) -> dict:
                 if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
             ]
 
-        match_length = query.max_offset() + 1
+        results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
+        logging.info(f"Results: {results}")
+        out['hits'] = len(results)
+
+        query_offset = query.max_offset()
         matches = []
         try:
-            for match_pos in results.slice(args.start, args.start+args.max):
+            for match_pos in results.slice(args.start, args.end+1):
                 sentence = corpus.get_sentence_from_position(match_pos)
                 match_start = match_pos - corpus.sentence_pointers[sentence]
                 tokens = [
@@ -153,18 +156,20 @@ def main_search(args:Namespace) -> dict:
                 ]
 
                 matches.append({
-                    'pos': match_pos,
+                    'match': {
+                        'start': match_start,
+                        'end': match_start + query_offset,
+                        'pos': match_pos,
+                    },
                     'sentence': sentence,
-                    'start': match_start,
-                    'length': match_length,
                     'tokens': tokens,
                 })
         except IndexError:
             pass
         if matches:
-            out['first-match'] = args.start
-        out['len-matches'] = len(matches)
-        out['matches'] = matches
+            out['start'] = args.start
+            out['end'] = args.start + len(matches) - 1
+        out['kwic'] = matches
 
         out['time'] = time.time() - start_time
         return out

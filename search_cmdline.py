@@ -12,17 +12,21 @@ def main(args:argparse.Namespace):
     out = main_search(args)
     if args.print == 'json':
         print(json.dumps(out))
-    elif args.print == 'kwic':
-        print(f"{out['total-matches']} search results:")
-        for n, result in enumerate(out['matches'], out['first-match']):
-            print(f"{n}. [{result['sentence']}:{result['pos']}]", end="")
+    elif args.print == 'kwic' and out['kwic']:
+        print(f"{out['hits']} search results. Showing n:o {out['start']}-{out['end']}:")
+        for n, result in enumerate(out['kwic'], out['start']):
+            match = result['match']
+            startpos = match['pos'] - match['start']
+            print(f"{n}. [{result['sentence']}:{startpos}]", end="")
             for i, token in enumerate(result['tokens']):
-                if i == result['start']:
+                if i == match['start']:
                     print(" {", end="")
-                if i == result['start'] + result['length']:
+                if i == match['end']:
                     print(" }", end="")
                 print(" " + "/".join(token.values()), end="")
             print()
+    else:
+        print(f"{out['hits']} search results.")
 
 
 ################################################################################
@@ -35,8 +39,8 @@ parser.add_argument('--query', '-q', type=str, required=True, help='the query')
 parser.add_argument('--print', '-p', choices=['kwic','json'], default='kwic', 
                     help='output format for search results (default: kwic = keywords in context)')
 parser.add_argument('--start', '-s', type=int, default=0, help='index of first result (default: 0)')
-parser.add_argument('--max', '-m', type=int, default=10, help='max number of results (default: 10)')
-parser.add_argument('--features', '-f', type=str, nargs='+', help='features to show (default: the ones in the query)')
+parser.add_argument('--end', '-e', type=int, default=9, help='index of last result (default: 9)')
+parser.add_argument('--show', '-f', type=str, help='comma-separated list of features to show (default: the ones in the query)')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO, 
