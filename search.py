@@ -120,50 +120,51 @@ def search_corpus(corpus:Corpus, query:Query, filter_results:bool,
     return results
 
 
-def main_search(corpus:Corpus, args:Namespace) -> dict:
-    out = {}
-    start_time = time.time()
+def main_search(args:Namespace) -> dict:
+    with Corpus(args.corpus) as corpus:
+        out = {}
+        start_time = time.time()
 
-    query = Query.parse(corpus, args.query, args.no_sentence_breaks)
-    logging.info(f"Query: {query}, {query.offset()}")
+        query = Query.parse(corpus, args.query, args.no_sentence_breaks)
+        logging.info(f"Query: {query}, {query.offset()}")
 
-    results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
-    logging.info(f"Results: {results}")
-    out['total-matches'] = len(results)
+        results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
+        logging.info(f"Results: {results}")
+        out['total-matches'] = len(results)
 
-    if args.features:
-        features_to_show = args.features
-    else:
-        features_to_show = [
-            feat for feat in corpus.features 
-            if feat in query.features 
-            if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
-        ]
-
-    match_length = query.max_offset() + 1
-    matches = []
-    try:
-        for match_pos in results.slice(args.start, args.start+args.max):
-            sentence = corpus.get_sentence_from_position(match_pos)
-            match_start = match_pos - corpus.sentence_pointers[sentence]
-            tokens = [
-                {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
-                for p in corpus.sentence_positions(sentence)
+        if args.features:
+            features_to_show = args.features
+        else:
+            features_to_show = [
+                feat for feat in corpus.features 
+                if feat in query.features 
+                if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
             ]
-            
-            matches.append({
-                'pos': match_pos,
-                'sentence': sentence,
-                'start': match_start,
-                'length': match_length,
-                'tokens': tokens,
-            })
-    except IndexError:
-        pass
-    if matches:
-        out['first-match'] = args.start
-    out['len-matches'] = len(matches)
-    out['matches'] = matches
 
-    out['time'] = time.time() - start_time
-    return out
+        match_length = query.max_offset() + 1
+        matches = []
+        try:
+            for match_pos in results.slice(args.start, args.start+args.max):
+                sentence = corpus.get_sentence_from_position(match_pos)
+                match_start = match_pos - corpus.sentence_pointers[sentence]
+                tokens = [
+                    {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
+                    for p in corpus.sentence_positions(sentence)
+                ]
+
+                matches.append({
+                    'pos': match_pos,
+                    'sentence': sentence,
+                    'start': match_start,
+                    'length': match_length,
+                    'tokens': tokens,
+                })
+        except IndexError:
+            pass
+        if matches:
+            out['first-match'] = args.start
+        out['len-matches'] = len(matches)
+        out['matches'] = matches
+
+        out['time'] = time.time() - start_time
+        return out

@@ -4,13 +4,12 @@ from pathlib import Path
 import logging
 import json
 
-from corpus import Corpus
 from util import setup_logger
 from search import main_search
 
 
-def main(corpus:Corpus, args:argparse.Namespace):
-    out = main_search(corpus, args)
+def main(args:argparse.Namespace):
+    out = main_search(args)
     if args.print == 'json':
         print(json.dumps(out))
     elif args.print == 'kwic':
@@ -55,5 +54,4 @@ parser.add_argument('--filter', action='store_true',
 if __name__ == '__main__':
     args = parser.parse_args()
     setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=args.loglevel)
-    with Corpus(args.corpus) as corpus:
-        main(corpus, args)
+    main(args)
