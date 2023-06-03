@@ -39,7 +39,8 @@ parser.add_argument('--query', '-q', type=str, required=True, help='the query')
 parser.add_argument('--print', '-p', choices=['kwic','json'], default='kwic', 
                     help='output format for search results (default: kwic = keywords in context)')
 parser.add_argument('--start', '-s', type=int, default=0, help='index of first result (default: 0)')
-parser.add_argument('--end', '-e', type=int, default=9, help='index of last result (default: 9)')
+parser.add_argument('--num', '-n', type=int, default=10, help='n:o of shown results (default: 10)')
+parser.add_argument('--end', '-e', type=int, help='index of last result (default: decided by --start and --num)')
 parser.add_argument('--show', '-f', type=str, help='comma-separated list of features to show (default: the ones in the query)')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")

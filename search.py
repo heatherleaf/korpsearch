@@ -121,6 +121,9 @@ def search_corpus(corpus:Corpus, query:Query, filter_results:bool,
 
 
 def main_search(args:Namespace) -> dict:
+    if not (args.end and args.end >= 0):
+        args.end = args.start + args.num - 1
+
     with Corpus(args.corpus) as corpus:
         out = {}
         start_time = time.time()

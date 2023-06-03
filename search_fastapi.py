@@ -19,6 +19,8 @@ CORPUS_DIRS = [
 VERSION = '0.1'
 
 
+# LOGFILE = Path("private/searchapi.log")
+# setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG, logfile=LOGFILE)
 setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG)
 
 app = FastAPI()
@@ -85,7 +87,8 @@ async def search(
         corpus: str,
         cqp: str, 
         start: int = 0,
-        end: int = 9,
+        num: int = 10,
+        end: int = -1,
         show: str = "", 
         filter: bool = False,
         no_cache: bool = False, 
@@ -98,6 +101,7 @@ async def search(
             corpus = corpus,
             query = cqp, 
             start = start,
+            num = num,
             end = end,
             show = show, 
             filter = filter,
