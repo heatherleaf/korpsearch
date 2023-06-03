@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import logging
-from typing import BinaryIO, List, Set, Dict, Iterator, Sequence
+from typing import BinaryIO, List, Set, Dict, Iterator, Sequence, Union
 from types import TracebackType
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
@@ -26,7 +26,8 @@ class Corpus:
     sentence_pointers : DiskIntArray
     path : Path
 
-    def __init__(self, corpus:Path):
+    def __init__(self, corpus:Union[Path,str]):
+        corpus = Path(corpus)
         self.path : Path = corpus.with_suffix(self.dir_suffix)
         with open(self.path / self.features_file, 'r') as IN:
             self.features = json.load(IN)
