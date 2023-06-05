@@ -1,0 +1,38 @@
+<html>
+<head>
+<script src="korpsearch.js"></script>
+<link rel="stylesheet" href="demo.css" />
+</head>
+<body>
+<h1>Korpsearch demo</h1>
+
+<div id="error"></div>
+
+<p><label>Corpus: <select id="corpus-list"></select></label>
+&nbsp;&nbsp; <span id="corpus-info"></span>
+</p>
+
+
+<p><label>CQP search string: <input type="text" id="search-string" size="50"/></label>
+<button id="search-button">Search</button>
+&nbsp;&nbsp; <select id="search-examples"></select>
+</p>
+
+<table id="search-info-container">
+    <td id="search-info"></td>
+    <td id="navigation-container">
+        <button id="navigate-first">&lt;&lt;</button>
+        <button id="navigate-prev">&lt;</button>
+        <button id="navigate-next">&gt;</button>
+        <button id="navigate-last">&gt;&gt;</button>
+    </td>
+    <td></td>
+</table>
+
+<div id="search-results-container">
+<table id="search-results"></table>
+</div>
+
+
+</body>
+</html>

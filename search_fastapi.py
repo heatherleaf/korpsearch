@@ -4,6 +4,7 @@ from time import time
 from pathlib import Path
 from argparse import Namespace
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from typing import List
 
 from corpus import Corpus
@@ -16,11 +17,11 @@ CORPUS_DIR = Path('corpora')
 VERSION = '0.1'
 
 
-# LOGFILE = Path("private/searchapi.log")
-# setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG, logfile=LOGFILE)
 setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG)
 
 app = FastAPI()
+app.mount("/webdemo", StaticFiles(directory="webdemo"), name="webdemo")
+
 
 def api_call(call, *args, **xargs):
     start_time = time()
@@ -46,8 +47,7 @@ def get_info():
     return {
         'corpora': [
             corpus.with_suffix('')
-            for dir in CORPUS_DIRS
-            for corpus in Path(dir).glob('**/*.corpus')
+            for corpus in CORPUS_DIR.glob('**/*.corpus')
         ]
     }
 

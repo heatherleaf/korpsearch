@@ -1,0 +1,53 @@
+
+#error {
+    color: red;
+    font-weight: bold;
+}
+
+#search-examples {
+    max-width: 14em;
+}
+
+#search-info-container {
+    width: 100%;
+}
+
+#search-info {
+    width: 40%;
+    text-align: left;
+}
+
+#navigation-container {
+    width: 20%;
+    text-align: center;
+}
+
+#search-results-container {
+    width: 100%;
+    overflow-x: auto;
+    scroll-snap-align: center;
+}
+
+#search-results {
+    border-collapse: collapse; 
+    border: 1px solid black;
+}
+
+#search-results td {
+    white-space: nowrap;
+    border-top: 1px solid black;
+    padding: 3px 10px;
+}
+
+.match {
+    text-align: center;
+    font-weight: bold;
+}
+
+.prefix {
+    text-align: right;
+}
+
+.suffix {
+    text-align: left; 
+}
