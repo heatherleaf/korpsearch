@@ -63,12 +63,9 @@ def get_corpus_info(corpus_path):
     corpus_path = Path(corpus_path)
     with Corpus(corpus_path) as corpus:
         indexes = []
-        for feat in corpus.features:
-            try:
-                Index(corpus, Template([TemplateLiteral(0, feat)]))
-            except FileNotFoundError:
-                continue
-            indexes.append(feat)
+        for index_path in corpus_path.with_suffix('.indexes').glob('*:*'):
+            templ = Template.parse(corpus, index_path.name)
+            indexes.append(templ.querystr())
         return {
             'info': {
                 'id': corpus_path,
@@ -77,7 +74,7 @@ def get_corpus_info(corpus_path):
                 'size': len(corpus),
                 'sentences': corpus.num_sentences(),
                 'features': corpus.features,
-                'indexed-features': indexes,
+                'indexes': indexes,
             }
         }
 

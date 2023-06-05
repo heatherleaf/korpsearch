@@ -87,6 +87,20 @@ class Template:
     def __str__(self) -> str:
         return '+'.join(map(str, self.template + self.literals))
 
+    def querystr(self) -> str:
+        min_offset = min(l.offset for lits in [self.template, self.literals] for l in lits)
+        max_offset = max(l.offset for lits in [self.template, self.literals] for l in lits)
+        tokens: List[str] = []
+        for offset in range(min_offset, max_offset+1):
+            tok = ','.join('?' + l.feature for l in self.template if l.offset == offset)
+            lit = ','.join(f'{l.feature}{"≠" if l.negative else "="}"{l.value}"' 
+                           for l in self.literals if l.offset == offset)
+            if lit:
+                tokens.append(tok + '|' + lit)
+            else:
+                tokens.append(tok)
+        return ''.join('[' + tok + ']' for tok in tokens)
+
     def __iter__(self) -> Iterator[TemplateLiteral]:
         return iter(self.template)
 
