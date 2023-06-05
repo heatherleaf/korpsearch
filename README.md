@@ -15,6 +15,8 @@ There are no required libraries, you should be able to run things without instal
 
 - [FastAPI](https://pypi.org/project/fastapi/) if you want to run the web demo (see below)
 
+- [PyPy](https://www.pypy.org/) if you want building and search to be around twice as fast
+
 ## Building inverted indexes
 
 Before you can start searching in a corpus you have to build the corpus index, and then some inverted indexes. If you want help, run:
@@ -34,6 +36,8 @@ python build_indexes.py --corpus corpora/bnc-mini.csv --features word lemma pos 
 
 `--max-dist` tells how many different binary indexes that will be created: it's the maximum adjacent distance between the tokens in the query. The default setting is 2. If you only want unary indexes you can set `--max-dist` to 0, and if you want mroe control you can use the `--templates` option instead of `--features`.
 
+Note that this can take quite some time for large corpora. If you use [PyPy](https://www.pypy.org/) it will be around twice as fast.
+
 The original `.csv` file is not used when searching, so you can remove it if you want (but then you cannot build any new indexes, so it's probably a bad idea).
 
 ## Searching from the command line
@@ -48,6 +52,8 @@ All searches are cached (in the directory `cache/`), if you don't want to use th
 python search_cmdline.py --help
 ```
 
+Note that this can take a couple of seconds for some very general searches on large corpora. If you use [PyPy](https://www.pypy.org/) it will be around twice as fast.
+
 ## Using the web demo
 
 To use the web demo you need to install [FastAPI](https://pypi.org/project/fastapi/). You also have to build corpus- and search indexes for the corpora you want to play with. The you can run the following to start the webserver:
@@ -56,3 +62,10 @@ uvicorn search_fastapi:app --reload
 ```
 
 When the server has started you can open the URL <http://127.0.0.1:8000/webdemo/index.html> to play around with the web demo.
+
+## Fast intersection of search results
+
+When searching the part that takes the most time is to calculate the intersection of two search results. The default implementation is in pure Python, but there is a faster version implemented in Cython. To use this you have to compile it first:
+```
+make fast-intersection
+```
