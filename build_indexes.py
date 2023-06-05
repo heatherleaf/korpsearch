@@ -1,7 +1,6 @@
 
 import shutil
 import argparse
-import itertools
 from pathlib import Path
 from typing import Iterator
 import logging
@@ -100,14 +99,10 @@ def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template
 ## Main
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('corpus', type=Path, help='corpus base name (i.e. without suffix)')
-
-parser.add_argument('--clean', action='store_true',
-    help='remove the corpus index and all query indexes')
-parser.add_argument('--force', action='store_true',
-    help='build indexes even if they exist')
-parser.add_argument('--corpus-index', '-c', action='store_true',
-    help='build the corpus index')
+parser.add_argument('--corpus', '-c', type=Path, required=True, help='corpus base name (i.e. without suffix)')
+parser.add_argument('--clean', action='store_true', help='remove the corpus index and all query indexes')
+parser.add_argument('--force', action='store_true', help='build indexes even if they exist')
+parser.add_argument('--corpus-index', '-i', action='store_true', help='build the corpus index')
 parser.add_argument('--features', '-f', nargs='+', default=[],
     help='build all possible (unary and binary) query indexes for the given features')
 parser.add_argument('--templates', '-t', nargs='+', default=[],
@@ -127,9 +122,8 @@ parser.add_argument('--silent', action="store_const", dest='loglevel', const=log
     help='silent (no output)')
 
 parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
-    help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]}')
-parser.add_argument('--keep-tmpfiles', action='store_true', 
-    help='keep temporary files')
+    help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]})')
+parser.add_argument('--keep-tmpfiles', action='store_true', help="keep temporary files (default: don't keep)")
 
 
 if __name__ == '__main__':
