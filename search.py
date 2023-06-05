@@ -13,7 +13,9 @@ from indexset import IndexSet
 from corpus import Corpus
 from query import Query
 
-BASE_DIR = Path('cache')
+CACHE_DIR = Path('cache')
+CACHE_DIR.mkdir(exist_ok=True)
+
 INFO_FILE = Path('__info__')
 
 
@@ -26,7 +28,7 @@ def hash_repr(*objs, size=16):
 
 def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     corpus_hash = hash_repr(corpus, size=8)
-    query_dir = BASE_DIR / (corpus.path.stem + '.' + corpus_hash)
+    query_dir = CACHE_DIR / (corpus.path.stem + '.' + corpus_hash)
     if not query_dir.is_dir():
         query_dir.mkdir()
     info_file = query_dir / INFO_FILE
