@@ -131,8 +131,14 @@ dmypy.json
 # Java
 *.class
 
-# More files to ignore
-private
-cache
+###############################################################################
+# Project-specific files/directories to ignore
+
+private/
+cache/
 *.indexes/
 *.corpus/
+
+# These are built by Make:
+fast_intersection.c
+DiskFixedSizeArray.jar
