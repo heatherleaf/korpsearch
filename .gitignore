@@ -133,5 +133,6 @@ dmypy.json
 
 # More files to ignore
 private
+cache
 *.indexes/
 *.corpus/

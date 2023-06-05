@@ -13,7 +13,7 @@ from indexset import IndexSet
 from corpus import Corpus
 from query import Query
 
-BASE_DIR = Path('private/api-queries')
+BASE_DIR = Path('cache')
 INFO_FILE = Path('__info__')
 
 

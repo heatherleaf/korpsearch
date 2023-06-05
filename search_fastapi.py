@@ -11,10 +11,7 @@ from index import Index, Template, TemplateLiteral
 from util import setup_logger
 from search import main_search
 
-CORPUS_DIRS = [
-    'corpora',
-    'private',
-]
+CORPUS_DIR = Path('corpora')
 
 VERSION = '0.1'
 
