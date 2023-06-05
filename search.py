@@ -143,6 +143,12 @@ def main_search(args:Namespace) -> dict:
                 if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
             ]
 
+        # Always include the 'word' feature, and put it first
+        if 'word' in corpus.features:
+            if 'word' in features_to_show:
+                features_to_show.remove('word')
+            features_to_show.insert(0, 'word')
+
         results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
         logging.info(f"Results: {results}")
         out['hits'] = len(results)
