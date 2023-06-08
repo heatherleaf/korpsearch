@@ -21,9 +21,9 @@ def main(args:argparse.Namespace):
             for i, token in enumerate(result['tokens']):
                 if i == match['start']:
                     print(" {", end="")
+                print(" " + "/".join(token.values()), end="")
                 if i == match['end']:
                     print(" }", end="")
-                print(" " + "/".join(token.values()), end="")
             print()
     else:
         print(f"{out['hits']} search results.")
