@@ -1,10 +1,11 @@
 
+import os
 import sys
 import math
 import logging
+import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, Literal, Iterable, Optional
-
+from typing import Any, Literal, Iterable, Optional, BinaryIO, Union
 
 ByteOrder = Literal['little', 'big']
 
@@ -20,6 +21,47 @@ def add_suffix(path:Path, suffix:str):
 def min_bytes_to_store_values(max_value:int) -> int:
     """The minimal n:o bytes needed to store values `0...max_value`"""
     return math.ceil(math.log(max_value + 1, 2) / 8)
+
+
+class CompressedFileReader:
+    """
+    A class that can read compressed (and uncompressed) files, 
+    and where you can query the original file size and the current position.
+    Use e.g. like this:
+
+    >>> with (basefile := CompressedFileReader(path)) as Reader:
+    >>>     for line in (pbar := tqdm(Reader, total=basefile.file_size()):
+    >>>         pbar.update(basefile.file_position() - pbar.n)
+    >>>         ...do something with line...
+    """
+    basefile : BinaryIO
+    reader : BinaryIO
+
+    def __init__(self, path:Union[Path,str]):
+        path = Path(path)
+        self.basefile = binfile = open(path, 'rb')
+        self.reader = (
+            gzip.open(binfile, mode='rb') if path.suffix == '.gz'  else
+            bz2.open(binfile, mode='rb')  if path.suffix == '.bz2' else 
+            lzma.open(binfile, mode='rb') if path.suffix == '.xz'  else 
+            binfile
+        )   # type: ignore
+
+    def file_position(self) -> int:
+        return self.basefile.tell()
+
+    def file_size(self) -> int:
+        return os.fstat(self.basefile.fileno()).st_size
+
+    def close(self):
+        self.reader.close()
+        self.basefile.close()
+
+    def __enter__(self) -> BinaryIO:
+        return self.reader
+
+    def __exit__(self, *_):
+        self.close()
 
 
 ###############################################################################
