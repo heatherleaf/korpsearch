@@ -6,7 +6,7 @@ from typing import BinaryIO, List, Set, Dict, Iterator, Sequence, Union
 from types import TracebackType
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
-from util import progress_bar
+from util import progress_bar, CompressedFileReader, add_suffix
 
 ################################################################################
 ## Corpus
@@ -27,8 +27,9 @@ class Corpus:
     path : Path
 
     def __init__(self, corpus:Union[Path,str]):
-        corpus = Path(corpus)
-        self.path : Path = corpus.with_suffix(self.dir_suffix)
+        self.path = Path(corpus)
+        if self.path.suffix != self.dir_suffix:
+            self.path = add_suffix(self.path, self.dir_suffix)
         with open(self.path / self.features_file, 'r') as IN:
             self.features = json.load(IN)
         self.sentence_pointers = DiskIntArray(self.path / self.sentences_path)
@@ -119,13 +120,12 @@ class Corpus:
     @staticmethod
     def build_from_csv(basedir:Path, csv_corpusfile:Path):
         logging.debug(f"Building corpus index")
-        corpus : BinaryIO = open(csv_corpusfile, 'rb')
-        corpus.seek(0, 2)
-        csv_filesize = corpus.tell()
+        corpus = CompressedFileReader(csv_corpusfile)
+        csv_filesize = corpus.file_size()
 
         # the first line in the CSV should be a header with the names of each column (=features)
-        corpus.seek(0)
-        features : List[str] = corpus.readline().decode().split()
+        corpus.reader.seek(0)
+        features : List[str] = corpus.reader.readline().decode().split()
         assert Corpus.sentence_feature not in features
         features.insert(0, Corpus.sentence_feature)
 
@@ -134,12 +134,12 @@ class Corpus:
 
         def iterate_sentences(description:str) -> Iterator[List[List[bytes]]]:
             # Skip over the header line
-            corpus.seek(0)
-            corpus.readline()
+            corpus.reader.seek(0)
+            corpus.reader.readline()
             with progress_bar(total=csv_filesize, desc=description) as pbar:
                 sentence = []
-                for line in corpus:
-                    pbar.update(len(line))
+                for line in corpus.reader:
+                    pbar.update(corpus.file_position() - pbar.n)
                     line = line.strip()
                     if line.startswith(b'# '):
                         if sentence: 

@@ -7,25 +7,31 @@ import logging
 
 from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES
 from corpus import Corpus
-from util import setup_logger
+from util import setup_logger, add_suffix, CompressedFileReader
 
+
+CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
 
 ################################################################################
 ## Building the corpus index and the query indexes
 
 def main(args:argparse.Namespace):
-    base = Path(args.corpus)
-    corpusdir = base.with_suffix(Corpus.dir_suffix)
-    indexdir = base.with_suffix(Index.dir_suffix)
+    base = corpusfile = Path(args.corpus)
+    while base.suffix in CSV_SUFFIXES: 
+        base = base.with_suffix('')
+    corpusdir = add_suffix(base, Corpus.dir_suffix)
+    indexdir = add_suffix(base, Index.dir_suffix)
 
     if args.clean:
         shutil.rmtree(corpusdir, ignore_errors=True)
-        shutil.rmtree(base.with_suffix(Index.dir_suffix), ignore_errors=True)
+        shutil.rmtree(indexdir, ignore_errors=True)
         logging.info(f"Removed all indexes")
 
     if args.corpus_index:
+        with CompressedFileReader(corpusfile) as _: 
+            # This is just to test that the corpus file actually exists
+            pass
         corpusdir.mkdir(exist_ok=True)
-        corpusfile = base.with_suffix('.csv')
         try:
             with Corpus(base) as _corpus:
                 assert not args.force
