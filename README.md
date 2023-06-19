@@ -24,14 +24,14 @@ Before you can start searching in a corpus you have to build the corpus index, a
 python build_indexes.py --help
 ```
 
-The following builds the basic corpus index for the BNC-mini corpus, in the directory `corpora/bnc-mini.corpus/`, which is a compact and efficient representation of the corpus:
+The following builds the basic corpus index for the smallest version of the BNC corpus, in the directory `corpora/bnc-100k.corpus/`, which is a compact and efficient representation of the corpus:
 ```
-python build_indexes.py --corpus corpora/bnc-mini.csv --corpus-index
+python build_indexes.py --corpus corpora/bnc-100k.csv --corpus-index
 ```
 
-Now you can build inverted indexes for the BNC-mini corpus, for the features `word`, `lemma`, and `pos`. All inverted indexes are in the directory `corpora/bnc-mini.indexes/`:
+Now you can build inverted indexes for the corpus, for the features `word`, `lemma`, and `pos`. All inverted indexes are in the directory `corpora/bnc-100k.indexes/`:
 ```
-python build_indexes.py --corpus corpora/bnc-mini.csv --features word lemma pos --max-dist 2
+python build_indexes.py --corpus corpora/bnc-100k.csv --features word lemma pos --max-dist 2
 ```
 
 `--max-dist` tells how many different binary indexes that will be created: it's the maximum adjacent distance between the tokens in the query. The default setting is 2. If you only want unary indexes you can set `--max-dist` to 0, and if you want mroe control you can use the `--templates` option instead of `--features`.
@@ -44,7 +44,7 @@ The original `.csv` file is not used when searching, so you can remove it if you
 
 To search from the command line, you give the corpus and the query. Note that you have to have built the inverted indexes as described above:
 ```
-python search_cmdline.py --corpus corpora/bnc-mini --query '[pos="ART"] [lemma="small"] [pos="SUBST"]'
+python search_cmdline.py --corpus corpora/bnc-100k --query '[pos="ART"] [lemma="small"] [pos="SUBST"]'
 ```
 
 All searches are cached (in the directory `cache/`), if you don't want to use the cached result, you can use `--no-cache`. Use `--print json` for JSON output, `--start 42` to print from match 42, and `--num 14` to print at most 14 matches. Use the following for more help: 
