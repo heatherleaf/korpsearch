@@ -35,7 +35,7 @@ class Query:
         self.featured_query = {f: [] for f in self.features}
         for lit in self.literals:
             self.featured_query[lit.feature].append(
-                (lit.negative, lit.offset, lit.value)
+                (lit.negative, lit.offset, lit.first_value, lit.last_value)
             )
 
         # We precompute the associated query template. It raises a ValueError if it's not valid.
@@ -46,7 +46,7 @@ class Query:
         else:
             self.template = Template(
                 [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
-                [Literal(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
+                [Literal(True, lit.offset-self.offset(), lit.feature, lit.first_value, lit.last_value) for lit in self.negative_literals()],
             )
 
 
@@ -82,9 +82,9 @@ class Query:
 
     def instance(self) -> Instance:
         if self.is_negative():
-            return Instance([lit.value for lit in self.negative_literals()])
+            return Instance([(lit.first_value, lit.last_value) for lit in self.negative_literals()])
         else:
-            return Instance([lit.value for lit in self.positive_literals()])
+            return Instance([(lit.first_value, lit.last_value) for lit in self.positive_literals()])
 
     def index(self) -> Index:
         return Index(self.corpus, self.template)
@@ -119,7 +119,7 @@ class Query:
         # This is an optimised (but less readable) version of the code above:
         for feature, values in self.featured_query.items():
             lookup = self.corpus.tokens[feature]
-            if any((lookup[pos+offset] == value) == negative for negative, offset, value in values):
+            if any((lookup[pos+offset] == first_value) == negative for negative, offset, first_value, last_value in values):
                 return False
         return True
 
@@ -135,11 +135,13 @@ class Query:
                 feature, negated, value = match.groups()
                 feature = feature.lower()
                 negative = (negated == '!')
-                value = corpus.intern(feature, value.encode())
-                query.append(Literal(negative, offset, feature, value))
+                is_prefix = value.endswith('*')
+                value = value.split('*')[0] if is_prefix else value
+                first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
+                query.append(Literal(negative, offset, feature, first_value, last_value))
         if not no_sentence_breaks:
             sfeature = corpus.sentence_feature
-            svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+            svalue, _ = corpus.intern(sfeature, corpus.sentence_start_value)
             for offset in range(1, len(tokens)):
-                query.append(Literal(True, offset, sfeature, svalue))
+                query.append(Literal(True, offset, sfeature, svalue, svalue))
         return Query(corpus, query)

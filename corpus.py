@@ -53,8 +53,8 @@ class Corpus:
     def strings(self, feature:str) -> StringCollection:
         return self.tokens[feature].strings
 
-    def intern(self, feature:str, value:bytes) -> InternedString:
-        return self.tokens[feature].intern(value)
+    def intern(self, feature:str, value:bytes, is_prefix = False) -> List[InternedString]:
+        return self.tokens[feature].intern(value, is_prefix)
 
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1

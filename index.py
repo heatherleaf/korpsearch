@@ -24,10 +24,12 @@ class Literal(NamedTuple):
     negative : bool
     offset : int
     feature : str
-    value : InternedString
+    first_value : InternedString
+    last_value : InternedString
 
     def __str__(self):
-        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
+        # TODO: replace first value with actual prefix
+        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.first_value}"
 
     @staticmethod
     def parse(corpus:Corpus, litstr:str) -> 'Literal':
@@ -139,7 +141,7 @@ class Template:
 class Instance:
     values : Tuple[InternedString,...]
 
-    def __init__(self, values : Sequence[InternedString]):
+    def __init__(self, values : Sequence[Sequence[InternedString]]):
         assert len(values) > 0
         self.values = tuple(values)
 
@@ -216,29 +218,33 @@ class Index:
         search_key = self.search_key
         instance_key = instance.values
         if len(instance_key) == 1: instance_key = instance_key[0]
+        else: instance_key = tuple(zip(*instance_key))
 
         start, end = 0, len(self)-1
+        instance_key_first = instance_key[0]
         while start <= end:
             mid = (start + end) // 2
             key = search_key(mid)
-            if key < instance_key:  # type: ignore
+            if key < instance_key_first:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
         first_index = start
-        if search_key(first_index) != instance_key:
+        if search_key(first_index) != instance_key_first:
             raise KeyError(f'Instance "{instance}" not found')
 
         end = len(self) - 1
+        instance_key_last = instance_key[1]
         while start <= end:
             mid = (start + end) // 2
             key = search_key(mid)
-            if key <= instance_key:  # type: ignore
+            if key <= instance_key_last:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
         last_index = end
-        assert search_key(last_index) == instance_key
+        if search_key(first_index) != instance_key_first:
+            raise KeyError(f'Instance "{instance}" not found')
 
         return first_index, last_index
 
