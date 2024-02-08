@@ -38,10 +38,10 @@ class Literal(NamedTuple):
             assert feature.replace('_','').isalnum()
             try:
                 offset, value = rest.split('=')
-                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()), corpus.intern(feature, value.encode()))
             except ValueError:
                 offset, value = rest.split('#')
-                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()), corpus.intern(feature, value.encode()))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -331,10 +331,10 @@ def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_f
     if len(template.literals) == 0:
         test_literals = lambda pos: True
     elif len(template.literals) == 1:
-        [(_neg1, off1, feat1, val1)] = template.literals
+        [(_neg1, off1, feat1, val1, _)] = template.literals
         test_literals = lambda pos: corpus.tokens[feat1][pos+off1] != val1
     elif len(template.literals) == 2:
-        [(_neg1, off1, feat1, val1), (_neg2, off2, feat2, val2)] = template.literals
+        [(_neg1, off1, feat1, val1, _), (_neg2, off2, feat2, val2, _)] = template.literals
         test_literals = lambda pos: \
             corpus.tokens[feat1][pos+off1] != val1 and corpus.tokens[feat2][pos+off2] != val2
     else:

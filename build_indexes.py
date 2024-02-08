@@ -70,7 +70,7 @@ def main(args:argparse.Namespace):
 
 def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template]:
     sfeature = corpus.sentence_feature
-    svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+    first_svalue, last_svalue = corpus.intern(sfeature, corpus.sentence_start_value)
     if args.templates:
         for tmplstr in args.templates:
             tmpl = Template.parse(corpus, tmplstr)
@@ -79,7 +79,7 @@ def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template
             else:
                 dist = tmpl.maxdelta()
                 literals = set(tmpl.literals) | {
-                    Literal(True, offset, sfeature, svalue)
+                    Literal(True, offset, sfeature, first_svalue, last_svalue)
                     for offset in range(1, dist+1)
                 }
                 yield Template(tmpl.template, literals)
@@ -95,7 +95,7 @@ def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template
                         yield Template(template)
                     else:
                         literals = {
-                            Literal(True, offset, sfeature, svalue)
+                            Literal(True, offset, sfeature, first_svalue, last_svalue)
                             for offset in range(1, dist+1)
                         }
                         yield Template(template, literals)
