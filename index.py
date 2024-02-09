@@ -28,8 +28,13 @@ class Literal(NamedTuple):
     last_value : InternedString
 
     def __str__(self):
-        # TODO: replace first value with actual prefix
-        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.first_value}"
+        if self.is_prefix():
+            return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.first_value}-{self.last_value}"
+        else:
+            return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.first_value}"
+
+    def is_prefix(self):
+        return self.first_value != self.last_value
 
     @staticmethod
     def parse(corpus:Corpus, litstr:str) -> 'Literal':

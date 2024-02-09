@@ -93,6 +93,8 @@ class Query:
         # Subqueries are generated in decreasing order of complexity
         for n in reversed(range(len(self))):
             for literals in itertools.combinations(self.literals, n+1):
+                if (any([literal.is_prefix() for literal in literals]) and len(literals) > 1):
+                    continue
                 try:
                     yield Query(self.corpus, literals)
                 except ValueError:
