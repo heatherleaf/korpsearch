@@ -79,6 +79,7 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     logging.info(f"Intersecting {len(search_results)} search results:")
     logging.info(f"     {subq!s:{maxwidth}} = {intersection}")
     used_queries = [subq]
+    prefix_tmp = Path("prefix_tmp")
     for subq, results in search_results[1:]:
         if subq.subsumed_by(used_queries):
             logging.debug(f"     -- subsumed: {subq}")
@@ -88,10 +89,10 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
             if len(results) > 0.1 * lengths[1]:
                 logging.debug(f"     -- skipping prefix: {subq}")
                 continue
-            tmp_path = Path("prefix_tmp")
+            prefix_tmp = Path("prefix_tmp")
             sorted_values = sorted(results.values[results.start:(results.start+results.size)])
-            DiskIntArrayBuilder.build(tmp_path, sorted_values)
-            results = DiskIntArray(tmp_path)
+            DiskIntArrayBuilder.build(prefix_tmp, sorted_values)
+            results = DiskIntArray(prefix_tmp)
             
         intersection_type = intersection.merge_update(
             results,
@@ -100,10 +101,11 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
-        tmp_path = Path("prefix_tmp.ia")
-        if tmp_path.is_file():
-            tmp_path.unlink()
-            Path("prefix_tmp.ia-cfg").unlink()
+        try:
+            (prefix_tmp.parent / (prefix_tmp.name + ".ia")).unlink()
+            (prefix_tmp.parent / (prefix_tmp.name + ".ia-cfg")).unlink()
+        except FileNotFoundError:
+            pass
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
