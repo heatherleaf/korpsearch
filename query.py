@@ -121,7 +121,7 @@ class Query:
         # This is an optimised (but less readable) version of the code above:
         for feature, values in self.featured_query.items():
             lookup = self.corpus.tokens[feature]
-            if any((lookup[pos+offset] == first_value) == negative for negative, offset, first_value, last_value in values):
+            if any((lookup[pos+offset] >= first_value and lookup[pos+offset] <= last_value) == negative for negative, offset, first_value, last_value in values):
                 return False
         return True
 
