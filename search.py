@@ -7,7 +7,7 @@ import time
 from argparse import Namespace
 from typing import List, Tuple
 
-from disk import DiskIntArray
+from disk import DiskIntArray, DiskIntArrayBuilder
 from index import Index
 from indexset import IndexSet, MergeType
 from corpus import Corpus
@@ -65,8 +65,8 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
     search_results.sort(key=lambda r: len(r[-1]))
-    if search_results[0][0].is_negative():
-        first_positive = [q.is_negative() for q,_ in search_results].index(False)
+    if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
+        first_positive = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
         first_result = search_results[first_positive]
         del search_results[first_positive]
         search_results.insert(0, first_result)
@@ -83,6 +83,16 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         if subq.subsumed_by(used_queries):
             logging.debug(f"     -- subsumed: {subq}")
             continue
+        if any(lit.is_prefix() for lit in subq.literals):
+            lengths = sorted([len(res[1]) for res in search_results])
+            if len(results) > 0.1 * lengths[1]:
+                logging.debug(f"     -- skipping prefix: {subq}")
+                continue
+            tmp_path = Path("prefix_tmp")
+            sorted_values = sorted(results.values[results.start:(results.start+results.size)])
+            DiskIntArrayBuilder.build(tmp_path, sorted_values)
+            results = DiskIntArray(tmp_path)
+            
         intersection_type = intersection.merge_update(
             results,
             results_file, use_internal=use_internal,
@@ -90,6 +100,10 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
+        tmp_path = Path("prefix_tmp.ia")
+        if tmp_path.is_file():
+            tmp_path.unlink()
+            Path("prefix_tmp.ia-cfg").unlink()
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
