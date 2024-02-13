@@ -141,4 +141,5 @@ cache/
 
 # These are built by Make:
 fast_intersection.c
+fast_merge.c
 DiskFixedSizeArray.jar

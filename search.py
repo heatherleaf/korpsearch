@@ -9,7 +9,7 @@ from typing import List, Tuple
 
 from disk import DiskIntArray
 from index import Index
-from indexset import IndexSet
+from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
 
@@ -83,8 +83,10 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         if subq.subsumed_by(used_queries):
             logging.debug(f"     -- subsumed: {subq}")
             continue
-        intersection_type = intersection.intersection_update(
-            results, results_file, use_internal=use_internal, difference=subq.is_negative()
+        intersection_type = intersection.merge_update(
+            results,
+            results_file, use_internal=use_internal,
+            merge_type=MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)

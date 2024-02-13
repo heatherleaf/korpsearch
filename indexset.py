@@ -5,14 +5,15 @@ from pathlib import Path
 from typing import List, Iterator, Union, Callable, Optional
 
 from disk import DiskIntArray, LowlevelIntArray, DiskIntArrayBuilder
+from enum import Enum
 
 try:
     import platform
     if platform.python_implementation() == 'CPython':
-        # fast_intersection is NOT faster in PyPy!
-        import fast_intersection  # type: ignore
+        # fast_merge is NOT faster in PyPy!
+        import fast_merge  # type: ignore
 except ModuleNotFoundError:
-    print("Module 'fast_intersection' not found. "
+    print("Module 'fast_merge' not found. "
           "To install, run: 'python setup.py build_ext --inplace'. "
           "Defaulting to an internal implementation.\n", 
           file=sys.stderr)
@@ -23,6 +24,23 @@ except ModuleNotFoundError:
 
 IndexSetValuesType = Union[DiskIntArray, List[int]]
 IndexSetValuesBuilder = Union[DiskIntArray, DiskIntArrayBuilder, List[int]]
+
+class MergeType(Enum):
+    """Types of merges that can be done."""
+
+    UNION = 0
+    INTERSECTION = 1
+    DIFFERENCE = 2
+
+    def which_to_take(self) -> tuple[bool, bool, bool]:
+        """Compute take_first/take_second/take_common parameters (see
+        comment in fast_merge.pyx)."""
+
+        return {
+            MergeType.UNION:        (True,  True,  True),
+            MergeType.INTERSECTION: (False, False, True),
+            MergeType.DIFFERENCE:   (True,  False, False)
+        }[self]
 
 class IndexSet:
     # if the sets have very uneven size, use __contains__ on the larger set
@@ -79,22 +97,25 @@ class IndexSet:
         for val in self.values[start:end]:
             yield val - offset
 
-    def intersection_update(self, other:'IndexSet', resultpath:Optional[Path]=None, use_internal:bool=False, difference:bool=False) -> str:
+    def merge_update(self, other:'IndexSet', resultpath:Optional[Path]=None, use_internal:bool=False, merge_type:MergeType=MergeType.INTERSECTION) -> str:
         # The returned string is ONLY for debugging purposes, and can safely be ignored
-        if len(other) > len(self) * self._min_size_difference_for_contains:
+        if len(other) > len(self) * self._min_size_difference_for_contains and merge_type != MergeType.UNION:
             result = self._init_result(resultpath, other)
-            self._intersection_lookup(other, result, difference)
+            if merge_type == MergeType.INTERSECTION:
+                self._intersection_lookup(other, result)
+            else:
+                self._difference_lookup(other, result)
             self._finalise_result(result)
             return 'lookup'
 
         if not use_internal and not resultpath:
-            result = self._intersection_external(other, difference)
+            result = self._merge_external(other, merge_type)
             if result is not None:
                 self._finalise_result(result)
                 return 'external'
 
         result = self._init_result(resultpath, other)
-        self._intersection_internal(other, result, difference)
+        self._merge_internal(other, result, merge_type)
         self._finalise_result(result)
         return 'internal'
 
@@ -125,18 +146,18 @@ class IndexSet:
         self.size = len(self.values)
         self.offset = 0
 
-    def _intersection_lookup(self, other:'IndexSet', result:IndexSetValuesBuilder, difference:bool):
+    def _intersection_lookup(self, other:'IndexSet', result:IndexSetValuesBuilder):
         # Complexity: O(self * log(other))
-        if difference:
-            for elem in self:
-                if elem not in other:
-                    result.append(elem)
-        else: # intersection
-            for elem in self:
-                if elem in other:
-                    result.append(elem)
+        for elem in self:
+            if elem in other:
+                result.append(elem)
 
-    def _intersection_external(self, other:'IndexSet', difference:bool) -> Optional[IndexSetValuesType]:
+    def _difference_lookup(self, other:'IndexSet', result:IndexSetValuesBuilder):
+        for elem in self:
+            if elem not in other:
+                result.append(elem)
+
+    def _merge_external(self, other:'IndexSet', merge_type:MergeType) -> Optional[IndexSetValuesType]:
         # Complexity: O(self + other)
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
@@ -144,16 +165,19 @@ class IndexSet:
             self.values._byteorder == other.values._byteorder == sys.byteorder and
             self.values._elemsize == other.values._elemsize
         ):
+            take_first, take_second, take_common = merge_type.which_to_take()
             try:
-                return fast_intersection.intersection(
+                return fast_merge.merge(
                     self.values, self.start, self.size, self.offset,
-                    other.values, other.start, other.size, other.offset, difference,
+                    other.values, other.start, other.size, other.offset,
+                    take_first, take_second, take_common
                 )
             except NameError:
                 pass
 
-    def _intersection_internal(self, other:'IndexSet', result:IndexSetValuesBuilder, difference:bool):
+    def _merge_internal(self, other:'IndexSet', result:IndexSetValuesBuilder, merge_type:MergeType):
         # Complexity: O(self + other)
+        take_first, take_second, take_common = merge_type.which_to_take()
         xiter = iter(self)
         yiter = iter(other)
         try:
@@ -161,12 +185,13 @@ class IndexSet:
             y = next(yiter)
             while True:
                 if x < y:
-                    if difference: result.append(x)
+                    if take_first: result.append(x)
                     x = next(xiter)
                 elif x > y:
+                    if take_second: result.append(y)
                     y = next(yiter)
                 else:
-                    if not difference: result.append(x)
+                    if take_common: result.append(x)
                     x = next(xiter)
                     y = next(yiter)
         except StopIteration:

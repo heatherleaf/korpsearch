@@ -15,9 +15,21 @@ cdef buffer to_buffer(array, start, length):
     length *= array._elemsize
     return array._mmap[start : start+length]
 
+def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_first, take_second, take_common):
+    """Merge two sorted arrays A and B.
 
-def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2, difference=False):
-    """Take the intersection of two sorted arrays. Or difference if difference is True."""
+    * If take_first is True then elements in A-B are included.
+    * If take_second is True then elements in B-A are included.
+    * If take_common is True then elements in intersection(A,B) are included.
+
+    You can get the following set operations (among others):
+
+    Operation           take_first     take_second    take_common
+    union(A,B)          True           True           True
+    intersection(A,B)   False          False          True
+    A-B                 True           False          False
+    """
+
     assert arr1._elemsize == arr2._elemsize
     cdef int size = arr1._elemsize
 
@@ -41,15 +53,18 @@ def intersection(arr1, start1, length1, offset1, arr2, start2, length2, offset2,
 
         if x < y: 
             i += size
-            if difference:
+            if take_first:
                 write_bytes(out+k, x, size)
                 k += size
         elif x > y: 
             j += size
+            if take_second:
+                write_bytes(out+k, y, size)
+                k += size
         else:
             i += size
             j += size
-            if not difference:
+            if take_common:
                 write_bytes(out+k, x, size)
                 k += size
 
