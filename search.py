@@ -102,9 +102,7 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
             if len(results) > 0.1 * lengths[1]:
                 logging.debug(f"     -- skipping prefix: {subq}")
                 continue
-            sorted_values = sorted(results.values[results.start:(results.start+results.size)])
-            DiskIntArrayBuilder.build(prefix_tmp, sorted_values)
-            results = DiskIntArray(prefix_tmp)
+            results = collect_and_sort_prefix(results, prefix_tmp)
             
         intersection_type = intersection.merge_update(
             results,
