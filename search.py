@@ -8,7 +8,7 @@ from argparse import Namespace
 from typing import List, Tuple
 
 from disk import DiskIntArray, DiskIntArrayBuilder
-from index import Index
+from index import Index, collect_and_sort_positions
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
@@ -41,6 +41,14 @@ def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     return query_dir / query_hash
 
 
+def collect_and_sort_prefix(index_view:IndexSet, tmpfile:Path, bytesize:int=4, sorter:str="tmpfile") -> IndexSet:
+    values = index_view.values[index_view.start:(index_view.start+index_view.size)]
+    def collector(collect):
+        for val in values: collect(val.to_bytes(bytesize, 'big'))
+    collect_and_sort_positions(collector, tmpfile, 0, bytesize, bytesize, False, sorter)
+    return IndexSet(DiskIntArray(tmpfile))
+
+
 def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
     search_results : List[Tuple[Query, IndexSet]]= []
     subqueries : List[Tuple[Query, Index]] = []
@@ -65,10 +73,16 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
     search_results.sort(key=lambda r: len(r[-1]))
+    prefix_tmp = Path("prefix_tmp")
     if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
-        first_positive = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
-        first_result = search_results[first_positive]
-        del search_results[first_positive]
+        try:
+            first_ok = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
+            first_result = search_results[first_ok]
+        except ValueError:
+            first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
+            first_result = search_results[first_ok]
+            first_result = (first_result[0],collect_and_sort_prefix(first_result[1], prefix_tmp))
+        del search_results[first_ok]
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
     for i, (subq, results) in enumerate(search_results, 1):
@@ -79,7 +93,6 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     logging.info(f"Intersecting {len(search_results)} search results:")
     logging.info(f"     {subq!s:{maxwidth}} = {intersection}")
     used_queries = [subq]
-    prefix_tmp = Path("prefix_tmp")
     for subq, results in search_results[1:]:
         if subq.subsumed_by(used_queries):
             logging.debug(f"     -- subsumed: {subq}")
@@ -89,9 +102,7 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
             if len(results) > 0.1 * lengths[1]:
                 logging.debug(f"     -- skipping prefix: {subq}")
                 continue
-            sorted_values = sorted(results.values[results.start:(results.start+results.size)])
-            DiskIntArrayBuilder.build(prefix_tmp, sorted_values)
-            results = DiskIntArray(prefix_tmp)
+            results = collect_and_sort_prefix(results, prefix_tmp)
             
         intersection_type = intersection.merge_update(
             results,
