@@ -41,12 +41,12 @@ def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     return query_dir / query_hash
 
 
-def collect_and_sort_prefix(index_view:IndexSet, tmpfile:Path, bytesize:int=4, sorter:str="tmpfile") -> IndexSet:
+def collect_and_sort_prefix(index_view:IndexSet, tmpfile:Path, offset:int=0, bytesize:int=4, sorter:str="tmpfile") -> IndexSet:
     values = index_view.values[index_view.start:(index_view.start+index_view.size)]
     def collector(collect):
         for val in values: collect(val.to_bytes(bytesize, 'big'))
     collect_and_sort_positions(collector, tmpfile, 0, bytesize, bytesize, False, sorter)
-    return IndexSet(DiskIntArray(tmpfile))
+    return IndexSet(DiskIntArray(tmpfile), offset = offset)
 
 
 def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
@@ -102,7 +102,7 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
             if len(results) > 0.1 * lengths[1]:
                 logging.debug(f"     -- skipping prefix: {subq}")
                 continue
-            results = collect_and_sort_prefix(results, prefix_tmp)
+            results = collect_and_sort_prefix(results, prefix_tmp, results.offset)
             
         intersection_type = intersection.merge_update(
             results,
