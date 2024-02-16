@@ -248,7 +248,7 @@ class Index:
             else:
                 end = mid - 1
         last_index = end
-        if search_key(first_index) != instance_key_first:
+        if search_key(last_index) != instance_key_last:
             raise KeyError(f'Instance "{instance}" not found')
 
         return first_index, last_index
