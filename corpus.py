@@ -125,7 +125,9 @@ class Corpus:
 
         # the first line in the CSV should be a header with the names of each column (=features)
         corpus.reader.seek(0)
-        features : List[str] = corpus.reader.readline().decode().split()
+        base_features : List[str] = corpus.reader.readline().decode().split()
+        rev_features = [feature + "_rev" for feature in base_features]
+        features = base_features + rev_features
         assert Corpus.sentence_feature not in features
         features.insert(0, Corpus.sentence_feature)
 
@@ -147,6 +149,7 @@ class Corpus:
                             sentence = []
                     elif line:
                         token : List[bytes] = line.split(b'\t')
+                        token = token + [value[::-1] for value in token]
                         token.insert(0, Corpus.empty_value if sentence else Corpus.sentence_start_value)
                         if len(token) < len(features):
                             token += [Corpus.empty_value] * (len(features) - len(token))
