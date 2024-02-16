@@ -137,8 +137,14 @@ class Query:
                 feature, negated, value = match.groups()
                 feature = feature.lower()
                 negative = (negated == '!')
-                is_prefix = value.endswith('*')
-                value = value.split('*')[0] if is_prefix else value
+                is_prefix = False
+                if value.endswith('*'):
+                    is_prefix = True
+                    value = value.split('*')[0]
+                elif value.startswith('*'):
+                    is_prefix = True
+                    value = value.split('*')[-1][::-1]
+                    feature = feature + "_rev"
                 first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
                 query.append(Literal(negative, offset, feature, first_value, last_value))
         if not no_sentence_breaks:

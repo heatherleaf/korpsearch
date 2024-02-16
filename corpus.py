@@ -149,7 +149,7 @@ class Corpus:
                             sentence = []
                     elif line:
                         token : List[bytes] = line.split(b'\t')
-                        token = token + [value[::-1] for value in token]
+                        token = token + [value.decode()[::-1].encode() for value in token]
                         token.insert(0, Corpus.empty_value if sentence else Corpus.sentence_start_value)
                         if len(token) < len(features):
                             token += [Corpus.empty_value] * (len(features) - len(token))
