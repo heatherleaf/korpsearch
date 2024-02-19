@@ -170,7 +170,8 @@ def main_search(args:Namespace) -> dict:
             features_to_show = [
                 feat for feat in corpus.features 
                 if feat in query.features 
-                if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
+                if args.no_sentence_breaks or feat != corpus.sentence_feature # don't show the sentence feature
+                if not feat.endswith("_rev") # don't show reversed features
             ]
 
         # Always include the 'word' feature, and put it first
