@@ -81,7 +81,7 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         except ValueError:
             first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
             first_result = search_results[first_ok]
-            first_result = (first_result[0],collect_and_sort_prefix(first_result[1], prefix_tmp))
+            first_result = (first_result[0],collect_and_sort_prefix(first_result[1], prefix_tmp, first_result[1].offset))
         del search_results[first_ok]
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
