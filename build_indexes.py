@@ -88,7 +88,9 @@ def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template
             yield Template([TemplateLiteral(0, corpus.sentence_feature)])
         for feat in args.features:
             yield Template([TemplateLiteral(0, feat)])
+            if feat.endswith("_rev"): continue
             for feat1 in args.features:
+                if feat1.endswith("_rev"): continue
                 for dist in range(1, args.max_dist+1):
                     template = [TemplateLiteral(0, feat), TemplateLiteral(dist, feat1)]
                     if args.no_sentence_breaks:
