@@ -200,7 +200,7 @@ class IndexSet:
 
     def filter_update(self, check:Callable[[int],bool], resultpath:Optional[Path]=None):
         result = self._init_result(resultpath)
-        for val in self.values:
+        for val in self:
             if check(val):
                 result.append(val)
         self._finalise_result(result)
