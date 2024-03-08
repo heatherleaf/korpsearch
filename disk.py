@@ -104,6 +104,10 @@ class DiskIntArray(Sequence):
             self._mmap[i : i+self._elemsize] = val.to_bytes(self._elemsize, byteorder=self._byteorder)
         self._append_ptr += 1
 
+    def extend(self, vals):
+        for val in vals:
+            self.append(val)
+
     def truncate_append(self):
         self._file.truncate(self._append_ptr * self._elemsize)
         try:
