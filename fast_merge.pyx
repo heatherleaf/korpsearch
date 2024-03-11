@@ -41,7 +41,7 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
     cdef size_t len1 = buf1.nbytes
     cdef size_t len2 = buf2.nbytes
 
-    out = <char*>malloc(max(len1, len2))
+    out = <char*>malloc(len1 + len2)
 
     cdef size_t i = 0
     cdef size_t j = 0
@@ -67,6 +67,13 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
             if take_common:
                 write_bytes(out+k, x, size)
                 k += size
+
+    if take_first:
+        memcpy(out+k, in1+i, len1-i)
+        k += len1-i
+    if take_second:
+        memcpy(out+k, in2+j, len2-j)
+        k += len2-j
 
     result = LowlevelIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
     free(out)

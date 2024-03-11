@@ -180,22 +180,30 @@ class IndexSet:
         take_first, take_second, take_common = merge_type.which_to_take()
         xiter = iter(self)
         yiter = iter(other)
-        try:
-            x = next(xiter)
-            y = next(yiter)
-            while True:
-                if x < y:
-                    if take_first: result.append(x)
-                    x = next(xiter)
-                elif x > y:
-                    if take_second: result.append(y)
-                    y = next(yiter)
-                else:
-                    if take_common: result.append(x)
-                    x = next(xiter)
-                    y = next(yiter)
-        except StopIteration:
-            return
+        x = next(xiter, None)
+        y = next(yiter, None)
+        while x is not None and y is not None:
+            if x < y:
+                if take_first: result.append(x)
+                x = next(xiter, None)
+            elif x > y:
+                if take_second: result.append(y)
+                y = next(yiter, None)
+            else:
+                print("*** item in common", x)
+                if take_common: result.append(x)
+                x = next(xiter, None)
+                y = next(yiter, None)
+
+        if take_first:
+            if x is not None:
+                result.append(x)
+            result.extend(xiter)
+        
+        if take_second:
+            if y is not None:
+                result.append(y)
+            result.extend(yiter)
 
 
     def filter_update(self, check:Callable[[int],bool], resultpath:Optional[Path]=None):
