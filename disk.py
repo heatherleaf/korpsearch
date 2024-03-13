@@ -212,6 +212,10 @@ class DiskIntArrayBuilder:
     def append(self, value:int):
         self._file.write(value.to_bytes(self._elemsize, byteorder=self._byteorder)) # type: ignore
 
+    def extend(self, vals):
+        for val in vals:
+            self.append(val)
+
     def __setitem__(self, k:int, value:int):
         self._file.seek(k * self._elemsize)
         self.append(value)
