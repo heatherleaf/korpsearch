@@ -12,6 +12,7 @@ from index import Index, collect_and_sort_positions
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
+from util import clean_up
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -48,6 +49,22 @@ def collect_and_sort_prefix(index_view:IndexSet, tmpfile:Path, offset:int=0, byt
     collect_and_sort_positions(collector, tmpfile, 0, bytesize, bytesize, False, sorter)
     return IndexSet(DiskIntArray(tmpfile), offset = offset)
 
+def run_outer(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
+    tmp_results = Path("tmp_results")
+    union = None
+    for disjunct in query.expand():
+        partial_query = Query(query.corpus, disjunct)
+        partial_results = run_query(partial_query, tmp_results, use_internal)
+        if union:
+            union.merge_update(
+                partial_results,
+                None, use_internal=use_internal,
+                merge_type=MergeType.UNION
+            )
+        else: union = partial_results
+        try: clean_up(tmp_results, [".ia", ".ia-cfg"])
+        except FileNotFoundError: pass
+    return union
 
 def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
     search_results : List[Tuple[Query, IndexSet]]= []
@@ -111,11 +128,8 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
-        try:
-            (prefix_tmp.parent / (prefix_tmp.name + ".ia")).unlink()
-            (prefix_tmp.parent / (prefix_tmp.name + ".ia-cfg")).unlink()
-        except FileNotFoundError:
-            pass
+        try: clean_up(prefix_tmp, [".ia", ".ia-cfg"])
+        except FileNotFoundError: pass
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
@@ -140,12 +154,12 @@ def search_corpus(corpus:Corpus, query:Query, filter_results:bool,
                 results = IndexSet(DiskIntArray(unfiltered_results_file))
                 logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
             except (FileNotFoundError, AssertionError):
-                results = run_query(query, unfiltered_results_file, internal_intersection)
+                results = run_outer(query, unfiltered_results_file, internal_intersection)
             logging.debug(f"Unfiltered results: {results}")
             results.filter_update(query.check_position, final_results_file)
 
         else:
-            results = run_query(query, final_results_file, internal_intersection)
+            results = run_outer(query, final_results_file, internal_intersection)
 
     return results
 

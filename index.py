@@ -36,6 +36,11 @@ class Literal(NamedTuple):
     def is_prefix(self):
         return self.first_value != self.last_value
 
+    # unoptimized version for use with Query.check_position
+    def check_position(self, corpus_tokens, pos):
+        value = corpus_tokens[self.feature][pos + self.offset]
+        return (value >= self.first_value and value <= self.last_value) != self.negative
+
     @staticmethod
     def parse(corpus:Corpus, litstr:str) -> 'Literal':
         try:
@@ -49,6 +54,32 @@ class Literal(NamedTuple):
                 return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()), corpus.intern(feature, value.encode()))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
+
+
+class DisjunctiveGroup(NamedTuple):
+    negative : bool
+    offset : int
+    features : Tuple[str]
+    literals : Tuple[Literal]
+
+    def __str__(self):
+        string = ""
+        for elem in self.literals: string += str(elem) + "|"
+        return string[:-1]
+
+    # unoptimized version for use with Query.check_position
+    def check_position(self, corpus_tokens, pos):
+        return any(lit.check_position(corpus_tokens, pos) for lit in self.literals)
+
+    def is_prefix(self):
+        return any(lit.is_prefix() for lit in self.literals)
+
+    @staticmethod
+    def create(literals:Tuple[Literal]):
+        negative = any(lit.negative for lit in literals)
+        offset = min(lit.offset for lit in literals)
+        features = tuple(lit.feature for lit in literals)
+        return DisjunctiveGroup(negative, offset, features, literals)
 
 
 class TemplateLiteral(NamedTuple):
