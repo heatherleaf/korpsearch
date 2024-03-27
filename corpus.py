@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import logging
+import re
 from typing import BinaryIO, List, Set, Dict, Iterator, Sequence, Union
 from types import TracebackType
 
@@ -116,6 +117,34 @@ class Corpus:
     def close(self):
         for sa in self.tokens.values(): sa.close()
         self.sentence_pointers.close()
+
+    def get_all_matches(self, feature:str, sub_match:str) -> List[InternedString]:
+        tokens = self.tokens[feature] # This is probably wrong
+        string_collection = self.strings(feature)
+        strings = string_collection.strings
+        positions = string_collection.starts
+        binary_sub_match = bytes(sub_match, "utf-8")
+        matches = [value.span() for value in re.finditer(binary_sub_match, strings)]
+        real_matches = []
+        # Can be optimized
+        for match in matches:
+            start, end = 0, len(positions)-2
+            while start <= end:
+                mid = (start + end) // 2
+                key = positions[mid]
+                if key < match[0]:
+                    start = mid + 1
+                elif key > match[0]:
+                    end = mid - 1
+                else:
+                    start = mid
+                    break
+            start_of_word = min(start, end)
+            start_of_next_word = positions[start_of_word+1]
+            # Range is until
+            if (match[1] - 1) < start_of_next_word:
+                real_matches.append(InternedString(string_collection, start_of_word))
+        return real_matches
 
     @staticmethod
     def build_from_csv(basedir:Path, csv_corpusfile:Path):
