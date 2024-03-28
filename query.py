@@ -159,17 +159,25 @@ class Query:
                 feature = feature.lower()
                 negative = (negated == '!')
                 is_prefix = False
-                if value.endswith('*'):
-                    is_prefix = True
-                    value = value.split('*')[0]
-                elif value.startswith('*'):
-                    is_prefix = True
-                    value = value.split('*')[-1][::-1]
-                    feature = feature + "_rev"
-                first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
-                if or_separator == "|":
-                    query_list.append([])
-                query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
+                if value.startswith('*') and value.endswith('*'):
+                    contain_matches = corpus.get_all_matches(feature, value.strip('*'))
+                    contain_literals = [Literal(negative, offset, feature, match, match) for match in contain_matches]
+                    last_group = query_list.pop()
+                    query_list.extend(
+                            [last_group + [lit] for lit in contain_literals]
+                        )
+                else:
+                    if value.endswith('*'):
+                        is_prefix = True
+                        value = value.split('*')[0]
+                    elif value.startswith('*'):
+                        is_prefix = True
+                        value = value.split('*')[-1][::-1]
+                        feature = feature + "_rev"
+                    first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
+                    if or_separator == "|":
+                        query_list.append([])
+                    query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
             if len(query_list) > 1:
                 query.extend([DisjunctiveGroup.create(literals) for literals in itertools.product(*query_list)])
             else:
