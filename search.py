@@ -61,6 +61,8 @@ def run_outer(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
                 None, use_internal=use_internal,
                 merge_type=MergeType.UNION
             )
+            try: partial_results.values.close()
+            except AttributeError: pass
         else: union = partial_results
         try: clean_up(tmp_results, [".ia", ".ia-cfg"])
         except FileNotFoundError: pass
