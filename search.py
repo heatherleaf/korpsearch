@@ -82,11 +82,13 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     for subq, index in subqueries:
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"     -- subsumed: {subq}")
+            index.close()
             continue
         try:
             results = index.search(subq.instance(), offset=subq.offset())
         except KeyError:
             logging.debug(f"     -- {subq.instance()} not found: {subq}")
+            index.close()
             continue
         search_results.append((subq, results))
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
@@ -135,6 +137,8 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
+    for _, results in search_results[1:]:
+        results.values.close()
     return intersection
 
 
