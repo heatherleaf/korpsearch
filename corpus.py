@@ -118,13 +118,17 @@ class Corpus:
         for sa in self.tokens.values(): sa.close()
         self.sentence_pointers.close()
 
-    def get_all_matches(self, feature:str, sub_match:str) -> List[InternedString]:
-        tokens = self.tokens[feature] # This is probably wrong
+    def get_matches(self, feature:str, match_regex:str) -> List[InternedString]:
+        contains = False
         string_collection = self.strings(feature)
         strings = string_collection.strings
         positions = string_collection.starts
-        binary_sub_match = bytes(sub_match, "utf-8")
-        matches = [value.span() for value in re.finditer(binary_sub_match, strings)]
+        if match_regex.startswith(".*") and match_regex.endswith(".*"):
+            match_regex = match_regex.strip(".*")
+            contains = True
+        binary_match_regex = bytes(match_regex, "utf-8")
+        # This can be made to work for overlapping matches
+        matches = (value.span() for value in re.finditer(binary_match_regex, strings))
         real_matches = []
         # Can be optimized
         for match in matches:
@@ -140,9 +144,12 @@ class Corpus:
                     start = mid
                     break
             start_of_word = min(start, end)
+            start_of_this_word = positions[start_of_word]
             start_of_next_word = positions[start_of_word+1]
             # Range is until
-            if (match[1] - 1) < start_of_next_word:
+            if contains and (match[1] - 1) < start_of_next_word:
+                real_matches.append(InternedString(string_collection, start_of_word))
+            elif not contains and match[0] == start_of_this_word and match[1] == start_of_next_word:
                 real_matches.append(InternedString(string_collection, start_of_word))
         return real_matches
 

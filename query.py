@@ -146,6 +146,18 @@ class Query:
         return all(lit.check_position(self.corpus.tokens, pos) for lit in self.literals)
 
     @staticmethod
+    def _classify_value(value):
+        if value.startswith('.*') and value.endswith('.*'):
+            return "normal"
+        elif value.endswith('.*'): 
+            return "prefix"
+        elif value.startswith('.*'):
+            # Check if we can use suffix
+            return "suffix"
+        else:
+            return "normal"
+
+    @staticmethod
     def parse(corpus:Corpus, querystr:str, no_sentence_breaks:bool=False) -> 'Query':
         querystr = querystr.replace(' ', '')
         if not Query.query_regex.match(querystr):
@@ -159,25 +171,32 @@ class Query:
                 feature = feature.lower()
                 negative = (negated == '!')
                 is_prefix = False
-                if value.startswith('*') and value.endswith('*'):
-                    contain_matches = corpus.get_all_matches(feature, value.strip('*'))
-                    contain_literals = [Literal(negative, offset, feature, match, match) for match in contain_matches]
-                    last_group = query_list.pop()
-                    query_list.extend(
-                            [last_group + [lit] for lit in contain_literals]
-                        )
-                else:
-                    if value.endswith('*'):
+                value_type = Query._classify_value(value)
+                match value_type:
+                    case "prefix":
                         is_prefix = True
-                        value = value.split('*')[0]
-                    elif value.startswith('*'):
+                        value = value.split('.*')[0]
+                        first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
+                        if or_separator == "|":
+                            query_list.append([])
+                        query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
+                    case "suffix":
                         is_prefix = True
-                        value = value.split('*')[-1][::-1]
+                        value = value.split('.*')[-1][::-1]
                         feature = feature + "_rev"
-                    first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
-                    if or_separator == "|":
-                        query_list.append([])
-                    query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
+                        first_value, last_value = corpus.intern(feature, value.encode(), is_prefix)
+                        if or_separator == "|":
+                            query_list.append([])
+                        query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
+                    case "normal":
+                        regex_matches = corpus.get_matches(feature, value)
+                        regexed_literals = [Literal(negative, offset, feature, match, match) for match in regex_matches]
+                        if or_separator == "|":
+                            query_list.append([])
+                        last_group = query_list.pop()
+                        query_list.extend(
+                                [last_group + [lit] for lit in regexed_literals]
+                            )
             if len(query_list) > 1:
                 query.extend([DisjunctiveGroup.create(literals) for literals in itertools.product(*query_list)])
             else:
