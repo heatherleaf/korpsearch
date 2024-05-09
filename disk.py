@@ -333,7 +333,7 @@ class StringCollection:
         self._startsarray = DiskIntArray(self._path.with_suffix(self.starts_suffix))
         self.starts = self._startsarray.array
         self._intern = {}
-        assert self.starts[0] == self.starts[1]
+        # assert self.starts[0] == self.starts[1]
 
     def __len__(self) -> int:
         return len(self.starts)-1
@@ -425,11 +425,11 @@ class StringCollectionBuilder:
         path = add_suffix(path, StringCollection.strings_suffix)
         with open(path, 'wb') as stringsfile:
             for string in stringlist: 
-                stringsfile.write(string)
+                stringsfile.write(string + b"\n")
 
         DiskIntArrayBuilder.build(
             path.with_suffix(StringCollection.starts_suffix),
-            itertools.accumulate((len(s) for s in stringlist), initial=0),
+            itertools.accumulate((len(s)+1 for s in stringlist), initial=0),
             use_memoryview = True
         )
 
@@ -446,7 +446,7 @@ class InternedString:
 
     def __bytes__(self) -> bytes:
         start : int = self.db.starts[self.index]
-        nextstart : int = self.db.starts[self.index+1]
+        nextstart : int = self.db.starts[self.index+1] - 1
         return self.db.strings[start:nextstart]
 
     def __str__(self):
