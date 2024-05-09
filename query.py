@@ -147,15 +147,14 @@ class Query:
 
     @staticmethod
     def _classify_value(value):
-        if value.startswith('.*') and value.endswith('.*'):
+        if value.isalnum():
             return "normal"
-        elif value.endswith('.*'): 
+        elif value.endswith('.*') and value[:-2].isalnum():
             return "prefix"
-        elif value.startswith('.*'):
-            # Check if we can use suffix
+        elif value.startswith('.*') and value[2:].isalnum():
             return "suffix"
         else:
-            return "normal"
+            return "regex"
 
     @staticmethod
     def parse(corpus:Corpus, querystr:str, no_sentence_breaks:bool=False) -> 'Query':
@@ -173,6 +172,11 @@ class Query:
                 is_prefix = False
                 value_type = Query._classify_value(value)
                 match value_type:
+                    case "normal":
+                        first_value, last_value = corpus.intern(feature, value.encode())
+                        if or_separator == "|":
+                            query_list.append([])
+                        query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
                     case "prefix":
                         is_prefix = True
                         value = value.split('.*')[0]
@@ -188,7 +192,7 @@ class Query:
                         if or_separator == "|":
                             query_list.append([])
                         query_list[-1].append(Literal(negative, offset, feature, first_value, last_value))
-                    case "normal":
+                    case "regex":
                         regex_matches = corpus.get_matches(feature, value)
                         regexed_literals = [Literal(negative, offset, feature, match, match) for match in regex_matches]
                         if or_separator == "|":
