@@ -4,8 +4,8 @@ from pathlib import Path
 import logging
 import json
 import time
+from typing import Any
 from argparse import Namespace
-from typing import List, Tuple
 
 from disk import DiskIntArray
 from index import Index
@@ -19,14 +19,14 @@ CACHE_DIR.mkdir(exist_ok=True)
 INFO_FILE = Path('__info__')
 
 
-def hash_repr(*objs, size=16):
+def hash_repr(*objs: object, size: int = 16) -> str:
     hasher = hashlib.md5()
     for obj in objs:
         hasher.update(repr(obj).encode())
     return hasher.hexdigest() [:size]
 
 
-def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
+def hash_query(corpus: Corpus, query: Query, **extra_args: object) -> Path:
     corpus_hash = hash_repr(corpus, size=8)
     query_dir = CACHE_DIR / (corpus.path.stem + '.' + corpus_hash)
     if not query_dir.is_dir():
@@ -41,9 +41,9 @@ def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     return query_dir / query_hash
 
 
-def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
-    search_results : List[Tuple[Query, IndexSet]]= []
-    subqueries : List[Tuple[Query, Index]] = []
+def run_query(query: Query, results_file: Path, use_internal: bool = False) -> IndexSet:
+    search_results: list[tuple[Query, IndexSet]]= []
+    subqueries: list[tuple[Query, Index]] = []
     for subq in query.subqueries():
         try:
             subqueries.append((subq, subq.index()))
@@ -72,7 +72,7 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
     for i, (subq, results) in enumerate(search_results, 1):
-        logging.debug(f"     {subq!s:{maxwidth}} : {len(results)} elements")
+        logging.debug(f"{i}     {subq!s:{maxwidth}} : {len(results)} elements")
 
     subq, intersection = search_results[0]
     assert not subq.is_negative()
@@ -124,12 +124,11 @@ def search_corpus(corpus:Corpus, query:Query, filter_results:bool,
     return results
 
 
-def main_search(args:Namespace) -> dict:
+def main_search(args: Namespace) -> dict[str, Any]:
     if not (args.end and args.end >= 0):
         args.end = args.start + args.num - 1
 
     with Corpus(args.corpus) as corpus:
-        out = {}
         start_time = time.time()
 
         query = Query.parse(corpus, args.query, args.no_sentence_breaks)
@@ -155,10 +154,9 @@ def main_search(args:Namespace) -> dict:
 
         results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
         logging.info(f"Results: {results}")
-        out['hits'] = len(results)
 
         query_offset = query.max_offset()
-        matches = []
+        matches: list[dict[str, Any]] = []
         try:
             for match_pos in results.slice(args.start, args.end+1):
                 sentence = corpus.get_sentence_from_position(match_pos)
@@ -179,10 +177,12 @@ def main_search(args:Namespace) -> dict:
                 })
         except IndexError:
             pass
-        if matches:
-            out['start'] = args.start
-            out['end'] = args.start + len(matches) - 1
-        out['kwic'] = matches
 
-        out['time'] = time.time() - start_time
-        return out
+        return {
+            'time': time.time() - start_time,
+            'hits': len(results),
+            'start': args.start,
+            'end': args.start + len(matches) - 1,
+            'kwic': matches,
+        }
+

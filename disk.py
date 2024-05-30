@@ -8,9 +8,8 @@ from mmap import mmap
 from array import array
 import itertools
 from functools import total_ordering
-from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable, Sequence, MutableSequence
-from types import TracebackType
-from abc import abstractmethod
+from typing import overload, BinaryIO, Optional, Union
+from collections.abc import Iterator, Iterable, Sequence, MutableSequence
 
 from util import ByteOrder, add_suffix, min_bytes_to_store_values
 
@@ -18,26 +17,25 @@ from util import ByteOrder, add_suffix, min_bytes_to_store_values
 ################################################################################
 ## On-disk arrays of numbers
 
-
-class DiskIntArray(Sequence):
+class DiskIntArray(Sequence[int]):
     typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
 
     array_suffix = '.ia'
     config_suffix = '.ia-cfg'
 
-    array : Union[memoryview, 'DiskIntArray']
-    path : Optional[Path]
+    array: Union[memoryview, 'DiskIntArray']
+    path: Optional[Path]
 
-    _file : BinaryIO
-    _mmap : Union[mmap, bytearray]
-    _mview : memoryview
-    _length : int
-    _elemsize : int
-    _byteorder : ByteOrder
+    _file: BinaryIO
+    _mmap: Union[mmap, bytearray, bytes]
+    _mview: memoryview
+    _length: int
+    _elemsize: int
+    _byteorder: ByteOrder
 
-    _append_ptr : int
+    _append_ptr: int
 
-    def __init__(self, path : Path):
+    def __init__(self, path: Path) -> None:
         for n, c in self.typecodes.items(): assert array(c).itemsize == n
 
         self.path = self.getpath(path)
@@ -66,20 +64,20 @@ class DiskIntArray(Sequence):
         return self._length
 
     @overload
-    def __getitem__(self, i:int) -> int: pass
+    def __getitem__(self, index: int) -> int: pass
     @overload
-    def __getitem__(self, i:slice) -> Union[memoryview, Iterator[int]]: pass
-    def __getitem__(self, i): # type: ignore
+    def __getitem__(self, index: slice) -> Union[memoryview, Sequence[int]]: pass
+    def __getitem__(self, index: Union[int,slice]) -> Union[int, memoryview, Sequence[int]]:
         try:
-            return self._mview[i]
+            return self._mview[index]
         except AttributeError:
             pass
-        if isinstance(i, slice):
-            return self._slice(i)
-        start = i * self._elemsize
+        if isinstance(index, slice):
+            return self._slice(index)  # type: ignore
+        start = index * self._elemsize
         return int.from_bytes(self._mmap[start : start+self._elemsize], byteorder=self._byteorder)
 
-    def _slice(self, sl:slice) -> Iterator[int]:
+    def _slice(self, sl: slice) -> Iterator[int]:
         array = self._mmap
         elemsize = self._elemsize
         byteorder = self._byteorder
@@ -93,22 +91,24 @@ class DiskIntArray(Sequence):
         except AttributeError:
             return self._slice(slice(None))
 
-    def reset_append(self):
+    def reset_append(self) -> None:
         self._append_ptr = 0
 
-    def append(self, val:int):
+    def append(self, value: int) -> None:
         try:
-            self._mview[self._append_ptr] = val
+            self._mview[self._append_ptr] = value
         except AttributeError:
+            if isinstance(self._mmap, bytes):
+                raise TypeError("Cannot append to a bytestring")
             i = self._append_ptr * self._elemsize
-            self._mmap[i : i+self._elemsize] = val.to_bytes(self._elemsize, byteorder=self._byteorder)
+            self._mmap[i : i+self._elemsize] = value.to_bytes(self._elemsize, byteorder=self._byteorder)
         self._append_ptr += 1
 
-    def extend(self, vals):
-        for val in vals:
+    def extend(self, values: Iterator[int]) -> None:
+        for val in values:
             self.append(val)
 
-    def truncate_append(self):
+    def truncate_append(self) -> None:
         self._file.truncate(self._append_ptr * self._elemsize)
         try:
             self._mview.release()
@@ -133,7 +133,7 @@ class DiskIntArray(Sequence):
     def __enter__(self) -> Union[memoryview, 'DiskIntArray']:
         return self.array
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
     def close(self):
@@ -161,8 +161,7 @@ class DiskIntArray(Sequence):
 
 
 class LowlevelIntArray(DiskIntArray):
-    _mmap : bytes
-    def __init__(self, bytemap:bytes, elemsize:int, byteorder:ByteOrder):
+    def __init__(self, bytemap: bytes, elemsize: int, byteorder: ByteOrder) -> None:
         self.path = None
         self._elemsize = elemsize
         self._byteorder = byteorder
@@ -180,13 +179,14 @@ class LowlevelIntArray(DiskIntArray):
 
 
 class DiskIntArrayBuilder:
-    path : Path
+    path: Path
 
-    _byteorder : ByteOrder
-    _elemsize : int
-    _file : BinaryIO
+    _byteorder: ByteOrder
+    _elemsize: int
+    _file: BinaryIO
 
-    def __init__(self, path:Path, max_value:int=0, byteorder:ByteOrder=sys.byteorder, use_memoryview:bool=False):
+    def __init__(self, path: Path, max_value: int = 0, 
+                 byteorder: ByteOrder = sys.byteorder, use_memoryview: bool = False) -> None:
         self._byteorder = byteorder
 
         if max_value == 0: max_value = 2**32-1  # default: 4-byte integers
@@ -209,15 +209,15 @@ class DiskIntArrayBuilder:
                 'byteorder': self._byteorder,
             }, configfile)
 
-    def append(self, value:int):
-        self._file.write(value.to_bytes(self._elemsize, byteorder=self._byteorder)) # type: ignore
+    def append(self, value: int) -> None:
+        self._file.write(value.to_bytes(self._elemsize, byteorder=self._byteorder))
 
-    def extend(self, vals):
-        for val in vals:
+    def extend(self, values: Iterator[int]) -> None:
+        for val in values:
             self.append(val)
 
-    def __setitem__(self, k:int, value:int):
-        self._file.seek(k * self._elemsize)
+    def __setitem__(self, index: int, value: int):
+        self._file.seek(index * self._elemsize)
         self.append(value)
         self._file.seek(0, os.SEEK_END)
 
@@ -227,15 +227,16 @@ class DiskIntArrayBuilder:
     def __enter__(self) -> 'DiskIntArrayBuilder':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self._file.close()
 
     @staticmethod
-    def build(path:Path, values:Iterable[int], max_value:int=0, byteorder:ByteOrder=sys.byteorder, use_memoryview:bool=False):
-        if max_value is None:
+    def build(path: Path, values: Iterable[int], max_value: int = 0, 
+              byteorder: ByteOrder = sys.byteorder, use_memoryview: bool = False) -> None:
+        if not max_value:
             values = list(values)
             max_value = max(values)
 
@@ -247,13 +248,13 @@ class DiskIntArrayBuilder:
 ################################################################################
 ## On-disk array of fixed-width byte sequences
 
-class DiskFixedBytesArray(MutableSequence):
-    _file : BinaryIO
-    _mmap : mmap
-    _elemsize : int
-    _len : int
+class DiskFixedBytesArray(MutableSequence[bytes]):
+    _file: BinaryIO
+    _mmap: mmap
+    _elemsize: int
+    _len: int
 
-    def __init__(self, path:Path, elemsize:int):
+    def __init__(self, path: Path, elemsize: int) -> None:
         self._file = open(path, 'r+b')
         self._mmap = mmap(self._file.fileno(), 0)
         self._elemsize = elemsize
@@ -264,32 +265,33 @@ class DiskFixedBytesArray(MutableSequence):
     def __len__(self) -> int:
         return self._len
 
-    def __setitem__(self, i:int, val:bytes):
+    def __setitem__(self, index: Union[int,slice], value: Union[bytes,Iterable[bytes]]) -> None:
+        assert isinstance(index, int) and isinstance(value, bytes), "Cannot handle slices"
         elemsize = self._elemsize
-        start = i * elemsize
-        assert len(val) == elemsize
-        self._mmap[start : start+elemsize] = val
+        start = index * elemsize
+        assert len(value) == elemsize
+        self._mmap[start : start+elemsize] = value
 
-    def __delitem__(self, i:int):
+    def __delitem__(self, index: Union[int,slice]) -> None:
         # Required to be a MutableSequence, but mmap arrays cannot change size
-        raise NotImplementedError
+        raise NotImplementedError("DiskFixedBytesArray cannot change size")
 
-    def insert(self, i:int, val:bytes):
+    def insert(self, index: int, value: bytes) -> None:
         # Required to be a MutableSequence, but mmap arrays cannot change size
-        raise NotImplementedError
+        raise NotImplementedError("DiskFixedBytesArray cannot change size")
 
     @overload
-    def __getitem__(self, i:int) -> bytes: pass
+    def __getitem__(self, index: int) -> bytes: pass
     @overload
-    def __getitem__(self, i:slice) -> Iterator[bytes]: pass
-    def __getitem__(self, i):
-        if isinstance(i, slice):
-            return self._slice(i)
+    def __getitem__(self, index: slice) -> MutableSequence[bytes]: pass
+    def __getitem__(self, index: Union[int,slice]) -> Union[bytes, MutableSequence[bytes]]:
+        if isinstance(index, slice):
+            return self._slice(index)  # type: ignore
         elemsize = self._elemsize
-        start = i * elemsize
+        start = index * elemsize
         return self._mmap[start : start+elemsize]
 
-    def _slice(self, sl:slice) -> Iterator[bytes]:
+    def _slice(self, sl: slice) -> Iterator[bytes]:
         array = self._mmap
         elemsize = self._elemsize
         start, stop, step = sl.indices(len(self))
@@ -302,10 +304,10 @@ class DiskFixedBytesArray(MutableSequence):
     def __enter__(self) -> 'DiskFixedBytesArray':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self._mmap.close()
         self._file.close()
 
@@ -317,15 +319,15 @@ class StringCollection:
     strings_suffix = '.strings'
     starts_suffix  = '.starts'
 
-    strings : mmap
-    starts : Union[memoryview, DiskIntArray]
+    strings: mmap
+    starts: Union[memoryview, DiskIntArray]
 
-    _path : Path
-    _stringsfile : BinaryIO
-    _startsarray : DiskIntArray
-    _intern : Dict[bytes, int]
+    _path: Path
+    _stringsfile: BinaryIO
+    _startsarray: DiskIntArray
+    _intern: dict[bytes, int]
 
-    def __init__(self, path:Path):
+    def __init__(self, path: Path):
         self._path = add_suffix(path, self.strings_suffix)
         self._stringsfile = open(self._path, 'r+b')
         self.strings = mmap(self._stringsfile.fileno(), 0)
@@ -337,16 +339,16 @@ class StringCollection:
     def __len__(self) -> int:
         return len(self.starts)-1
 
-    def from_index(self, index:int) -> 'InternedString':
+    def from_index(self, index: int) -> 'InternedString':
         return InternedString(self, index)
 
-    def preload(self):
+    def preload(self) -> None:
         if not self._intern:
             self._intern = {}
             for i in range(len(self)):
                 self._intern[bytes(self.from_index(i))] = i
 
-    def intern(self, string:Union[bytes,'InternedString']) -> 'InternedString':
+    def intern(self, string: Union[bytes,'InternedString']) -> 'InternedString':
         if isinstance(string, InternedString):
             assert string.db is self
             return string
@@ -354,11 +356,11 @@ class StringCollection:
         if self._intern:
             return self.from_index(self._intern[string])
 
-        lo : int = 0
-        hi : int = len(self)-1
+        lo = 0
+        hi = len(self)-1
         while lo <= hi:
-            mid : int = (lo + hi) // 2
-            here : bytes = bytes(self.from_index(mid))
+            mid = (lo + hi) // 2
+            here = bytes(self.from_index(mid))
             if string < here:
                 hi = mid-1
             elif string > here:
@@ -370,10 +372,10 @@ class StringCollection:
     def __enter__(self) -> 'StringCollection':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self.strings.close()
         self._stringsfile.close()
         self._startsarray.close()
@@ -381,7 +383,7 @@ class StringCollection:
 
 class StringCollectionBuilder:
     @staticmethod
-    def build(path:Path, strings:Iterable[bytes]):
+    def build(path: Path, strings: Iterable[bytes]) -> None:
         stringset = set(strings)
         stringset.add(b'')
         stringlist = sorted(stringset)
@@ -402,32 +404,34 @@ class StringCollectionBuilder:
 @total_ordering
 class InternedString:
     __slots__ = ['db', 'index']
-    db : StringCollection
-    index : int
+    db: StringCollection
+    index: int
 
     def __init__(self, db:StringCollection, index:int):
+        # We cannot use 'self.db = db', because this will call ' __setattr__'
+        # which in turn will raise an exception
         object.__setattr__(self, "db", db)
         object.__setattr__(self, "index", index)
 
     def __bytes__(self) -> bytes:
-        start : int = self.db.starts[self.index]
-        nextstart : int = self.db.starts[self.index+1]
+        start = self.db.starts[self.index]
+        nextstart = self.db.starts[self.index+1]
         return self.db.strings[start:nextstart]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return bytes(self).decode()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"InternedString({self})"
 
-    def __eq__(self, other:object) -> bool:
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, InternedString) and self.db is other.db:
             return self.index == other.index
         else:
             raise TypeError(f"Comparing InternedString against {type(other)}")
 
-    def __lt__(self, other:'InternedString') -> bool:
-        if isinstance(other, InternedString) and self.db is other.db:
+    def __lt__(self, other: 'InternedString') -> bool:
+        if self.db is other.db:
             return self.index < other.index
         else:
             raise TypeError(f"Comparing InternedString against {type(other)}")
@@ -438,44 +442,42 @@ class InternedString:
     def __hash__(self) -> int:
         return hash(self.index)
 
-    def __setattr__(self, _field:str, _value:object):
+    def __setattr__(self, _field: str, _value: object) -> None:
         raise TypeError("InternedString is read-only")
 
-    def __delattr__(self, _field:str):
+    def __delattr__(self, _field: str) -> None:
         raise TypeError("InternedString is read-only")
 
 
 ################################################################################
 ## On-disk arrays of interned strings
 
-class DiskStringArray(Sequence):
+class DiskStringArray(Sequence[InternedString]):
     strings_suffix = '.sa'
 
-    strings : StringCollection
-    _array : DiskIntArray
+    strings: StringCollection
+    _array: DiskIntArray
 
-    def __init__(self, path:Path):
+    def __init__(self, path: Path) -> None:
         self._array = DiskIntArray(path)
         self.strings = StringCollection(add_suffix(path, self.strings_suffix))
 
     def raw(self) -> DiskIntArray:
         return self._array
 
-    def intern(self, x:bytes) -> InternedString:
+    def intern(self, x: bytes) -> InternedString:
         return self.strings.intern(x)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._array)
 
     @overload
-    def __getitem__(self, i:int) -> InternedString: pass
+    def __getitem__(self, i: int) -> InternedString: pass
     @overload
-    def __getitem__(self, i:slice) -> Iterator[InternedString]: pass
-    def __getitem__(self, i:Union[int,slice]):
+    def __getitem__(self, i: slice) -> Sequence[InternedString]: pass
+    def __getitem__(self, i: Union[int,slice]) -> Union[InternedString, Sequence[InternedString]]:
         if isinstance(i, slice):
-            return self._slice(i)
-        if not isinstance(i, int):
-            raise TypeError("invalid array index type")
+            return self._slice(i)  # type: ignore
         return self.strings.from_index(self._array[i])
 
     def _slice(self, slice:slice) -> Iterator[InternedString]:
@@ -487,42 +489,42 @@ class DiskStringArray(Sequence):
     def __enter__(self) -> 'DiskStringArray':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self._array.close()
         self.strings.close()
 
 
 class DiskStringArrayBuilder:
-    _path : Path
-    _strings : StringCollection
-    _builder : DiskIntArrayBuilder
+    _path: Path
+    _strings: StringCollection
+    _builder: DiskIntArrayBuilder
 
-    def __init__(self, path:Path, strings:Iterable[bytes], use_memoryview:bool=False):
+    def __init__(self, path: Path, strings: Iterable[bytes], use_memoryview: bool = False) -> None:
         self._path = path
-        strings_path : Path = add_suffix(path, DiskStringArray.strings_suffix)
+        strings_path: Path = add_suffix(path, DiskStringArray.strings_suffix)
         StringCollectionBuilder.build(strings_path, strings)
         self._strings = StringCollection(strings_path)
         self._strings.preload()
         self._builder = DiskIntArrayBuilder(path, max_value=len(self._strings)-1, use_memoryview=use_memoryview)
 
-    def append(self, value:bytes):
+    def append(self, value: bytes) -> None:
         self._builder.append(self._strings.intern(value).index)
 
     def __enter__(self) -> 'DiskStringArrayBuilder':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self._builder.close()
         self._strings.close()
 
     @staticmethod
-    def build(path:Path, values:Iterable[bytes], strings:Optional[Iterable[bytes]]=None, use_memoryview:bool=False):
+    def build(path: Path, values: Iterable[bytes], strings: Optional[Iterable[bytes]] = None, use_memoryview: bool = False):
         if strings is None:
             values = strings = list(values)
 

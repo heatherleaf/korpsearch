@@ -1,7 +1,7 @@
 
-from typing import Tuple, List, Iterator, Callable, Union, Collection, Sequence, NamedTuple
+from typing import NamedTuple, Any, Union
+from collections.abc import Iterator, Callable, Collection, Sequence
 from functools import total_ordering
-from types import TracebackType
 from pathlib import Path
 import shutil
 import logging
@@ -21,16 +21,16 @@ SORTER_CHOICES = ['tmpfile', 'internal', 'java', 'lmdb']
 ## Literals, templates and instances
 
 class Literal(NamedTuple):
-    negative : bool
-    offset : int
-    feature : str
-    value : InternedString
+    negative: bool
+    offset: int
+    feature: str
+    value: InternedString
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
 
     @staticmethod
-    def parse(corpus:Corpus, litstr:str) -> 'Literal':
+    def parse(corpus: Corpus, litstr: str) -> 'Literal':
         try:
             feature, rest = litstr.split(':')
             assert feature.replace('_','').isalnum()
@@ -45,14 +45,14 @@ class Literal(NamedTuple):
 
 
 class TemplateLiteral(NamedTuple):
-    offset : int
-    feature : str
+    offset: int
+    feature: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.feature}:{self.offset}"
 
     @staticmethod
-    def parse(litstr:str) -> 'TemplateLiteral':
+    def parse(litstr: str) -> 'TemplateLiteral':
         try:
             feature, offset = litstr.split(':')
             assert feature.replace('_','').isalnum()
@@ -63,10 +63,10 @@ class TemplateLiteral(NamedTuple):
 
 @total_ordering
 class Template:
-    template : Tuple[TemplateLiteral,...]
-    literals : Tuple[Literal,...]
+    template: tuple[TemplateLiteral,...]
+    literals: tuple[Literal,...]
 
-    def __init__(self, template:Sequence[TemplateLiteral], literals:Collection[Literal]=[]):
+    def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[Literal] = []):
         self.template = tuple(template)
         self.literals = tuple(sorted(set(literals)))
         try:
@@ -81,16 +81,17 @@ class Template:
         except AssertionError:
             raise ValueError(f"Invalid template: {self}")
 
-    def maxdelta(self):
+    def maxdelta(self) -> int:
         return max(t.offset for t in self.template)
 
     def __str__(self) -> str:
         return '+'.join(map(str, self.template + self.literals))
 
     def querystr(self) -> str:
-        min_offset = min(l.offset for lits in [self.template, self.literals] for l in lits)
-        max_offset = max(l.offset for lits in [self.template, self.literals] for l in lits)
-        tokens: List[str] = []
+        offsets = [lit.offset for lit in self.template] + [lit.offset for lit in self.literals]
+        min_offset = min(offsets)
+        max_offset = max(offsets)
+        tokens: list[str] = []
         for offset in range(min_offset, max_offset+1):
             tok = ','.join('?' + l.feature for l in self.template if l.offset == offset)
             lit = ','.join(f'{l.feature}{"≠" if l.negative else "="}"{l.value}"' 
@@ -107,21 +108,21 @@ class Template:
     def __len__(self) -> int:
         return len(self.template)
 
-    def __eq__(self, other:'Template') -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, Template) and \
             (self.template, self.literals) == (other.template, other.literals)
 
-    def __lt__(self, other:'Template') -> bool:
+    def __lt__(self, other: 'Template') -> bool:
         return (len(self), self.template, self.literals) < (len(other), other.template, other.literals)
 
     def __hash__(self) -> int:
         return hash((self.template, self.literals))
 
     @staticmethod
-    def parse(corpus:Corpus, template_str:str) -> 'Template':
+    def parse(corpus:Corpus, template_str: str) -> 'Template':
         try:
-            template = []
-            literals = []
+            literals: list[Literal] = []
+            template: list[TemplateLiteral] = []
             for litstr in template_str.split('+'):
                 try:
                     literals.append(Literal.parse(corpus, litstr))
@@ -136,9 +137,9 @@ class Template:
 
 @total_ordering
 class Instance:
-    values : Tuple[InternedString,...]
+    values: tuple[InternedString,...]
 
-    def __init__(self, values : Sequence[InternedString]):
+    def __init__(self, values: Sequence[InternedString]):
         assert len(values) > 0
         self.values = tuple(values)
 
@@ -151,10 +152,10 @@ class Instance:
     def __len__(self) -> int:
         return len(self.values)
 
-    def __eq__(self, other:'Instance') -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, Instance) and self.values == other.values
 
-    def __lt__(self, other:'Instance') -> bool:
+    def __lt__(self, other: 'Instance') -> bool:
         return self.values < other.values
 
     def __hash__(self) -> int:
@@ -167,16 +168,16 @@ class Instance:
 ## This is a kind of modified suffix array - a "pruned" SA if you like
 
 class Index:
-    dir_suffix : str = '.indexes'
+    dir_suffix: str = '.indexes'
 
-    template : Template
-    index : DiskIntArray
-    search_key : Callable[[int], Union[InternedString, Tuple[InternedString,...]]]
+    template: Template
+    index: DiskIntArray
+    search_key: Callable[[int], Union[InternedString, tuple[InternedString,...]]]
     # Typing note: as optimisation we use the value (s) instead of a 1-tuple (s,) so the
     # return type is a union of a value and a tuple. But then Pylance can't infer the correct
     # type, so we have to write "# type: ignore" on some lines below.
 
-    def __init__(self, corpus:Corpus, template:Template):
+    def __init__(self, corpus: Corpus, template: Template) -> None:
         self.corpus = corpus
         self.template = template
         indexpath = self.indexpath(corpus, template)
@@ -205,16 +206,17 @@ class Index:
     def __len__(self) -> int:
         return len(self.index)
 
-    def search(self, instance:Instance, offset:int=0) -> IndexSet:
+    def search(self, instance: Instance, offset: int = 0) -> IndexSet:
         set_start, set_end = self.lookup_instance(instance)
         set_size = set_end - set_start + 1
         iset = IndexSet(self.index, set_start, set_size, offset=offset)
         return iset
 
-    def lookup_instance(self, instance:Instance) -> Tuple[int, int]:
+    def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         search_key = self.search_key
         instance_key = instance.values
-        if len(instance_key) == 1: instance_key = instance_key[0]
+        if len(instance_key) == 1: 
+            instance_key = instance_key[0]  # type: ignore
 
         start, end = 0, len(self)-1
         while start <= end:
@@ -244,20 +246,21 @@ class Index:
     def __enter__(self) -> 'Index':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         self.index.close()
 
     @staticmethod
-    def indexpath(corpus:Corpus, template:Template):
+    def indexpath(corpus: Corpus, template: Template) -> Path:
         basepath = corpus.path.with_suffix(Index.dir_suffix)
         return basepath / str(template) / str(template)
 
     @staticmethod
-    def build(corpus:Corpus, template:Template, min_frequency:int=0, keep_tmpfiles:bool=False, sorter:str=SORTER_CHOICES[0]):
-        index_path : Path = Index.indexpath(corpus, template)
+    def build(corpus: Corpus, template: Template, min_frequency: int = 0, 
+              keep_tmpfiles: bool = False, sorter: str = SORTER_CHOICES[0]) -> None:
+        index_path: Path = Index.indexpath(corpus, template)
         index_path.parent.mkdir(exist_ok=True)
         if len(template) == 1 and not template.literals:
             build_simple_unary_index(corpus, index_path, template, keep_tmpfiles, sorter)
@@ -271,7 +274,11 @@ class Index:
 ###################################################################################################
 ## Different ways of building different indexes
 
-def build_simple_unary_index(corpus:Corpus, index_path:Path, template:Template, keep_tmpfiles:bool, sorter:str):
+CollectPositions = Callable[[Callable[[bytes], Any]], None]
+
+
+def build_simple_unary_index(corpus: Corpus, index_path: Path, 
+                             template: Template, keep_tmpfiles: bool, sorter: str) -> None:
     logging.debug(f"Building simple unary index for {template} @ {index_path}, using sorter '{sorter}'")
     assert len(template) == 1 and not template.literals
     index_size = len(corpus)
@@ -279,7 +286,7 @@ def build_simple_unary_index(corpus:Corpus, index_path:Path, template:Template, 
     rowsize = bytesize * (1 + len(template))
     tmpl : TemplateLiteral = template.template[0]
 
-    def collect_positions(collect):
+    def collect_positions(collect: Callable[[bytes],None]) -> None:
         for pos in progress_bar(range(index_size), desc="Collecting positions"):
             instance_value = corpus.tokens[tmpl.feature][pos+tmpl.offset]
             if instance_value:
@@ -291,20 +298,21 @@ def build_simple_unary_index(corpus:Corpus, index_path:Path, template:Template, 
     collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
 
 
-def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_frequency:int, keep_tmpfiles:bool, sorter:str):
+def build_general_index(corpus: Corpus, index_path: Path, template: Template, 
+                        min_frequency: int, keep_tmpfiles: bool, sorter: str) -> None:
     logging.debug(f"Building index for {template} @ {index_path}, using sorter '{sorter}'")
     index_size = len(corpus) - template.maxdelta()
     bytesize = min_bytes_to_store_values(index_size)
     rowsize = bytesize * (1 + len(template))
 
-    unary_indexes : List[Index] = []
+    unary_indexes: list[Index] = []
     if min_frequency > 0 and len(template) > 1:
         unary_indexes = [
             Index(corpus, Template([TemplateLiteral(0, tmpl.feature)])) 
             for tmpl in template
         ]
 
-    def unary_min_frequency(unary, unary_key, min_frequency) -> bool:
+    def unary_min_frequency(unary: Index, unary_key: InternedString, min_frequency: int) -> bool:
         # This is an optimised version of:
         # >>> start, end = unary.lookup_instance(x); return end-start >= min_frequency
         searchkey = unary.search_key
@@ -312,7 +320,7 @@ def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_f
         while start <= end:
             mid = (start + end) // 2
             key = searchkey(mid)
-            if key < unary_key: 
+            if key < unary_key:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
@@ -321,6 +329,7 @@ def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_f
 
     assert all(lit.negative for lit in template.literals), \
         f"Cannot handle positive template literals: {template}"
+    test_literals: Callable[[int], bool]
     if len(template.literals) == 0:
         test_literals = lambda pos: True
     elif len(template.literals) == 1:
@@ -337,7 +346,7 @@ def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_f
             for lit in template.literals
         )
 
-    def collect_positions(collect):
+    def collect_positions(collect: Callable[[bytes],None]) -> None:
         skipped_instances = 0
         for pos in progress_bar(range(index_size), desc="Collecting positions"):
             instance_values = [corpus.tokens[tmpl.feature][pos+tmpl.offset] for tmpl in template]
@@ -358,7 +367,8 @@ def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_f
     collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
 
 
-def collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter):
+def collect_and_sort_positions(collect_positions: CollectPositions, index_path: Path, index_size: int, 
+                               bytesize: int, rowsize: int, keep_tmpfiles: bool, sorter: str):
     if sorter == 'internal':
         collect_and_sort_internally(collect_positions, index_path, index_size, bytesize)
     elif sorter == 'lmdb':
@@ -367,8 +377,8 @@ def collect_and_sort_positions(collect_positions, index_path, index_size, bytesi
         collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
 
 
-def collect_and_sort_internally(collect_positions, index_path, index_size, bytesize):
-    tmplist = []
+def collect_and_sort_internally(collect_positions: CollectPositions, index_path: Path, index_size: int, bytesize: int):
+    tmplist: list[bytes] = []
     collect_positions(tmplist.append)
     logging.debug(f"Sorting {len(tmplist)} rows.")
     tmplist.sort()
@@ -379,7 +389,8 @@ def collect_and_sort_internally(collect_positions, index_path, index_size, bytes
             suffix_array.append(pos)
 
 
-def collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter):
+def collect_and_sort_tmpfile(collect_positions: CollectPositions, index_path: Path, index_size: int, 
+                             bytesize: int, rowsize: int, keep_tmpfiles: bool, sorter: str):
     tmpfile = index_path.parent / 'index.tmp'
     with open(tmpfile, 'wb') as OUT:
         collect_positions(OUT.write)
@@ -407,18 +418,19 @@ def collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize
         tmpfile.unlink()
 
 
-def collect_and_sort_lmdb(collect_positions, index_path, index_size, bytesize, keep_tmpfiles):
-    import lmdb
+def collect_and_sort_lmdb(collect_positions: CollectPositions, index_path: Path, 
+                          index_size: int, bytesize: int, keep_tmpfiles: bool):
+    import lmdb  # type: ignore
     tmpdir = index_path.parent / 'index.tmpdb'
     if tmpdir.exists():
         shutil.rmtree(tmpdir)
-    env = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)
-    with env.begin(write=True) as DB:
-        collect_positions(lambda row: DB.put(row, b''))
+    env: Any = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)  # type: ignore
+    with env.begin(write=True) as db:
+        collect_positions(lambda row: db.put(row, b''))
     logging.debug(f"Creating suffix array")
-    with env.begin() as DB:
+    with env.begin() as db:
         with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-            for row, _ in DB.cursor():
+            for row, _ in db.cursor():
                 pos = int.from_bytes(row[-bytesize:], 'big')
                 suffix_array.append(pos)
     env.close()

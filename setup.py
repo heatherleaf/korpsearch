@@ -1,7 +1,7 @@
 from setuptools import setup
-from Cython.Build import cythonize
+from Cython.Build import cythonize  # type: ignore
 
 setup(
-    name='IndexSet fast merge',
-    ext_modules=cythonize("fast_merge.pyx")
+    name = 'IndexSet fast merge',
+    ext_modules = cythonize("fast_merge.pyx"),  # type: ignore
 )

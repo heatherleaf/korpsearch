@@ -5,10 +5,11 @@ from pathlib import Path
 from argparse import Namespace
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from typing import List
+from typing import Any
+from collections.abc import Callable
 
 from corpus import Corpus
-from index import Index, Template, TemplateLiteral
+from index import Template
 from util import setup_logger
 from search import main_search
 
@@ -23,7 +24,7 @@ app = FastAPI()
 app.mount("/webdemo", StaticFiles(directory="webdemo"), name="webdemo")
 
 
-def api_call(call, *args, **xargs):
+def api_call(call: Callable[..., dict[str, Any]], *args: Any, **xargs: Any) -> dict[str, Any]:
     start_time = time()
     try: 
         result = call(*args, **xargs)
@@ -40,10 +41,10 @@ def api_call(call, *args, **xargs):
 
 
 @app.get("/info")
-async def info():
+async def info() -> dict[str, list[Path]]:
     return api_call(get_info)
 
-def get_info():
+def get_info() -> dict[str, list[Path]]:
     return {
         'corpora': [
             corpus.with_suffix('')
@@ -53,13 +54,13 @@ def get_info():
 
 
 @app.get("/corpus_info")
-async def corpus_info(corpus: str):
+async def corpus_info(corpus: str) -> dict[str, Any]:
     return api_call(get_corpus_info, corpus)
 
-def get_corpus_info(corpus_path):
+def get_corpus_info(corpus_path: Path) -> dict[str, Any]:
     corpus_path = Path(corpus_path)
     with Corpus(corpus_path) as corpus:
-        indexes = []
+        indexes: list[str] = []
         for index_path in corpus_path.with_suffix('.indexes').glob('*:*'):
             templ = Template.parse(corpus, index_path.name)
             indexes.append(templ.querystr())

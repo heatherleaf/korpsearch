@@ -1,7 +1,7 @@
 
 import re
 import itertools
-from typing import List, Dict, Tuple, Set, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 
 from index import Literal, TemplateLiteral, Template, Instance, Index
 from corpus import Corpus
@@ -15,13 +15,13 @@ class Query:
     query_regex = re.compile(r'^ (\[ ( [\w_]+   !?  = " [^"]+ " )* \])+ $', re.X)
     token_regex = re.compile(r'       ([\w_]+) (!?) = "([^"]+)"          ', re.X)
 
-    corpus : Corpus
-    literals : List[Literal]
-    features : Set[str]
-    featured_query : Dict[str, List[Tuple[bool, int, InternedString]]]
-    template : Template
+    corpus: Corpus
+    literals: list[Literal]
+    features: set[str]
+    featured_query: dict[str, list[tuple[bool, int, InternedString]]]
+    template: Template
 
-    def __init__(self, corpus:Corpus, literals:Sequence[Literal]):
+    def __init__(self, corpus: Corpus, literals: Sequence[Literal]) -> None:
         self.corpus = corpus
         self.literals = sorted(set(literals))
         self.features = {lit.feature for lit in self.literals}
@@ -74,10 +74,10 @@ class Query:
     def is_negative(self) -> bool:
         return not self.positive_literals()
 
-    def positive_literals(self) -> List[Literal]:
+    def positive_literals(self) -> list[Literal]:
         return [lit for lit in self.literals if not lit.negative]
 
-    def negative_literals(self) -> List[Literal]:
+    def negative_literals(self) -> list[Literal]:
         return [lit for lit in self.literals if lit.negative]
 
     def instance(self) -> Instance:
@@ -98,11 +98,11 @@ class Query:
                 except ValueError:
                     pass
 
-    def subsumed_by(self, others:List['Query']) -> bool:
+    def subsumed_by(self, others: list['Query']) -> bool:
         other_literals = {lit for other_query in others for lit in other_query.literals}
         return set(self.literals).issubset(other_literals)
 
-    def check_sentence(self, sent:int) -> bool:
+    def check_sentence(self, sent: int) -> bool:
         positions = self.corpus.sentence_positions(sent)
         min_offset = self.min_offset()
         max_offset = self.max_offset()
@@ -111,7 +111,7 @@ class Query:
             for pos in range(positions.start - min_offset, positions.stop - max_offset)
         )
 
-    def check_position(self, pos:int) -> bool:
+    def check_position(self, pos: int) -> bool:
         # return all(
         #     (self.corpus.tokens[lit.feature][pos + lit.offset] == lit.value) != lit.negative
         #     for lit in self.literals
@@ -124,12 +124,12 @@ class Query:
         return True
 
     @staticmethod
-    def parse(corpus:Corpus, querystr:str, no_sentence_breaks:bool=False) -> 'Query':
+    def parse(corpus: Corpus, querystr: str, no_sentence_breaks: bool = False) -> 'Query':
         querystr = querystr.replace(' ', '')
         if not Query.query_regex.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
         tokens = querystr.split('][')
-        query : List[Literal] = []
+        query : list[Literal] = []
         for offset, token in enumerate(tokens):
             for match in Query.token_regex.finditer(token):
                 feature, negated, value = match.groups()

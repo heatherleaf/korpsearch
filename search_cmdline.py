@@ -8,7 +8,7 @@ from util import setup_logger
 from search import main_search
 
 
-def main(args:argparse.Namespace):
+def main(args: argparse.Namespace):
     out = main_search(args)
     if args.print == 'json':
         print(json.dumps(out))

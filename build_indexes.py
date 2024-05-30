@@ -2,7 +2,7 @@
 import shutil
 import argparse
 from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 import logging
 
 from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES
@@ -15,7 +15,7 @@ CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
 ################################################################################
 ## Building the corpus index and the query indexes
 
-def main(args:argparse.Namespace):
+def main(args: argparse.Namespace):
     base = corpusfile = Path(args.corpus)
     while base.suffix in CSV_SUFFIXES: 
         base = base.with_suffix('')
@@ -44,7 +44,7 @@ def main(args:argparse.Namespace):
         with Corpus(base) as corpus:
             indexdir.mkdir(exist_ok=True)
             templates = set(yield_templates(corpus, args))
-            existing_templates = set()
+            existing_templates: set[Template] = set()
             for tmpl in templates:
                 try:
                     with Index(corpus, tmpl) as _index:
@@ -56,9 +56,9 @@ def main(args:argparse.Namespace):
                 logging.info(f"Skipping {len(existing_templates)} existing indexes")
                 templates -= existing_templates
             if templates:
-                templates = sorted(templates)
-                logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, templates))}")
-                for template in templates:
+                sorted_templates = sorted(templates)
+                logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, sorted_templates))}")
+                for template in sorted_templates:
                     Index.build(
                         corpus, template, 
                         min_frequency=args.min_frequency, 
@@ -68,7 +68,7 @@ def main(args:argparse.Namespace):
                 logging.info(f"Created {len(templates)} query indexes")
 
 
-def yield_templates(corpus:Corpus, args:argparse.Namespace) -> Iterator[Template]:
+def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
     sfeature = corpus.sentence_feature
     svalue = corpus.intern(sfeature, corpus.sentence_start_value)
     if args.templates:
@@ -114,7 +114,6 @@ parser.add_argument('--features', '-f', nargs='+', default=[],
 parser.add_argument('--templates', '-t', nargs='+', default=[],
     help='build query indexes for the given templates: e.g., pos:0 (unary index), or word:0+pos:2 (binary index)')
 
-
 parser.add_argument('--max-dist', type=int, default=2, 
     help='[only with the --features option] max distance between token pairs (default: 2)')
 parser.add_argument('--min-frequency', type=int, default=0,
@@ -133,6 +132,6 @@ parser.add_argument('--keep-tmpfiles', action='store_true', help="keep temporary
 
 
 if __name__ == '__main__':
-    args : argparse.Namespace = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
     setup_logger('{relativeCreated:8.2f} min {warningname}| {message}', timedivider=60*1000, loglevel=args.loglevel)
     main(args)

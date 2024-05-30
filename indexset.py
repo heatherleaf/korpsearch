@@ -2,7 +2,8 @@
 import sys
 import itertools
 from pathlib import Path
-from typing import List, Iterator, Union, Callable, Optional
+from typing import Union, Optional
+from collections.abc import Iterator, Callable
 
 from disk import DiskIntArray, LowlevelIntArray, DiskIntArrayBuilder
 from enum import Enum
@@ -22,38 +23,36 @@ except ModuleNotFoundError:
 ################################################################################
 ## Index set
 
-IndexSetValuesType = Union[DiskIntArray, List[int]]
-IndexSetValuesBuilder = Union[DiskIntArray, DiskIntArrayBuilder, List[int]]
+IndexSetValuesType = Union[DiskIntArray, list[int]]
+IndexSetValuesBuilder = Union[DiskIntArray, DiskIntArrayBuilder, list[int]]
 
 class MergeType(Enum):
     """Types of merges that can be done."""
-
     UNION = 0
     INTERSECTION = 1
     DIFFERENCE = 2
 
     def which_to_take(self) -> tuple[bool, bool, bool]:
-        """Compute take_first/take_second/take_common parameters (see
-        comment in fast_merge.pyx)."""
-
+        """Compute take_first/take_second/take_common parameters (see comment in fast_merge.pyx)."""
         return {
             MergeType.UNION:        (True,  True,  True),
             MergeType.INTERSECTION: (False, False, True),
             MergeType.DIFFERENCE:   (True,  False, False)
         }[self]
 
+
 class IndexSet:
     # if the sets have very uneven size, use __contains__ on the larger set
     # instead of normal set intersection / difference
     _min_size_difference_for_contains = 100
 
-    start : int
-    size : int
-    offset : int
-    values : IndexSetValuesType
-    path : Optional[Path]
+    start: int
+    size: int
+    offset: int
+    values: IndexSetValuesType
+    path: Optional[Path]
 
-    def __init__(self, values:IndexSetValuesType, start:int=0, size:int=-1, offset:int=0):
+    def __init__(self, values: IndexSetValuesType, start: int = 0, size: int = -1, offset: int = 0) -> None:
         if size < 0:
             size = len(values) - start
         while size > 0 and values[start] < offset:
@@ -82,12 +81,12 @@ class IndexSet:
         for val in self.values[self.start:self.start+self.size]:
             yield val - offset
 
-    def __getitem__(self, i:int) -> int:
+    def __getitem__(self, i: int) -> int:
         if i < 0 or i >= self.size:
             raise IndexError("IndexSet index out of range")
         return self.values[self.start+i] - self.offset
 
-    def slice(self, start:int, end:int) -> Iterator[int]:
+    def slice(self, start: int, end: int) -> Iterator[int]:
         if start < 0 or start >= self.size:
             raise IndexError("IndexSet index out of range")
         end = min(end, self.size)
@@ -97,29 +96,30 @@ class IndexSet:
         for val in self.values[start:end]:
             yield val - offset
 
-    def merge_update(self, other:'IndexSet', resultpath:Optional[Path]=None, use_internal:bool=False, merge_type:MergeType=MergeType.INTERSECTION) -> str:
+    def merge_update(self, other: 'IndexSet', resultpath: Optional[Path] = None, 
+                     use_internal: bool = False, merge_type: MergeType = MergeType.INTERSECTION) -> str:
         # The returned string is ONLY for debugging purposes, and can safely be ignored
         if len(other) > len(self) * self._min_size_difference_for_contains and merge_type != MergeType.UNION:
-            result = self._init_result(resultpath, other)
+            lokup_result = self._init_result(resultpath, other)
             if merge_type == MergeType.INTERSECTION:
-                self._intersection_lookup(other, result)
+                self._intersection_lookup(other, lokup_result)
             else:
-                self._difference_lookup(other, result)
-            self._finalise_result(result)
+                self._difference_lookup(other, lokup_result)
+            self._finalise_result(lokup_result)
             return 'lookup'
 
         if not use_internal and not resultpath:
-            result = self._merge_external(other, merge_type)
-            if result is not None:
-                self._finalise_result(result)
+            external_result = self._merge_external(other, merge_type)
+            if external_result is not None:
+                self._finalise_result(external_result)
                 return 'external'
 
-        result = self._init_result(resultpath, other)
-        self._merge_internal(other, result, merge_type)
-        self._finalise_result(result)
+        internal_result = self._init_result(resultpath, other)
+        self._merge_internal(other, internal_result, merge_type)
+        self._finalise_result(internal_result)
         return 'internal'
 
-    def _init_result(self, resultpath:Optional[Path], other:Optional['IndexSet']=None) -> IndexSetValuesBuilder:
+    def _init_result(self, resultpath: Optional[Path], other: Optional['IndexSet'] = None) -> IndexSetValuesBuilder:
         if not resultpath:
             return []
         elif self.path and DiskIntArray.getpath(resultpath) == DiskIntArray.getpath(self.path):
@@ -131,7 +131,7 @@ class IndexSet:
                 assert DiskIntArray.getpath(resultpath) != DiskIntArray.getpath(other.path)
             return DiskIntArrayBuilder(resultpath)
 
-    def _finalise_result(self, result:IndexSetValuesBuilder):
+    def _finalise_result(self, result: IndexSetValuesBuilder) -> None:
         path = None
         if isinstance(result, DiskIntArray) and not isinstance(result, LowlevelIntArray):
             result.truncate_append()
@@ -146,36 +146,37 @@ class IndexSet:
         self.size = len(self.values)
         self.offset = 0
 
-    def _intersection_lookup(self, other:'IndexSet', result:IndexSetValuesBuilder):
+    def _intersection_lookup(self, other: 'IndexSet', result: IndexSetValuesBuilder) -> None:
         # Complexity: O(self * log(other))
         for elem in self:
             if elem in other:
                 result.append(elem)
 
-    def _difference_lookup(self, other:'IndexSet', result:IndexSetValuesBuilder):
+    def _difference_lookup(self, other: 'IndexSet', result: IndexSetValuesBuilder) -> None:
         for elem in self:
             if elem not in other:
                 result.append(elem)
 
-    def _merge_external(self, other:'IndexSet', merge_type:MergeType) -> Optional[IndexSetValuesType]:
+    def _merge_external(self, other: 'IndexSet', merge_type: MergeType) -> Optional[IndexSetValuesType]:
         # Complexity: O(self + other)
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
             len(self) > 0 and len(other) > 0 and
-            self.values._byteorder == other.values._byteorder == sys.byteorder and
-            self.values._elemsize == other.values._elemsize
+            self.values._byteorder == other.values._byteorder == sys.byteorder and  # type: ignore
+            self.values._elemsize == other.values._elemsize  # type: ignore
         ):
             take_first, take_second, take_common = merge_type.which_to_take()
             try:
-                return fast_merge.merge(
+                return fast_merge.merge(  # type: ignore
                     self.values, self.start, self.size, self.offset,
                     other.values, other.start, other.size, other.offset,
                     take_first, take_second, take_common
                 )
             except NameError:
                 pass
+        return None
 
-    def _merge_internal(self, other:'IndexSet', result:IndexSetValuesBuilder, merge_type:MergeType):
+    def _merge_internal(self, other:'IndexSet', result:IndexSetValuesBuilder, merge_type:MergeType) -> None:
         # Complexity: O(self + other)
         take_first, take_second, take_common = merge_type.which_to_take()
         xiter = iter(self)
@@ -205,14 +206,14 @@ class IndexSet:
             result.extend(yiter)
 
 
-    def filter_update(self, check:Callable[[int],bool], resultpath:Optional[Path]=None):
+    def filter_update(self, check: Callable[[int],bool], resultpath: Optional[Path] = None) -> None:
         result = self._init_result(resultpath)
         for val in self:
             if check(val):
                 result.append(val)
         self._finalise_result(result)
 
-    def __contains__(self, elem:int) -> bool:
+    def __contains__(self, elem: int) -> bool:
         values = self.values
         offset = self.offset
         start = self.start
