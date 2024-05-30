@@ -190,7 +190,6 @@ class IndexSet:
                 if take_second: result.append(y)
                 y = next(yiter, None)
             else:
-                print("*** item in common", x)
                 if take_common: result.append(x)
                 x = next(xiter, None)
                 y = next(yiter, None)
@@ -199,7 +198,7 @@ class IndexSet:
             if x is not None:
                 result.append(x)
             result.extend(xiter)
-        
+
         if take_second:
             if y is not None:
                 result.append(y)

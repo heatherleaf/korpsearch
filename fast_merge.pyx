@@ -41,6 +41,10 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
     cdef size_t len1 = buf1.nbytes
     cdef size_t len2 = buf2.nbytes
 
+    # TODO: 
+    # if not (take_first or take_second): we can use malloc(min(len1, len2))
+    # if not take_second: we can use malloc(len1)
+    # if not take_first: we can use malloc(len2)
     out = <char*>malloc(len1 + len2)
 
     cdef size_t i = 0

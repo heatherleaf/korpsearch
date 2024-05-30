@@ -130,8 +130,7 @@ class Template:
             return Template(template, literals)
         except (ValueError, AssertionError):
             raise ValueError(
-                "Ill-formed template - it should be on the form pos:0 or word:0+pos:2 "
-                "or pos:0+lemma:1+sentence:1#S: " + template_str
+                "Ill-formed template - it should be on the form pos:0 or word:0+pos:2: " + template_str
             )
 
 
