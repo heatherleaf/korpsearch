@@ -129,7 +129,7 @@ class Query:
         if not Query.query_regex.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
         tokens = querystr.split('][')
-        query : list[Literal] = []
+        query: list[Literal] = []
         for offset, token in enumerate(tokens):
             for match in Query.token_regex.finditer(token):
                 feature, negated, value = match.groups()

@@ -78,7 +78,7 @@ class IndexSet:
 
     def __iter__(self) -> Iterator[int]:
         offset = self.offset
-        for val in self.values[self.start:self.start+self.size]:
+        for val in self.values[self.start : self.start+self.size]:
             yield val - offset
 
     def __getitem__(self, i: int) -> int:
@@ -93,7 +93,7 @@ class IndexSet:
         start += self.start
         end += self.start
         offset = self.offset
-        for val in self.values[start:end]:
+        for val in self.values[start : end]:
             yield val - offset
 
     def merge_update(self, other: 'IndexSet', resultpath: Optional[Path] = None, 
@@ -176,7 +176,7 @@ class IndexSet:
                 pass
         return None
 
-    def _merge_internal(self, other:'IndexSet', result:IndexSetValuesBuilder, merge_type:MergeType) -> None:
+    def _merge_internal(self, other: 'IndexSet', result: IndexSetValuesBuilder, merge_type: MergeType) -> None:
         # Complexity: O(self + other)
         take_first, take_second, take_common = merge_type.which_to_take()
         xiter = iter(self)

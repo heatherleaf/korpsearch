@@ -106,7 +106,7 @@ def progress_bar(iterable: Optional[Iterable[T]] = None, desc: str = "", **kwarg
     kwargs.setdefault('bar_format', _tqdm_bar_format)
     try:
         return tqdm(iterable=iterable, desc=desc.ljust(20), **kwargs)  # type: ignore
-    except:
+    except NameError:
         return ProgressBar(iterable)
 
 
@@ -120,8 +120,7 @@ class RelativeTimeFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         record.relativeCreated = record.relativeCreated / self._divider
-        warningname : str = f"{record.levelname:<9s}" if record.levelno >= logging.WARNING else ""
-        record.warningname = warningname
+        record.warningname = f"{record.levelname:<9s}" if record.levelno >= logging.WARNING else ""
         return super().format(record)
 
 

@@ -96,8 +96,8 @@ def run_query(query: Query, results_file: Path, use_internal: bool = False) -> I
     return intersection
 
 
-def search_corpus(corpus:Corpus, query:Query, filter_results:bool, 
-                  no_cache:bool, internal_intersection:bool) -> IndexSet:
+def search_corpus(corpus: Corpus, query: Query, filter_results: bool, 
+                  no_cache: bool, internal_intersection: bool) -> IndexSet:
     unfiltered_results_file = hash_query(corpus, query)
     final_results_file = hash_query(corpus, query, filter=filter_results)
 

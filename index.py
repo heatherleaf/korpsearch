@@ -66,7 +66,7 @@ class Template:
     template: tuple[TemplateLiteral,...]
     literals: tuple[Literal,...]
 
-    def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[Literal] = []):
+    def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[Literal] = []) -> None:
         self.template = tuple(template)
         self.literals = tuple(sorted(set(literals)))
         try:
@@ -119,7 +119,7 @@ class Template:
         return hash((self.template, self.literals))
 
     @staticmethod
-    def parse(corpus:Corpus, template_str: str) -> 'Template':
+    def parse(corpus: Corpus, template_str: str) -> 'Template':
         try:
             literals: list[Literal] = []
             template: list[TemplateLiteral] = []
@@ -139,7 +139,7 @@ class Template:
 class Instance:
     values: tuple[InternedString,...]
 
-    def __init__(self, values: Sequence[InternedString]):
+    def __init__(self, values: Sequence[InternedString]) -> None:
         assert len(values) > 0
         self.values = tuple(values)
 
@@ -284,7 +284,7 @@ def build_simple_unary_index(corpus: Corpus, index_path: Path,
     index_size = len(corpus)
     bytesize = min_bytes_to_store_values(index_size)
     rowsize = bytesize * (1 + len(template))
-    tmpl : TemplateLiteral = template.template[0]
+    tmpl: TemplateLiteral = template.template[0]
 
     def collect_positions(collect: Callable[[bytes],None]) -> None:
         for pos in progress_bar(range(index_size), desc="Collecting positions"):
@@ -368,7 +368,7 @@ def build_general_index(corpus: Corpus, index_path: Path, template: Template,
 
 
 def collect_and_sort_positions(collect_positions: CollectPositions, index_path: Path, index_size: int, 
-                               bytesize: int, rowsize: int, keep_tmpfiles: bool, sorter: str):
+                               bytesize: int, rowsize: int, keep_tmpfiles: bool, sorter: str) -> None:
     if sorter == 'internal':
         collect_and_sort_internally(collect_positions, index_path, index_size, bytesize)
     elif sorter == 'lmdb':
@@ -377,7 +377,7 @@ def collect_and_sort_positions(collect_positions: CollectPositions, index_path: 
         collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
 
 
-def collect_and_sort_internally(collect_positions: CollectPositions, index_path: Path, index_size: int, bytesize: int):
+def collect_and_sort_internally(collect_positions: CollectPositions, index_path: Path, index_size: int, bytesize: int) -> None:
     tmplist: list[bytes] = []
     collect_positions(tmplist.append)
     logging.debug(f"Sorting {len(tmplist)} rows.")
@@ -390,7 +390,7 @@ def collect_and_sort_internally(collect_positions: CollectPositions, index_path:
 
 
 def collect_and_sort_tmpfile(collect_positions: CollectPositions, index_path: Path, index_size: int, 
-                             bytesize: int, rowsize: int, keep_tmpfiles: bool, sorter: str):
+                             bytesize: int, rowsize: int, keep_tmpfiles: bool, sorter: str) -> None:
     tmpfile = index_path.parent / 'index.tmp'
     with open(tmpfile, 'wb') as OUT:
         collect_positions(OUT.write)
@@ -419,7 +419,7 @@ def collect_and_sort_tmpfile(collect_positions: CollectPositions, index_path: Pa
 
 
 def collect_and_sort_lmdb(collect_positions: CollectPositions, index_path: Path, 
-                          index_size: int, bytesize: int, keep_tmpfiles: bool):
+                          index_size: int, bytesize: int, keep_tmpfiles: bool) -> None:
     import lmdb  # type: ignore
     tmpdir = index_path.parent / 'index.tmpdb'
     if tmpdir.exists():

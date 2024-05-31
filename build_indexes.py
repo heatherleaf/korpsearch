@@ -15,7 +15,7 @@ CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
 ################################################################################
 ## Building the corpus index and the query indexes
 
-def main(args: argparse.Namespace):
+def main(args: argparse.Namespace) -> None:
     base = corpusfile = Path(args.corpus)
     while base.suffix in CSV_SUFFIXES: 
         base = base.with_suffix('')

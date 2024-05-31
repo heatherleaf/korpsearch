@@ -89,7 +89,7 @@ async def search(
         no_cache: bool = False, 
         no_sentence_breaks: bool = False,
         internal_intersection: bool = False,
-    ):
+    ) -> dict[str, Any]:
     return api_call(
         main_search,
         Namespace(

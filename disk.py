@@ -136,7 +136,7 @@ class DiskIntArray(Sequence[int]):
     def __exit__(self, *_) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         try:
             self._mview.release()
         except AttributeError:
@@ -151,11 +151,11 @@ class DiskIntArray(Sequence[int]):
             pass
 
     @classmethod
-    def getpath(cls, path:Path) -> Path:
+    def getpath(cls, path: Path) -> Path:
         return add_suffix(path, cls.array_suffix)
 
     @classmethod
-    def getconfig(cls, path:Path) -> Path:
+    def getconfig(cls, path: Path) -> Path:
         return cls.getpath(path).with_suffix(cls.config_suffix)
 
 
@@ -216,7 +216,7 @@ class DiskIntArrayBuilder:
         for val in values:
             self.append(val)
 
-    def __setitem__(self, index: int, value: int):
+    def __setitem__(self, index: int, value: int) -> None:
         self._file.seek(index * self._elemsize)
         self.append(value)
         self._file.seek(0, os.SEEK_END)
@@ -327,7 +327,7 @@ class StringCollection:
     _startsarray: DiskIntArray
     _intern: dict[bytes, int]
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         self._path = add_suffix(path, self.strings_suffix)
         self._stringsfile = open(self._path, 'r+b')
         self.strings = mmap(self._stringsfile.fileno(), 0)
@@ -407,7 +407,7 @@ class InternedString:
     db: StringCollection
     index: int
 
-    def __init__(self, db:StringCollection, index:int):
+    def __init__(self, db: StringCollection, index: int) -> None:
         # We cannot use 'self.db = db', because this will call ' __setattr__'
         # which in turn will raise an exception
         object.__setattr__(self, "db", db)
@@ -480,7 +480,7 @@ class DiskStringArray(Sequence[InternedString]):
             return self._slice(i)  # type: ignore
         return self.strings.from_index(self._array[i])
 
-    def _slice(self, slice:slice) -> Iterator[InternedString]:
+    def _slice(self, slice: slice) -> Iterator[InternedString]:
         return map(self.strings.from_index, self._array[slice])
 
     def __iter__(self) -> Iterator[InternedString]:
@@ -524,7 +524,7 @@ class DiskStringArrayBuilder:
         self._strings.close()
 
     @staticmethod
-    def build(path: Path, values: Iterable[bytes], strings: Optional[Iterable[bytes]] = None, use_memoryview: bool = False):
+    def build(path: Path, values: Iterable[bytes], strings: Optional[Iterable[bytes]] = None, use_memoryview: bool = False) -> None:
         if strings is None:
             values = strings = list(values)
 
