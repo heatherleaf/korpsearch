@@ -8,7 +8,7 @@ from mmap import mmap
 # from array import array
 import itertools
 from functools import total_ordering
-from typing import overload, BinaryIO, Optional, Union
+from typing import overload, BinaryIO, Optional, Union, Any
 from collections.abc import Iterator, Iterable, Sequence, MutableSequence
 
 from util import add_suffix, get_integer_size, get_typecode
@@ -87,7 +87,7 @@ class DiskIntArray(Sequence[int]):
     def __enter__(self) -> memoryview:
         return self.array
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
@@ -158,7 +158,7 @@ class DiskIntArrayBuilder:
     def __enter__(self) -> 'DiskIntArrayBuilder':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
@@ -233,7 +233,7 @@ class DiskFixedBytesArray(MutableSequence[bytes]):
     def __enter__(self) -> 'DiskFixedBytesArray':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
@@ -301,7 +301,7 @@ class StringCollection:
     def __enter__(self) -> 'StringCollection':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
@@ -417,7 +417,7 @@ class DiskStringArray(Sequence[InternedString]):
     def __enter__(self) -> 'DiskStringArray':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
@@ -444,7 +444,7 @@ class DiskStringArrayBuilder:
     def __enter__(self) -> 'DiskStringArrayBuilder':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:

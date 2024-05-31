@@ -73,7 +73,7 @@ class CompressedFileReader:
     def __enter__(self) -> BinaryIO:
         return self.reader
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
 
@@ -84,13 +84,13 @@ class ProgressBar(Iterable[T]):
     """A simple progress bar wrapper class, doing nothing at all."""
     n: int = 0
 
-    def __init__(self, iterable: Optional[Iterable[T]] = None, **_) -> None:
+    def __init__(self, iterable: Optional[Iterable[T]] = None, **_: Any) -> None:
         self._iter = iter(()) if iterable is None else iter(iterable)
 
     def __enter__(self) -> 'ProgressBar[T]':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         pass
 
     def __iter__(self) -> Iterator[T]:
@@ -110,7 +110,7 @@ _tqdm_bar_format = '{desc:20s} {percentage:3.0f}%|{bar}|{n_fmt:>7s}/{total_fmt} 
 def progress_bar(iterable: Optional[Iterable[T]] = None, desc: str = "", **kwargs: Any) -> ProgressBar[T]:
     loglevel = logging.root.getEffectiveLevel()
     if loglevel > logging.INFO:
-        return ProgressBar(iterable)  # type: ignore
+        return ProgressBar(iterable)
     kwargs.setdefault('leave', loglevel <= logging.DEBUG)
     kwargs.setdefault('unit_scale', True)
     kwargs.setdefault('bar_format', _tqdm_bar_format)
