@@ -21,9 +21,19 @@ def add_suffix(path: Path, suffix: str) -> Path:
     return path
 
 
-def min_bytes_to_store_values(max_value: int) -> int:
+def get_integer_size(max_value: int) -> int:
     """The minimal n:o bytes needed to store values `0...max_value`"""
-    return math.ceil(math.log(max_value + 1, 2) / 8)
+    elemsize = math.ceil(math.log(max_value + 1, 2) / 8)
+    assert 1 <= elemsize <= 8
+    if elemsize == 3: elemsize = 4
+    if elemsize > 4: elemsize = 8
+    return elemsize
+
+
+def get_typecode(elemsize: int) -> str:
+    """Returns the memoryview typecode for the given bytesize of unsigned integers"""
+    typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+    return typecodes[elemsize]
 
 
 class CompressedFileReader:

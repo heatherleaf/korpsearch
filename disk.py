@@ -5,103 +5,66 @@ import sys
 import json
 from pathlib import Path
 from mmap import mmap
-from array import array
+# from array import array
 import itertools
 from functools import total_ordering
 from typing import overload, BinaryIO, Optional, Union
 from collections.abc import Iterator, Iterable, Sequence, MutableSequence
 
-from util import ByteOrder, add_suffix, min_bytes_to_store_values
+from util import add_suffix, get_integer_size, get_typecode
 
 
 ################################################################################
 ## On-disk arrays of numbers
 
 class DiskIntArray(Sequence[int]):
-    typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
-
     array_suffix = '.ia'
     config_suffix = '.ia-cfg'
 
-    array: Union[memoryview, 'DiskIntArray']
+    array: memoryview
     path: Optional[Path]
 
     _file: BinaryIO
-    _mmap: Union[mmap, bytearray, bytes]
-    _mview: memoryview
+    _bytearray: Union[mmap, bytearray, bytes]
     _length: int
     _elemsize: int
-    _byteorder: ByteOrder
 
     _append_ptr: int
 
     def __init__(self, path: Path) -> None:
-        for n, c in self.typecodes.items(): assert array(c).itemsize == n
-
         self.path = self.getpath(path)
+        self._file = open(self.path, 'r+b')
         with open(self.getconfig(self.path)) as configfile:
             config = json.load(configfile)
-        self._file = open(self.path, 'r+b')
         self._elemsize = config['elemsize']
-        self._byteorder = config['byteorder']
+        assert config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {config['byteorder']}"
         try:
-            self._mmap = mmap(self._file.fileno(), 0)
+            self._bytearray = mmap(self._file.fileno(), 0)
         except ValueError:  # "cannot mmap an empty file"
-            self._mmap = bytearray(b'')
-
-        self._length = len(self._mmap) // self._elemsize
-        assert len(self._mmap) % self._elemsize == 0, \
-            f"Array length ({len(self._mmap)}) is not divisible by elemsize ({self._elemsize})"
-
-        if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
-            typecode = self.typecodes[self._elemsize]
-            self._mview = memoryview(self._mmap).cast(typecode)
-            self.array = self._mview
-        else:
-            self.array = self
+            self._bytearray = bytearray(b'')
+        self._length = len(self._bytearray) // self._elemsize
+        assert len(self._bytearray) % self._elemsize == 0, \
+            f"Array length ({len(self._bytearray)}) is not divisible by elemsize ({self._elemsize})"
+        self.array = memoryview(self._bytearray).cast(get_typecode(self._elemsize))
 
     def __len__(self) -> int:
-        return self._length
+        return len(self.array)
 
     @overload
     def __getitem__(self, index: int) -> int: pass
     @overload
-    def __getitem__(self, index: slice) -> Union[memoryview, Sequence[int]]: pass
-    def __getitem__(self, index: Union[int,slice]) -> Union[int, memoryview, Sequence[int]]:
-        try:
-            return self._mview[index]
-        except AttributeError:
-            pass
-        if isinstance(index, slice):
-            return self._slice(index)  # type: ignore
-        start = index * self._elemsize
-        return int.from_bytes(self._mmap[start : start+self._elemsize], byteorder=self._byteorder)
-
-    def _slice(self, sl: slice) -> Iterator[int]:
-        array = self._mmap
-        elemsize = self._elemsize
-        byteorder = self._byteorder
-        start, stop, step = sl.indices(len(self))
-        for i in range(start * elemsize, stop * elemsize, step * elemsize):
-            yield int.from_bytes(array[i : i+elemsize], byteorder=byteorder)
+    def __getitem__(self, index: slice) -> memoryview: pass
+    def __getitem__(self, index: Union[int,slice]) -> Union[int, memoryview]:
+        return self.array[index]
 
     def __iter__(self) -> Iterator[int]:
-        try:
-            return iter(self._mview)
-        except AttributeError:
-            return self._slice(slice(None))
+        return iter(self.array)
 
     def reset_append(self) -> None:
         self._append_ptr = 0
 
     def append(self, value: int) -> None:
-        try:
-            self._mview[self._append_ptr] = value
-        except AttributeError:
-            if isinstance(self._mmap, bytes):
-                raise TypeError("Cannot append to a bytestring")
-            i = self._append_ptr * self._elemsize
-            self._mmap[i : i+self._elemsize] = value.to_bytes(self._elemsize, byteorder=self._byteorder)
+        self.array[self._append_ptr] = value
         self._append_ptr += 1
 
     def extend(self, values: Iterator[int]) -> None:
@@ -110,39 +73,27 @@ class DiskIntArray(Sequence[int]):
 
     def truncate_append(self) -> None:
         self._file.truncate(self._append_ptr * self._elemsize)
+        self.array.release()
         try:
-            self._mview.release()
+            self._bytearray.close()  # type: ignore
         except AttributeError:
             pass
         try:
-            self._mmap.close()  # type: ignore
-        except AttributeError:
-            pass
-        try:
-            self._mmap = mmap(self._file.fileno(), 0)
+            self._bytearray = mmap(self._file.fileno(), 0)
         except ValueError:  # "cannot mmap an empty file"
-            self._mmap = bytearray(b'')
-        self._length = len(self._mmap) // self._elemsize
-        if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
-            typecode = self.typecodes[self._elemsize]
-            self._mview = memoryview(self._mmap).cast(typecode)
-            self.array = self._mview
-        else:
-            self.array = self
+            self._bytearray = bytearray(b'')
+        self.array = memoryview(self._bytearray).cast(get_typecode(self._elemsize))
 
-    def __enter__(self) -> Union[memoryview, 'DiskIntArray']:
+    def __enter__(self) -> memoryview:
         return self.array
 
     def __exit__(self, *_) -> None:
         self.close()
 
     def close(self) -> None:
+        self.array.release()
         try:
-            self._mview.release()
-        except AttributeError:
-            pass
-        try:
-            self._mmap.close()  # type: ignore
+            self._bytearray.close()  # type: ignore
         except AttributeError:
             pass
         try:
@@ -159,58 +110,38 @@ class DiskIntArray(Sequence[int]):
         return cls.getpath(path).with_suffix(cls.config_suffix)
 
 
-
 class LowlevelIntArray(DiskIntArray):
-    def __init__(self, bytemap: bytes, elemsize: int, byteorder: ByteOrder) -> None:
+    def __init__(self, bytearr: bytes, elemsize: int) -> None:
         self.path = None
         self._elemsize = elemsize
-        self._byteorder = byteorder
-        self._mmap = bytemap
-        self._length = len(self._mmap) // self._elemsize
-        assert len(self._mmap) % self._elemsize == 0, \
-            f"Array length ({len(self._mmap)}) is not divisible by elemsize ({self._elemsize})"
-        if self._elemsize in self.typecodes and self._byteorder == sys.byteorder:
-            typecode = self.typecodes[self._elemsize]
-            self._mview = memoryview(self._mmap).cast(typecode)
-            self.array = self._mview
-        else:
-            self.array = self
-
+        self._bytearray = bytearr
+        self._length = len(self._bytearray) // self._elemsize
+        assert len(self._bytearray) % self._elemsize == 0, \
+            f"Array length ({len(self._bytearray)}) is not divisible by elemsize ({self._elemsize})"
+        self.array = memoryview(self._bytearray).cast(get_typecode(self._elemsize))
 
 
 class DiskIntArrayBuilder:
     path: Path
-
-    _byteorder: ByteOrder
-    _elemsize: int
     _file: BinaryIO
+    _elemsize: int
 
-    def __init__(self, path: Path, max_value: int = 0, 
-                 byteorder: ByteOrder = sys.byteorder, use_memoryview: bool = False) -> None:
-        self._byteorder = byteorder
-
-        if max_value == 0: max_value = 2**32-1  # default: 4-byte integers
-        self._elemsize = min_bytes_to_store_values(max_value)
-
-        if use_memoryview:
-            if byteorder != sys.byteorder:
-                raise ValueError(f"DiskIntArrayBuilder: memoryview requires byteorder to be '{sys.byteorder}'")
-            if self._elemsize == 3: self._elemsize = 4
-            if self._elemsize > 4 and self._elemsize <= 8: self._elemsize = 8
-            if self._elemsize > 8:
-                raise ValueError('DiskIntArrayBuilder: memoryview does not support self._elemsize > 8')
-
+    def __init__(self, path: Path, max_value: int = 0) -> None:
         self.path = DiskIntArray.getpath(path)
         self._file = open(self.path, 'wb')
+        if max_value > 0: 
+            self._elemsize = get_integer_size(max_value)
+        else:
+            self._elemsize = 4  # default: 4-byte integers
 
         with open(DiskIntArray.getconfig(self.path), 'w') as configfile:
             json.dump({
                 'elemsize': self._elemsize,
-                'byteorder': self._byteorder,
+                'byteorder': sys.byteorder,
             }, configfile)
 
     def append(self, value: int) -> None:
-        self._file.write(value.to_bytes(self._elemsize, byteorder=self._byteorder))
+        self._file.write(value.to_bytes(self._elemsize, byteorder=sys.byteorder))
 
     def extend(self, values: Iterator[int]) -> None:
         for val in values:
@@ -234,13 +165,11 @@ class DiskIntArrayBuilder:
         self._file.close()
 
     @staticmethod
-    def build(path: Path, values: Iterable[int], max_value: int = 0, 
-              byteorder: ByteOrder = sys.byteorder, use_memoryview: bool = False) -> None:
+    def build(path: Path, values: Iterable[int], max_value: int = 0) -> None:
         if not max_value:
             values = list(values)
             max_value = max(values)
-
-        with DiskIntArrayBuilder(path, max_value=max_value, byteorder=byteorder, use_memoryview=use_memoryview) as builder:
+        with DiskIntArrayBuilder(path, max_value) as builder:
             for value in values: 
                 builder.append(value)
 
@@ -396,8 +325,7 @@ class StringCollectionBuilder:
 
         DiskIntArrayBuilder.build(
             path.with_suffix(StringCollection.starts_suffix),
-            itertools.accumulate((len(s) for s in stringlist), initial=0),
-            use_memoryview = True
+            itertools.accumulate((len(s) for s in stringlist), initial=0)
         )
 
 
@@ -502,13 +430,13 @@ class DiskStringArrayBuilder:
     _strings: StringCollection
     _builder: DiskIntArrayBuilder
 
-    def __init__(self, path: Path, strings: Iterable[bytes], use_memoryview: bool = False) -> None:
+    def __init__(self, path: Path, strings: Iterable[bytes]) -> None:
         self._path = path
         strings_path: Path = add_suffix(path, DiskStringArray.strings_suffix)
         StringCollectionBuilder.build(strings_path, strings)
         self._strings = StringCollection(strings_path)
         self._strings.preload()
-        self._builder = DiskIntArrayBuilder(path, max_value=len(self._strings)-1, use_memoryview=use_memoryview)
+        self._builder = DiskIntArrayBuilder(path, max_value=len(self._strings)-1)
 
     def append(self, value: bytes) -> None:
         self._builder.append(self._strings.intern(value).index)
@@ -524,10 +452,10 @@ class DiskStringArrayBuilder:
         self._strings.close()
 
     @staticmethod
-    def build(path: Path, values: Iterable[bytes], strings: Optional[Iterable[bytes]] = None, use_memoryview: bool = False) -> None:
+    def build(path: Path, values: Iterable[bytes], strings: Optional[Iterable[bytes]] = None) -> None:
         if strings is None:
             values = strings = list(values)
 
-        with DiskStringArrayBuilder(path, strings, use_memoryview) as builder:
+        with DiskStringArrayBuilder(path, strings) as builder:
             for value in values:
                 builder.append(value)

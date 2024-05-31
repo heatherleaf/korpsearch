@@ -162,7 +162,6 @@ class IndexSet:
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
             len(self) > 0 and len(other) > 0 and
-            self.values._byteorder == other.values._byteorder == sys.byteorder and  # type: ignore
             self.values._elemsize == other.values._elemsize  # type: ignore
         ):
             take_first, take_second, take_common = merge_type.which_to_take()

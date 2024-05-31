@@ -11,7 +11,7 @@ from disk import DiskIntArray, DiskIntArrayBuilder, InternedString, DiskFixedByt
 from corpus import Corpus
 from indexset import IndexSet
 import sort
-from util import progress_bar, min_bytes_to_store_values
+from util import progress_bar, get_integer_size, ByteOrder
 
 
 # Possible sorting alternatives, the first is the default:
@@ -276,13 +276,16 @@ class Index:
 
 CollectPositions = Callable[[Callable[[bytes], Any]], None]
 
+# We need big-endian byte order (i.e., most-significant byte first).
+# Because then we can treat a tuple of integers as a bytestring (when comparing them).
+SORTING_BYTEORDER: ByteOrder = 'big'
 
-def build_simple_unary_index(corpus: Corpus, index_path: Path, 
-                             template: Template, keep_tmpfiles: bool, sorter: str) -> None:
+def build_simple_unary_index(corpus: Corpus, index_path: Path, template: Template, 
+                             keep_tmpfiles: bool, sorter: str) -> None:
     logging.debug(f"Building simple unary index for {template} @ {index_path}, using sorter '{sorter}'")
     assert len(template) == 1 and not template.literals
     index_size = len(corpus)
-    bytesize = min_bytes_to_store_values(index_size)
+    bytesize = get_integer_size(index_size)
     rowsize = bytesize * (1 + len(template))
     tmpl: TemplateLiteral = template.template[0]
 
@@ -291,8 +294,8 @@ def build_simple_unary_index(corpus: Corpus, index_path: Path,
             instance_value = corpus.tokens[tmpl.feature][pos+tmpl.offset]
             if instance_value:
                 collect(
-                    instance_value.index.to_bytes(bytesize, 'big') +
-                    pos.to_bytes(bytesize, 'big')
+                    instance_value.index.to_bytes(bytesize, SORTING_BYTEORDER) +
+                    pos.to_bytes(bytesize, SORTING_BYTEORDER)
                 )
 
     collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, keep_tmpfiles, sorter)
@@ -302,7 +305,7 @@ def build_general_index(corpus: Corpus, index_path: Path, template: Template,
                         min_frequency: int, keep_tmpfiles: bool, sorter: str) -> None:
     logging.debug(f"Building index for {template} @ {index_path}, using sorter '{sorter}'")
     index_size = len(corpus) - template.maxdelta()
-    bytesize = min_bytes_to_store_values(index_size)
+    bytesize = get_integer_size(index_size)
     rowsize = bytesize * (1 + len(template))
 
     unary_indexes: list[Index] = []
@@ -358,8 +361,8 @@ def build_general_index(corpus: Corpus, index_path: Path, template: Template,
                     skipped_instances += 1
                 else:
                     collect(
-                        b''.join(val.index.to_bytes(bytesize, 'big') for val in instance_values) +
-                        pos.to_bytes(bytesize, 'big')
+                        b''.join(val.index.to_bytes(bytesize, SORTING_BYTEORDER) for val in instance_values) +
+                        pos.to_bytes(bytesize, SORTING_BYTEORDER)
                     )
         if skipped_instances:
             logging.info(f"Skipped {skipped_instances} low-frequency instances")
@@ -385,7 +388,7 @@ def collect_and_sort_internally(collect_positions: CollectPositions, index_path:
     logging.debug(f"Creating suffix array")
     with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
         for row in tmplist:
-            pos = int.from_bytes(row[-bytesize:], 'big')
+            pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
             suffix_array.append(pos)
 
 
@@ -411,7 +414,7 @@ def collect_and_sort_tmpfile(collect_positions: CollectPositions, index_path: Pa
     with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
         with open(tmpfile, 'rb') as IN:
             while (row := IN.read(rowsize)):
-                pos = int.from_bytes(row[-bytesize:], 'big')
+                pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
                 suffix_array.append(pos)
 
     if not keep_tmpfiles:
@@ -431,7 +434,7 @@ def collect_and_sort_lmdb(collect_positions: CollectPositions, index_path: Path,
     with env.begin() as db:
         with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
             for row, _ in db.cursor():
-                pos = int.from_bytes(row[-bytesize:], 'big')
+                pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
                 suffix_array.append(pos)
     env.close()
     if not keep_tmpfiles:

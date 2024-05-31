@@ -87,6 +87,8 @@ async def search(
         show: str = "", 
         filter: bool = False,
         no_cache: bool = False, 
+        no_diskarray: bool = False, 
+        no_binary: bool = False, 
         no_sentence_breaks: bool = False,
         internal_intersection: bool = False,
     ) -> dict[str, Any]:
@@ -101,6 +103,8 @@ async def search(
             show = show, 
             filter = filter,
             no_cache = no_cache, 
+            no_diskarray = no_diskarray,
+            no_binary = no_binary,
             no_sentence_breaks = no_sentence_breaks,
             internal_intersection = internal_intersection,
         )
