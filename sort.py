@@ -100,8 +100,8 @@ def _median3(array: MutableSequence[T], i: int, j: int, k: int) -> int:
     if ti < tj:                 # type: ignore  # ti < tj:
         if   tj < tk: return j  # type: ignore  #   ti < tj < tk
         elif ti < tk: return k  # type: ignore  #   ti < tk <= tj
-        else:         return i  # type: ignore  #   tk < ti < tj
-    else:                       # type: ignore  # tj <= ti:
+        else:         return i  #               #   tk < ti < tj
+    else:                       #               # tj <= ti:
         if   ti < tk: return i  # type: ignore  #   tj <= ti < tk
         elif tj < tk: return k  # type: ignore  #   tj < tk <= ti
-        else:         return j  # type: ignore  #   tk <= tj <= ti
+        else:         return j  #               #   tk <= tj <= ti

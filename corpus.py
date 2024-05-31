@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import logging
+from typing import Any
 from collections.abc import Iterator, Sequence
 
 from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
@@ -110,7 +111,7 @@ class Corpus:
     def __enter__(self) -> 'Corpus':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
