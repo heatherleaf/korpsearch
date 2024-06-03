@@ -162,7 +162,7 @@ class IndexSet:
         if (isinstance(self.values, DiskIntArray) and 
             isinstance(other.values, DiskIntArray) and 
             len(self) > 0 and len(other) > 0 and
-            self.values._elemsize == other.values._elemsize  # type: ignore
+            self.values.itemsize == other.values.itemsize
         ):
             take_first, take_second, take_common = merge_type.which_to_take()
             try:

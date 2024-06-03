@@ -60,7 +60,7 @@ def delta_code_array(arr: Sequence[int]) -> Iterator[int]:
     for n in arr:
         if last is None or n <= last:
             # Start of new set - we can detect this via the .starts file
-            # yield from bits(n, (arr._elemsize*8)-1)
+            # yield from bits(n, (arr.itemsize*8)-1)
 
             yield from elias_delta_code(1)
             yield from elias_delta_code(n+1)

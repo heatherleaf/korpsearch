@@ -38,11 +38,11 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
     A-B                 True           False          False
     """
 
-    assert arr1._elemsize == arr2._elemsize
-    cdef int elemsize = arr1._elemsize
+    assert arr1.itemsize == arr2.itemsize
+    cdef int itemsize = arr1.itemsize
 
-    cdef buffer buf1 = to_buffer(arr1, start1, length1, elemsize)
-    cdef buffer buf2 = to_buffer(arr2, start2, length2, elemsize)
+    cdef buffer buf1 = to_buffer(arr1, start1, length1, itemsize)
+    cdef buffer buf2 = to_buffer(arr2, start2, length2, itemsize)
     # TODO: 
     # if not (take_first or take_second): we can use outsize = min(len1, len2))
     # if not take_second: we can use outsize = len1
@@ -50,17 +50,17 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
     cdef size_t outsize = buf1.nbytes + buf2.nbytes
     cdef unsigned char* out = <unsigned char*> malloc(outsize)
 
-    k = fast_merge(out, elemsize, 
+    k = fast_merge(out, itemsize, 
                    &buf1[0], start1, buf1.nbytes, offset1,
                    &buf2[0], start2, buf2.nbytes, offset2,
                    take_first, take_second, take_common)
 
-    result = LowlevelIntArray(out[:k], elemsize)
+    result = LowlevelIntArray(out[:k], itemsize)
     free(out)
     return result
 
 
-cdef size_t fast_merge(unsigned char* out, size_t elemsize, 
+cdef size_t fast_merge(unsigned char* out, size_t itemsize, 
                        const unsigned char* in1, size_t start1, size_t len1, size_t offset1, 
                        const unsigned char* in2, size_t start2, size_t len2, size_t offset2, 
                        size_t take_first, size_t take_second, size_t take_common):
@@ -70,25 +70,25 @@ cdef size_t fast_merge(unsigned char* out, size_t elemsize,
     cdef size_t k = 0
 
     while i < len1 and j < len2:
-        x = read_bytes(in1+i, elemsize) - offset1
-        y = read_bytes(in2+j, elemsize) - offset2
+        x = read_bytes(in1+i, itemsize) - offset1
+        y = read_bytes(in2+j, itemsize) - offset2
 
         if x < y: 
-            i += elemsize
+            i += itemsize
             if take_first:
-                write_bytes(out+k, x, elemsize)
-                k += elemsize
+                write_bytes(out+k, x, itemsize)
+                k += itemsize
         elif x > y: 
-            j += elemsize
+            j += itemsize
             if take_second:
-                write_bytes(out+k, y, elemsize)
-                k += elemsize
+                write_bytes(out+k, y, itemsize)
+                k += itemsize
         else:
-            i += elemsize
-            j += elemsize
+            i += itemsize
+            j += itemsize
             if take_common:
-                write_bytes(out+k, x, elemsize)
-                k += elemsize
+                write_bytes(out+k, x, itemsize)
+                k += itemsize
 
     if take_first:
         memcpy(out+k, in1+i, len1-i)

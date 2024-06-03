@@ -23,11 +23,11 @@ class DiskIntArray(Sequence[int]):
 
     array: memoryview
     path: Optional[Path]
+    itemsize: int
 
     _file: BinaryIO
     _bytearray: Union[mmap, bytearray, bytes]
     _length: int
-    _elemsize: int
 
     _append_ptr: int
 
@@ -36,16 +36,16 @@ class DiskIntArray(Sequence[int]):
         self._file = open(self.path, 'r+b')
         with open(self.getconfig(self.path)) as configfile:
             config = json.load(configfile)
-        self._elemsize = config['elemsize']
+        self.itemsize = config['itemsize']
         assert config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {config['byteorder']}"
         try:
             self._bytearray = mmap(self._file.fileno(), 0)
         except ValueError:  # "cannot mmap an empty file"
             self._bytearray = bytearray(b'')
-        self._length = len(self._bytearray) // self._elemsize
-        assert len(self._bytearray) % self._elemsize == 0, \
-            f"Array length ({len(self._bytearray)}) is not divisible by elemsize ({self._elemsize})"
-        self.array = memoryview(self._bytearray).cast(get_typecode(self._elemsize))
+        self._length = len(self._bytearray) // self.itemsize
+        assert len(self._bytearray) % self.itemsize == 0, \
+            f"Array length ({len(self._bytearray)}) is not divisible by itemsize ({self.itemsize})"
+        self.array = memoryview(self._bytearray).cast(get_typecode(self.itemsize))
 
     def __len__(self) -> int:
         return len(self.array)
@@ -72,7 +72,7 @@ class DiskIntArray(Sequence[int]):
             self.append(val)
 
     def truncate_append(self) -> None:
-        self._file.truncate(self._append_ptr * self._elemsize)
+        self._file.truncate(self._append_ptr * self.itemsize)
         self.array.release()
         try:
             self._bytearray.close()  # type: ignore
@@ -82,7 +82,7 @@ class DiskIntArray(Sequence[int]):
             self._bytearray = mmap(self._file.fileno(), 0)
         except ValueError:  # "cannot mmap an empty file"
             self._bytearray = bytearray(b'')
-        self.array = memoryview(self._bytearray).cast(get_typecode(self._elemsize))
+        self.array = memoryview(self._bytearray).cast(get_typecode(self.itemsize))
 
     def __enter__(self) -> memoryview:
         return self.array
@@ -111,49 +111,49 @@ class DiskIntArray(Sequence[int]):
 
 
 class LowlevelIntArray(DiskIntArray):
-    def __init__(self, bytearr: bytes, elemsize: int) -> None:
+    def __init__(self, bytearr: bytes, itemsize: int) -> None:
         self.path = None
-        self._elemsize = elemsize
+        self.itemsize = itemsize
         self._bytearray = bytearr
-        self._length = len(self._bytearray) // self._elemsize
-        assert len(self._bytearray) % self._elemsize == 0, \
-            f"Array length ({len(self._bytearray)}) is not divisible by elemsize ({self._elemsize})"
-        self.array = memoryview(self._bytearray).cast(get_typecode(self._elemsize))
+        self._length = len(self._bytearray) // self.itemsize
+        assert len(self._bytearray) % self.itemsize == 0, \
+            f"Array length ({len(self._bytearray)}) is not divisible by itemsize ({self.itemsize})"
+        self.array = memoryview(self._bytearray).cast(get_typecode(self.itemsize))
 
 
 class DiskIntArrayBuilder:
     path: Path
+    itemsize: int
     _file: BinaryIO
-    _elemsize: int
 
     def __init__(self, path: Path, max_value: int = 0) -> None:
         self.path = DiskIntArray.getpath(path)
         self._file = open(self.path, 'wb')
         if max_value > 0: 
-            self._elemsize = get_integer_size(max_value)
+            self.itemsize = get_integer_size(max_value)
         else:
-            self._elemsize = 4  # default: 4-byte integers
+            self.itemsize = 4  # default: 4-byte integers
 
         with open(DiskIntArray.getconfig(self.path), 'w') as configfile:
             json.dump({
-                'elemsize': self._elemsize,
+                'itemsize': self.itemsize,
                 'byteorder': sys.byteorder,
             }, configfile)
 
     def append(self, value: int) -> None:
-        self._file.write(value.to_bytes(self._elemsize, byteorder=sys.byteorder))
+        self._file.write(value.to_bytes(self.itemsize, byteorder=sys.byteorder))
 
     def extend(self, values: Iterator[int]) -> None:
         for val in values:
             self.append(val)
 
     def __setitem__(self, index: int, value: int) -> None:
-        self._file.seek(index * self._elemsize)
+        self._file.seek(index * self.itemsize)
         self.append(value)
         self._file.seek(0, os.SEEK_END)
 
     def __len__(self) -> int:
-        return self._file.tell() // self._elemsize
+        return self._file.tell() // self.itemsize
 
     def __enter__(self) -> 'DiskIntArrayBuilder':
         return self
@@ -178,28 +178,28 @@ class DiskIntArrayBuilder:
 ## On-disk array of fixed-width byte sequences
 
 class DiskFixedBytesArray(MutableSequence[bytes]):
+    itemsize: int
     _file: BinaryIO
     _mmap: mmap
-    _elemsize: int
     _len: int
 
-    def __init__(self, path: Path, elemsize: int) -> None:
+    def __init__(self, path: Path, itemsize: int) -> None:
         self._file = open(path, 'r+b')
         self._mmap = mmap(self._file.fileno(), 0)
-        self._elemsize = elemsize
-        self._len = len(self._mmap) // self._elemsize
-        assert len(self._mmap) % self._elemsize == 0, \
-            f"Array length ({len(self._mmap)}) is not divisible by elemsize ({self._elemsize})"
+        self.itemsize = itemsize
+        self._len = len(self._mmap) // self.itemsize
+        assert len(self._mmap) % self.itemsize == 0, \
+            f"Array length ({len(self._mmap)}) is not divisible by itemsize ({self.itemsize})"
 
     def __len__(self) -> int:
         return self._len
 
     def __setitem__(self, index: Union[int,slice], value: Union[bytes,Iterable[bytes]]) -> None:
         assert isinstance(index, int) and isinstance(value, bytes), "Cannot handle slices"
-        elemsize = self._elemsize
-        start = index * elemsize
-        assert len(value) == elemsize
-        self._mmap[start : start+elemsize] = value
+        itemsize = self.itemsize
+        start = index * itemsize
+        assert len(value) == itemsize
+        self._mmap[start : start+itemsize] = value
 
     def __delitem__(self, index: Union[int,slice]) -> None:
         # Required to be a MutableSequence, but mmap arrays cannot change size
@@ -216,16 +216,16 @@ class DiskFixedBytesArray(MutableSequence[bytes]):
     def __getitem__(self, index: Union[int,slice]) -> Union[bytes, MutableSequence[bytes]]:
         if isinstance(index, slice):
             return self._slice(index)  # type: ignore
-        elemsize = self._elemsize
-        start = index * elemsize
-        return self._mmap[start : start+elemsize]
+        itemsize = self.itemsize
+        start = index * itemsize
+        return self._mmap[start : start+itemsize]
 
     def _slice(self, sl: slice) -> Iterator[bytes]:
         array = self._mmap
-        elemsize = self._elemsize
+        itemsize = self.itemsize
         start, stop, step = sl.indices(len(self))
-        for i in range(start * elemsize, stop * elemsize, step * elemsize):
-            yield array[i : i+elemsize]
+        for i in range(start * itemsize, stop * itemsize, step * itemsize):
+            yield array[i : i+itemsize]
 
     def __iter__(self) -> Iterator[bytes]:
         return self._slice(slice(None))
