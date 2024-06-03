@@ -16,12 +16,15 @@ clean:
 
 PYVERSION = 3.9
 
+# F541: Warn about f-strings without placeholders
+RUFFCONFIG = 'lint.ignore = ["F541"]'
+
 lint:
 	mypy --python-version ${PYVERSION} --strict *.py || true
 	@echo
 	pyright --pythonversion ${PYVERSION} *.py || true
 	@echo
-	ruff check *.py || true
+	ruff check --config ${RUFFCONFIG} *.py || true
 
 
 fast-merge:

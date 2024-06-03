@@ -189,7 +189,7 @@ class Index:
     def __enter__(self) -> 'Index':
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
