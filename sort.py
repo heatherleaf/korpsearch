@@ -2,33 +2,33 @@
 import random
 from collections.abc import Callable, MutableSequence
 
-from util import progress_bar, ProgressBar, T
+from util import progress_bar, ProgressBar, CT
 
-PivotSelector = Callable[[MutableSequence[T], int, int], int]
+PivotSelector = Callable[[MutableSequence[CT], int, int], int]
 
 
 ###############################################################################
 ## Quicksort
 
-def quicksort(array: MutableSequence[T], pivotselector: PivotSelector[T], cutoff: int = 0) -> None:
+def quicksort(array: MutableSequence[CT], pivotselector: PivotSelector[CT], cutoff: int = 0) -> None:
     """In-place quicksort."""
     import sys
     lim = sys.getrecursionlimit()
     sys.setrecursionlimit(1000)
-    logger: ProgressBar[T]
+    logger: ProgressBar[CT]
     with progress_bar(total=len(array), desc="Quicksorting") as logger:
         quicksort_subarray(array, 0, len(array), pivotselector, cutoff, logger)
         logger.update(len(array) - logger.n)
     sys.setrecursionlimit(lim)
 
 
-def quicksort_subarray(array: MutableSequence[T], lo: int, hi: int, 
-                       pivotselector: PivotSelector[T], cutoff: int, logger: ProgressBar[T]) -> None:
+def quicksort_subarray(array: MutableSequence[CT], lo: int, hi: int, 
+                       pivotselector: PivotSelector[CT], cutoff: int, logger: ProgressBar[CT]) -> None:
     """Quicksorts the subarray array[lo:hi] in place."""
     logger.update(lo - logger.n)
     size = hi - lo
     if size == 2:
-        if array[lo] > array[lo+1]:  # type: ignore
+        if array[lo] > array[lo+1]:
             array[lo], array[lo+1] = array[lo+1], array[lo]
     elif size <= cutoff:
         builtin_timsort(array, lo, hi)
@@ -38,14 +38,14 @@ def quicksort_subarray(array: MutableSequence[T], lo: int, hi: int,
         quicksort_subarray(array, mid+1, hi, pivotselector, cutoff, logger)
 
 
-def builtin_timsort(array: MutableSequence[T], lo: int, hi: int) -> None:
+def builtin_timsort(array: MutableSequence[CT], lo: int, hi: int) -> None:
     """Call Python's built-in sort on the subarray array[lo:hi]."""
-    sorted_array: list[T] = sorted(array[lo:hi])  # type: ignore
+    sorted_array: list[CT] = sorted(array[lo:hi])
     for i, val in enumerate(sorted_array, lo):
         array[i] = val
 
 
-def partition(array: MutableSequence[T], lo: int, hi: int, pivotselector: PivotSelector[T]) -> int:
+def partition(array: MutableSequence[CT], lo: int, hi: int, pivotselector: PivotSelector[CT]) -> int:
     """Partition the subarray sa[lo:hi]. Returns the final index of the pivot."""
     i = pivotselector(array, lo, hi)
     if i != lo:
@@ -55,9 +55,9 @@ def partition(array: MutableSequence[T], lo: int, hi: int, pivotselector: PivotS
     i = lo + 1
     j = hi - 1
     while i <= j:
-        while i <= j and array[i] < pivot:  # type: ignore
+        while i <= j and array[i] < pivot:
             i += 1
-        while i <= j and pivot < array[j]:  # type: ignore
+        while i <= j and pivot < array[j]:
             j -= 1
         if i <= j:
             array[i], array[j] = array[j], array[i]
@@ -68,21 +68,25 @@ def partition(array: MutableSequence[T], lo: int, hi: int, pivotselector: PivotS
     return j
 
 
-def take_first_pivot(array: MutableSequence[T], lo: int, hi: int) -> int:
+def take_first_pivot(array: MutableSequence[CT], lo: int, hi: int) -> int:
     return lo
 
 
-def random_pivot(array: MutableSequence[T], lo: int, hi: int) -> int:
+def take_middle_pivot(array: MutableSequence[CT], lo: int, hi: int) -> int:
+    return (lo + hi) // 2
+
+
+def random_pivot(array: MutableSequence[CT], lo: int, hi: int) -> int:
     return random.randrange(lo, hi)
 
 
-def median_of_three(array: MutableSequence[T], lo: int, hi: int) -> int:
+def median_of_three(array: MutableSequence[CT], lo: int, hi: int) -> int:
     hi -= 1
     mid = (lo + hi) // 2
     return _median3(array, lo, mid, hi)
 
 
-def tukey_ninther(array: MutableSequence[T], lo: int, hi: int) -> int:
+def tukey_ninther(array: MutableSequence[CT], lo: int, hi: int) -> int:
     N = hi - lo
     hi -= 1
     mid = lo + N//2
@@ -93,15 +97,15 @@ def tukey_ninther(array: MutableSequence[T], lo: int, hi: int) -> int:
     return _median3(array, m1, m2, m3)
 
 
-def _median3(array: MutableSequence[T], i: int, j: int, k: int) -> int:
+def _median3(array: MutableSequence[CT], i: int, j: int, k: int) -> int:
     ti = array[i]
     tj = array[j]
     tk = array[k]
-    if ti < tj:                 # type: ignore  # ti < tj:
-        if   tj < tk: return j  # type: ignore  #   ti < tj < tk
-        elif ti < tk: return k  # type: ignore  #   ti < tk <= tj
-        else:         return i  #               #   tk < ti < tj
-    else:                       #               # tj <= ti:
-        if   ti < tk: return i  # type: ignore  #   tj <= ti < tk
-        elif tj < tk: return k  # type: ignore  #   tj < tk <= ti
-        else:         return j  #               #   tk <= tj <= ti
+    if ti < tj:                 # ti < tj:
+        if   tj < tk: return j  #   ti < tj < tk
+        elif ti < tk: return k  #   ti < tk <= tj
+        else:         return i  #   tk < ti < tj
+    else:                       # tj <= ti:
+        if   ti < tk: return i  #   tj <= ti < tk
+        elif tj < tk: return k  #   tj < tk <= ti
+        else:         return j  #   tk <= tj <= ti

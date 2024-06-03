@@ -5,12 +5,21 @@ import math
 import logging
 import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, TypeVar, Literal, BinaryIO, Optional
+from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional
 from collections.abc import Iterable, Iterator
+from abc import abstractmethod
 
 ByteOrder = Literal['little', 'big']
 
 T = TypeVar('T')
+
+
+class ComparableProtocol(Protocol):
+    """Protocol for annotating comparable types."""
+    @abstractmethod
+    def __lt__(self: 'CT', other: 'CT', /) -> bool: ...
+
+CT = TypeVar('CT', bound=ComparableProtocol)
 
 
 def add_suffix(path: Path, suffix: str) -> Path:
