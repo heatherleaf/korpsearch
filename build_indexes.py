@@ -47,7 +47,7 @@ def main(args: argparse.Namespace) -> None:
             existing_templates: set[Template] = set()
             for tmpl in templates:
                 try:
-                    with Index(corpus, tmpl) as _index:
+                    with Index.get(corpus, tmpl) as _index:
                         assert not args.force
                     existing_templates.add(tmpl)
                 except (FileNotFoundError, AssertionError):
@@ -59,12 +59,7 @@ def main(args: argparse.Namespace) -> None:
                 sorted_templates = sorted(templates)
                 logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, sorted_templates))}")
                 for template in sorted_templates:
-                    Index.build(
-                        corpus, template, 
-                        min_frequency=args.min_frequency, 
-                        keep_tmpfiles=args.keep_tmpfiles, 
-                        sorter=args.sorter,
-                    )
+                    Index.build(corpus, template, args)
                 logging.info(f"Created {len(templates)} query indexes")
 
 
