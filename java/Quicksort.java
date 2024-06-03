@@ -73,6 +73,12 @@ public class Quicksort<E> {
         }
     }
 
+    public static class TakeMiddlePivotSelector implements PivotSelector {
+        public <E> int pivot(List<E> array, int lo, int hi, Comparator<? super E> cmp) {
+            return (lo + hi) / 2;
+        }
+    }
+
     public static class RandomPivotSelector implements PivotSelector {
         public <E> int pivot(List<E> array, int lo, int hi, Comparator<? super E> cmp) {
             int piv = (int) (lo + Math.random() * (hi - lo));
