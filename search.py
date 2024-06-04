@@ -49,7 +49,7 @@ def run_query(query: Query, results_file: Optional[Path], no_binary: bool = Fals
             continue
         try:
             subqueries.append((subq, subq.index()))
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             continue
 
     logging.info(f"Searching {len(subqueries)} indexes:")
