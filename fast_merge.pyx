@@ -23,7 +23,11 @@ cdef buffer to_buffer(array, size_t start, size_t length, size_t itemsize):
     return array._bytearray[start : start+length]
 
 
-def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_first, take_second, take_common):
+def merge(
+        arr1: DiskIntArray, start1: int, length1: int, offset1: int, 
+        arr2: DiskIntArray, start2: int, length2: int, offset2: int, 
+        take_first: bool, take_second: bool, take_common: bool,
+    ):
     """Merge two sorted arrays A and B.
 
     * If take_first is True then elements in A-B are included.
@@ -43,6 +47,7 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
 
     cdef buffer buf1 = to_buffer(arr1, start1, length1, itemsize)
     cdef buffer buf2 = to_buffer(arr2, start2, length2, itemsize)
+
     # TODO: 
     # if not (take_first or take_second): we can use malloc(min(buf1.nbytes, buf2.nbytes))
     # if not take_second: we can use malloc(buf1.nbytes)
@@ -101,14 +106,16 @@ cdef size_t fast_merge(unsigned char* out, size_t itemsize,
     if take_first:
         while i < len1:
             x = read_bytes(in1 + i, itemsize) - offset1
+            i += itemsize
             write_bytes(out + k, x, itemsize)
-            i += itemsize ; k += itemsize
+            k += itemsize
 
     if take_second:
         while j < len2:
             y = read_bytes(in2 + j, itemsize) - offset2
+            j += itemsize
             write_bytes(out + k, y, itemsize)
-            j += itemsize ; k += itemsize
+            k += itemsize
 
     return k
 
