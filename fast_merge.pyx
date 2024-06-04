@@ -91,11 +91,16 @@ cdef size_t fast_merge(unsigned char* out, size_t itemsize,
                 k += itemsize
 
     if take_first:
-        memcpy(out+k, in1+i, len1-i)
-        k += len1-i
+        while i < len1:
+            x = read_bytes(in1+i, itemsize) - offset1
+            write_bytes(out+k, x, itemsize)
+            i += itemsize ; k += itemsize
+
     if take_second:
-        memcpy(out+k, in2+j, len2-j)
-        k += len2-j
+        while j < len2:
+            y = read_bytes(in2+j, itemsize) - offset2
+            write_bytes(out+k, x, itemsize)
+            j += itemsize ; k += itemsize
 
     return k
 
