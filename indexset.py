@@ -1,12 +1,14 @@
 
 import sys
 import itertools
+from array import array
 from pathlib import Path
 from typing import Union, Optional
 from collections.abc import Iterator, Callable
 
-from disk import DiskIntArray, LowlevelIntArray, DiskIntArrayBuilder
+from disk import DiskIntArray, DiskIntArrayBuilder
 from enum import Enum
+from util import get_typecode
 
 try:
     import platform
@@ -23,8 +25,8 @@ except ModuleNotFoundError:
 ################################################################################
 ## Index set
 
-IndexSetValuesType = Union[DiskIntArray, list[int]]
-IndexSetValuesBuilder = Union[DiskIntArray, DiskIntArrayBuilder, list[int]]
+IndexSetValuesType = Union[DiskIntArray, 'array[int]']
+IndexSetValuesBuilder = Union[DiskIntArray, DiskIntArrayBuilder, 'array[int]']
 
 class MergeType(Enum):
     """Types of merges that can be done."""
@@ -121,9 +123,9 @@ class IndexSet:
 
     def _init_result(self, resultpath: Optional[Path], other: Optional['IndexSet'] = None) -> IndexSetValuesBuilder:
         if not resultpath:
-            return []
+            return array(get_typecode(self.values.itemsize))
         elif self.path and DiskIntArray.getpath(resultpath) == DiskIntArray.getpath(self.path):
-            assert isinstance(self.values, DiskIntArray) and not isinstance(self.values, LowlevelIntArray)
+            assert isinstance(self.values, DiskIntArray)
             self.values.reset_append()
             return self.values
         else:
@@ -132,14 +134,15 @@ class IndexSet:
             return DiskIntArrayBuilder(resultpath)
 
     def _finalise_result(self, result: IndexSetValuesBuilder) -> None:
-        path = None
-        if isinstance(result, DiskIntArray) and not isinstance(result, LowlevelIntArray):
-            result.truncate_append()
+        if isinstance(result, DiskIntArray):
             path = result.path
+            result.truncate_append()
         elif isinstance(result, DiskIntArrayBuilder):
             path = result.path
             result.close()
             result = DiskIntArray(path)
+        else:
+            path = None
         self.values = result
         self.path = path
         self.start = 0

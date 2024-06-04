@@ -31,17 +31,22 @@ class DiskIntArray(Sequence[int]):
 
     _append_ptr: int
 
-    def __init__(self, path: Path) -> None:
-        self.path = self.getpath(path)
-        self._file = open(self.path, 'r+b')
-        with open(self.getconfig(self.path)) as configfile:
-            config = json.load(configfile)
-        self.itemsize = config['itemsize']
-        assert config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {config['byteorder']}"
-        try:
-            self._bytearray = mmap(self._file.fileno(), 0)
-        except ValueError:  # "cannot mmap an empty file"
-            self._bytearray = bytearray(b'')
+    def __init__(self, source: Union[Path, bytes, bytearray], itemsize: int = 4) -> None:
+        if isinstance(source, (bytes, bytearray)):
+            self.path = None
+            self._bytearray = source
+            self.itemsize = itemsize
+        else:
+            self.path = self.getpath(source)
+            self._file = open(self.path, 'r+b')
+            with open(self.getconfig(self.path)) as configfile:
+                config = json.load(configfile)
+            self.itemsize = config['itemsize']
+            assert config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {config['byteorder']}"
+            try:
+                self._bytearray = mmap(self._file.fileno(), 0)
+            except ValueError:  # "cannot mmap an empty file"
+                self._bytearray = bytearray(b'')
         self._length = len(self._bytearray) // self.itemsize
         assert len(self._bytearray) % self.itemsize == 0, \
             f"Array length ({len(self._bytearray)}) is not divisible by itemsize ({self.itemsize})"
@@ -72,7 +77,10 @@ class DiskIntArray(Sequence[int]):
             self.append(val)
 
     def truncate_append(self) -> None:
-        self._file.truncate(self._append_ptr * self.itemsize)
+        try:
+            self._file.truncate(self._append_ptr * self.itemsize)
+        except AttributeError:
+            return
         self.array.release()
         try:
             self._bytearray.close()  # type: ignore
@@ -108,17 +116,6 @@ class DiskIntArray(Sequence[int]):
     @classmethod
     def getconfig(cls, path: Path) -> Path:
         return cls.getpath(path).with_suffix(cls.config_suffix)
-
-
-class LowlevelIntArray(DiskIntArray):
-    def __init__(self, bytearr: bytes, itemsize: int) -> None:
-        self.path = None
-        self.itemsize = itemsize
-        self._bytearray = bytearr
-        self._length = len(self._bytearray) // self.itemsize
-        assert len(self._bytearray) % self.itemsize == 0, \
-            f"Array length ({len(self._bytearray)}) is not divisible by itemsize ({self.itemsize})"
-        self.array = memoryview(self._bytearray).cast(get_typecode(self.itemsize))
 
 
 class DiskIntArrayBuilder:

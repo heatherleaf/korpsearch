@@ -3,7 +3,7 @@
 import sys
 from libc.stdlib cimport malloc, free
 
-from disk import LowlevelIntArray
+from disk import DiskIntArray
 
 
 ctypedef const unsigned char[::1] buffer
@@ -16,10 +16,10 @@ ctypedef const unsigned char[::1] buffer
 #     just as is already done in Python (see IndexSet._merge_internal)
 
 
-cdef buffer to_buffer(array, size_t start, size_t length, size_t size):
+cdef buffer to_buffer(array, size_t start, size_t length, size_t itemsize):
     """Convert an array to an array of bytes."""
-    start *= size
-    length *= size
+    start *= itemsize
+    length *= itemsize
     return array._bytearray[start : start+length]
 
 
@@ -44,62 +44,70 @@ def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_f
     cdef buffer buf1 = to_buffer(arr1, start1, length1, itemsize)
     cdef buffer buf2 = to_buffer(arr2, start2, length2, itemsize)
     # TODO: 
-    # if not (take_first or take_second): we can use outsize = min(len1, len2))
-    # if not take_second: we can use outsize = len1
-    # if not take_first: we can use outsize = len2
-    cdef size_t outsize = buf1.nbytes + buf2.nbytes
-    cdef unsigned char* out = <unsigned char*> malloc(outsize)
+    # if not (take_first or take_second): we can use malloc(min(buf1.nbytes, buf2.nbytes))
+    # if not take_second: we can use malloc(buf1.nbytes)
+    # if not take_first: we can use malloc(buf2.nbytes)
+    cdef unsigned char* out = <unsigned char*> malloc(buf1.nbytes + buf2.nbytes)
 
     k = fast_merge(out, itemsize, 
-                   &buf1[0], start1, buf1.nbytes, offset1,
-                   &buf2[0], start2, buf2.nbytes, offset2,
+                   &buf1[0], buf1.nbytes, offset1,
+                   &buf2[0], buf2.nbytes, offset2,
                    take_first, take_second, take_common)
 
-    result = LowlevelIntArray(out[:k], itemsize)
+    result = DiskIntArray(out[:k], itemsize)
     free(out)
     return result
 
 
 cdef size_t fast_merge(unsigned char* out, size_t itemsize, 
-                       const unsigned char* in1, size_t start1, size_t len1, size_t offset1, 
-                       const unsigned char* in2, size_t start2, size_t len2, size_t offset2, 
+                       const unsigned char* in1, size_t len1, size_t offset1, 
+                       const unsigned char* in2, size_t len2, size_t offset2, 
                        size_t take_first, size_t take_second, size_t take_common):
 
     cdef size_t i = 0
     cdef size_t j = 0
     cdef size_t k = 0
 
-    while i < len1 and j < len2:
-        x = read_bytes(in1+i, itemsize) - offset1
-        y = read_bytes(in2+j, itemsize) - offset2
-
+    x = read_bytes(in1 + i, itemsize) - offset1
+    y = read_bytes(in2 + j, itemsize) - offset2
+    while True:
         if x < y: 
-            i += itemsize
             if take_first:
-                write_bytes(out+k, x, itemsize)
+                write_bytes(out + k, x, itemsize)
                 k += itemsize
-        elif x > y: 
-            j += itemsize
-            if take_second:
-                write_bytes(out+k, y, itemsize)
-                k += itemsize
-        else:
             i += itemsize
-            j += itemsize
-            if take_common:
-                write_bytes(out+k, x, itemsize)
+            if i >= len1: break
+            x = read_bytes(in1 + i, itemsize) - offset1
+
+        elif x > y: 
+            if take_second:
+                write_bytes(out + k, y, itemsize)
                 k += itemsize
+            j += itemsize
+            if j >= len2: break
+            y = read_bytes(in2 + j, itemsize) - offset2
+
+        else:
+            if take_common:
+                write_bytes(out + k, x, itemsize)
+                k += itemsize
+            i += itemsize
+            if i >= len1: break
+            j += itemsize
+            if j >= len2: break
+            x = read_bytes(in1 + i, itemsize) - offset1
+            y = read_bytes(in2 + j, itemsize) - offset2
 
     if take_first:
         while i < len1:
-            x = read_bytes(in1+i, itemsize) - offset1
-            write_bytes(out+k, x, itemsize)
+            x = read_bytes(in1 + i, itemsize) - offset1
+            write_bytes(out + k, x, itemsize)
             i += itemsize ; k += itemsize
 
     if take_second:
         while j < len2:
-            y = read_bytes(in2+j, itemsize) - offset2
-            write_bytes(out+k, x, itemsize)
+            y = read_bytes(in2 + j, itemsize) - offset2
+            write_bytes(out + k, y, itemsize)
             j += itemsize ; k += itemsize
 
     return k
