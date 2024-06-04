@@ -8,6 +8,7 @@ from collections.abc import Iterator, Callable
 
 from disk import DiskIntArray, DiskIntArrayBuilder
 from enum import Enum
+from merge import merge
 from util import get_typecode
 
 try:
@@ -167,12 +168,11 @@ class IndexSet:
             len(self) > 0 and len(other) > 0 and
             self.values.itemsize == other.values.itemsize
         ):
-            take_first, take_second, take_common = merge_type.which_to_take()
             try:
                 return fast_merge.merge(  # type: ignore
                     self.values, self.start, self.size, self.offset,
                     other.values, other.start, other.size, other.offset,
-                    take_first, take_second, take_common
+                    *merge_type.which_to_take()
                 )
             except NameError:
                 pass
@@ -180,33 +180,11 @@ class IndexSet:
 
     def _merge_internal(self, other: 'IndexSet', result: IndexSetValuesBuilder, merge_type: MergeType) -> None:
         # Complexity: O(self + other)
-        take_first, take_second, take_common = merge_type.which_to_take()
-        xiter = iter(self)
-        yiter = iter(other)
-        x = next(xiter, None)
-        y = next(yiter, None)
-        while x is not None and y is not None:
-            if x < y:
-                if take_first: result.append(x)
-                x = next(xiter, None)
-            elif x > y:
-                if take_second: result.append(y)
-                y = next(yiter, None)
-            else:
-                if take_common: result.append(x)
-                x = next(xiter, None)
-                y = next(yiter, None)
-
-        if take_first:
-            if x is not None:
-                result.append(x)
-            result.extend(xiter)
-
-        if take_second:
-            if y is not None:
-                result.append(y)
-            result.extend(yiter)
-
+        merge(
+            self.values, self.start, self.size, self.offset,
+            other.values, other.start, other.size, other.offset,
+            result, *merge_type.which_to_take()
+        )
 
     def filter_update(self, check: Callable[[int],bool], resultpath: Optional[Path] = None) -> None:
         result = self._init_result(resultpath)
