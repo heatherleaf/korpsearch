@@ -6,7 +6,7 @@ import logging
 import gzip, bz2, lzma
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
 ByteOrder = Literal['little', 'big']
@@ -22,6 +22,9 @@ class ComparableProtocol(Protocol):
 CT = TypeVar('CT', bound=ComparableProtocol)
 
 
+###############################################################################
+## File/path utilities
+
 def add_suffix(path: Path, suffix: str) -> Path:
     """Add the suffix to the path, unless it's already there."""
     if path.suffix != suffix:
@@ -29,6 +32,9 @@ def add_suffix(path: Path, suffix: str) -> Path:
         # Alternatively: Path(path).with_suffix(path.suffix + suffix)
     return path
 
+
+###############################################################################
+## N:o bytes needed to store integer values
 
 def get_integer_size(max_value: int) -> int:
     """The minimal n:o bytes needed to store values `0...max_value`"""
@@ -44,6 +50,66 @@ def get_typecode(itemsize: int) -> str:
     typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
     return typecodes[itemsize]
 
+
+###############################################################################
+## Reading (compressed and uncompressed) files
+
+def binsearch_lookup(start: int, end: int, key: CT, lookup: Callable[[int], CT]) -> bool:
+    try:
+        binsearch(start, end, key, lookup)
+        return True
+    except KeyError:
+        return False
+
+
+def binsearch(start: int, end: int, key: CT, lookup: Callable[[int], CT], error: bool = True) -> int:
+    while start <= end:
+        mid = (start + end) // 2
+        mykey = lookup(mid)
+        if mykey == key:
+            return mid
+        if lookup(mid) < key:
+            start = mid + 1
+        else:
+            end = mid - 1
+    if error:
+        raise KeyError(f'Key "{key}" not found')
+    return -1
+
+
+def binsearch_first(start: int, end: int, key: CT, lookup: Callable[[int], CT], error: bool = True) -> int:
+    while start <= end:
+        mid = (start + end) // 2
+        if lookup(mid) < key:
+            start = mid + 1
+        else:
+            end = mid - 1
+    if error and lookup(start) != key:
+        raise KeyError(f'Key "{key}" not found')
+    return start
+
+
+def binsearch_last(start: int, end: int, key: CT, lookup: Callable[[int], CT], error: bool = True) -> int:
+    while start <= end:
+        mid = (start + end) // 2
+        if key < lookup(mid):
+            end = mid - 1
+        else:
+            start = mid + 1
+    if error and lookup(end) != key:
+        raise KeyError(f'Key "{key}" not found')
+    return end
+
+
+def binsearch_range(start: int, end: int, key: CT, lookup: Callable[[int], CT], error: bool = True) -> tuple[int, int]:
+    start = binsearch_first(start, end, key, lookup, error)
+    end = binsearch_last(start, end, key, lookup, error)
+    return start, end
+
+
+
+###############################################################################
+## Reading (compressed and uncompressed) files
 
 class CompressedFileReader:
     """

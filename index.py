@@ -8,11 +8,11 @@ import shutil
 import logging
 import subprocess
 
-from disk import DiskIntArray, DiskIntArrayBuilder, InternedString, DiskFixedBytesArray
+from disk import InternedString, DiskFixedBytesArray, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
 import sort
-from util import progress_bar, get_integer_size, ByteOrder, CT
+from util import progress_bar, get_integer_size, ByteOrder, binsearch_first, binsearch_range
 
 
 # Possible sorting alternatives, the first is the default:
@@ -173,12 +173,13 @@ class Index:
     corpus: Corpus
     template: Template
     index: DiskIntArray
+    path: Path
 
     def __init__(self, corpus: Corpus, template: Template) -> None:
         self.corpus = corpus
         self.template = template
-        indexpath = self.indexpath(corpus, template)
-        self.index = DiskIntArray(indexpath)
+        self.path = self.indexpath(corpus, template)
+        self.index = DiskIntArray(self.path)
 
     def __str__(self) -> str:
         return self.__class__.__name__ + ':' + str(self.template) 
@@ -198,40 +199,11 @@ class Index:
     def search(self, instance: Instance, offset: int = 0) -> IndexSet:
         set_start, set_end = self.lookup_instance(instance)
         set_size = set_end - set_start + 1
-        iset = IndexSet(self.index, set_start, set_size, offset=offset)
+        iset = IndexSet(self.index, path=self.path, start=set_start, size=set_size, offset=offset)
         return iset
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         raise NotImplementedError("Must be overridden by a subclass")
-
-    def binary_search_first(self, instance_key: CT, search_key: Callable[[int], CT], start: int = 0) -> int:
-        end = len(self) - 1
-        while start <= end:
-            mid = (start + end) // 2
-            if search_key(mid) < instance_key:
-                start = mid + 1
-            else:
-                end = mid - 1
-        if search_key(start) != instance_key:
-            raise KeyError(f'Instance key "{instance_key}" not found')
-        return start
-
-    def binary_search_last(self, instance_key: CT, search_key: Callable[[int], CT], start: int = 0) -> int:
-        end = len(self) - 1
-        while start <= end:
-            mid = (start + end) // 2
-            if instance_key < search_key(mid):
-                end = mid - 1
-            else:
-                start = mid + 1
-        if search_key(end) != instance_key:
-            raise KeyError(f'Instance key "{instance_key}" not found')
-        return end
-
-    def binary_search(self, instance_key: CT, search_key: Callable[[int], CT]) -> tuple[int, int]:
-        start = self.binary_search_first(instance_key, search_key)
-        end = self.binary_search_last(instance_key, search_key, start)
-        return start, end
 
     @staticmethod
     def indexpath(corpus: Corpus, template: Template) -> Path:
@@ -270,12 +242,12 @@ class UnaryIndex(Index):
         tmpl = self.template.template[0]
         features = self.corpus.tokens[tmpl.feature]
         offset = tmpl.offset
-        index = self.index
+        index = self.index.array
         return lambda k: features[index[k] + offset]
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        return self.binary_search(instance.values[0], self.search_key())
+        return binsearch_range(0, len(self)-1, instance.values[0], self.search_key())
 
 
 class BinaryIndex(Index):
@@ -288,10 +260,10 @@ class BinaryIndex(Index):
         tmpl1, tmpl2 = self.template.template
         features1, features2 = self.corpus.tokens[tmpl1.feature], self.corpus.tokens[tmpl2.feature]
         offset1, offset2 = tmpl1.offset, tmpl2.offset
-        index = self.index
+        index = self.index.array
         def search_key(k: int) -> tuple[InternedString, InternedString]:
             return (features1[index[k] + offset1], features2[index[k] + offset2])
-        return self.binary_search(instance.values, search_key)
+        return binsearch_range(0, len(self)-1, instance.values, search_key)
 
 
 ###################################################################################################
@@ -350,7 +322,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
 
     def unary_min_frequency(unary: UnaryIndex, unary_key: InternedString) -> bool:
         search_key = unary.search_key()
-        start = unary.binary_search_first(unary_key, search_key)
+        start = binsearch_first(0, len(unary)-1, unary_key, search_key)
         end = start + args.min_frequency - 1
         return end < len(unary2) and search_key(end) == unary_key
 
@@ -393,10 +365,10 @@ def collect_and_sort_internally(collect_positions: RowCollector, index_path: Pat
     logging.debug(f"Sorting {len(tmplist)} rows.")
     tmplist.sort()
     logging.debug(f"Creating suffix array")
-    with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-        for row in tmplist:
+    with DiskIntArray.create(len(tmplist), index_path, max_value=index_size) as suffix_array:
+        for i, row in enumerate(tmplist):
             pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
-            suffix_array.append(pos)
+            suffix_array[i] = pos
 
 
 def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path, 
@@ -421,11 +393,13 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
             )
 
     logging.debug(f"Creating suffix array")
-    with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
+    with DiskIntArray.create(nr_rows, index_path, max_value=index_size) as suffix_array:
         with open(tmpfile, 'rb') as IN:
+            i = 0
             while (row := IN.read(rowsize)):
                 pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
-                suffix_array.append(pos)
+                suffix_array[i] = pos
+                i += 1
 
     if not args.keep_tmpfiles:
         tmpfile.unlink()
@@ -442,10 +416,11 @@ def collect_and_sort_lmdb(collect_positions: RowCollector, index_path: Path,
         collect_positions(lambda row: db.put(row, b''))
     logging.debug(f"Creating suffix array")
     with env.begin() as db:
-        with DiskIntArrayBuilder(index_path, max_value=index_size) as suffix_array:
-            for row, _ in db.cursor():
+        nrows = db.stat()['entries']
+        with DiskIntArray.create(nrows, index_path, max_value=index_size) as suffix_array:
+            for i, (row, _) in enumerate(db.cursor()):
                 pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
-                suffix_array.append(pos)
+                suffix_array[i] = pos
     env.close()
     if not args.keep_tmpfiles:
         shutil.rmtree(tmpdir, ignore_errors=True)

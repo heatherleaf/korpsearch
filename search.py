@@ -7,7 +7,6 @@ import time
 from typing import Any, Optional
 from argparse import Namespace
 
-from disk import DiskIntArray
 from index import Index
 from indexset import IndexSet, MergeType
 from corpus import Corpus
@@ -42,7 +41,7 @@ def hash_query(corpus: Corpus, query: Query, **extra_args: object) -> Path:
 
 
 def run_query(query: Query, results_file: Optional[Path], no_binary: bool = False, use_internal: bool = False) -> IndexSet:
-    search_results: list[tuple[Query, IndexSet]]= []
+    search_results: list[tuple[Query, IndexSet]] = []
     subqueries: list[tuple[Query, Index]] = []
     for subq in query.subqueries():
         if no_binary and len(subq) > 1:
@@ -105,7 +104,7 @@ def search_corpus(corpus: Corpus, query: Query, filter_results: bool,
     final_results_file = None if no_diskarray else hash_query(corpus, query, filtered=filter_results)
     try:
         assert final_results_file and not no_cache
-        results = IndexSet(DiskIntArray(final_results_file))
+        results = IndexSet.open(final_results_file)
         logging.debug(f"Using cached results file: {final_results_file}")
         return results
     except (FileNotFoundError, AssertionError):
@@ -118,7 +117,7 @@ def search_corpus(corpus: Corpus, query: Query, filter_results: bool,
     assert unfiltered_results_file != final_results_file
     try:
         assert unfiltered_results_file and not no_cache
-        results = IndexSet(DiskIntArray(unfiltered_results_file))
+        results = IndexSet.open(unfiltered_results_file)
         logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
     except (FileNotFoundError, AssertionError):
         results = run_query(query, unfiltered_results_file, no_binary, internal_intersection)
@@ -164,7 +163,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
         try:
             for match_pos in results.slice(args.start, args.end+1):
                 sentence = corpus.get_sentence_from_position(match_pos)
-                match_start = match_pos - corpus.sentence_pointers[sentence]
+                match_start = match_pos - corpus.sentence_pointers.array[sentence]
                 tokens = [
                     {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
                     for p in corpus.sentence_positions(sentence)

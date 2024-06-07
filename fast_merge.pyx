@@ -1,73 +1,57 @@
 # cython: language_level=3
 
-import sys
-from libc.stdlib cimport malloc, free
-
-from disk import DiskIntArray
-
-
-ctypedef const unsigned char[::1] buffer
-
-
-# TODO:
-#  1. Cython has memoryviews too, so it should be possible to use them directly 
-#     instead of working with byte buffers.
-#  2. We want to be able to update a set in-place of creating a new every time,
-#     just as is already done in Python (see IndexSet._merge_internal)
-
-
-cdef buffer to_buffer(array, size_t start, size_t length, size_t itemsize):
-    """Convert an array to an array of bytes."""
-    start *= itemsize
-    length *= itemsize
-    return array._bytearray[start : start+length]
-
-
 def merge(
-        arr1: DiskIntArray, start1: int, length1: int, offset1: int, 
-        arr2: DiskIntArray, start2: int, length2: int, offset2: int, 
-        take_first: bool, take_second: bool, take_common: bool,
-    ):
-    """Merge two sorted arrays A and B.
+        arr1: memoryview, start1: int, length1: int, offset1: int, 
+        arr2: memoryview, start2: int, length2: int, offset2: int, 
+        result: memoryview, take_first: bool, take_second: bool, take_common: bool,
+    ) -> int:
+    """
+    Merge two sorted arrays A (arr1) and B (arr2).
+    The result array must have enough space for all elements.
+    Returns the size of the merged result (so the result array can be truncated).
 
-    * If take_first is True then elements in A-B are included.
-    * If take_second is True then elements in B-A are included.
-    * If take_common is True then elements in intersection(A,B) are included.
+    * If take_first  is True then elements in A - B are included.
+    * If take_second is True then elements in B - A are included.
+    * If take_common is True then elements in A & B are included.
 
     You can get the following set operations (among others):
 
-    Operation           take_first     take_second    take_common
-    union(A,B)          True           True           True
-    intersection(A,B)   False          False          True
-    A-B                 True           False          False
+    Operation              take_first     take_second    take_common
+    union        (A | B)   True           True           True
+    intersection (A & B)   False          False          True
+    difference   (A - B)   True           False          False
     """
 
     assert arr1.itemsize == arr2.itemsize
     cdef int itemsize = arr1.itemsize
 
-    cdef buffer buf1 = to_buffer(arr1, start1, length1, itemsize)
-    cdef buffer buf2 = to_buffer(arr2, start2, length2, itemsize)
+    cdef unsigned int[::1] in1buffer = arr1
+    cdef unsigned int[::1] in2buffer = arr2
+    cdef unsigned int[::1] outbuffer = result
 
-    # TODO: 
-    # if not (take_first or take_second): we can use malloc(min(buf1.nbytes, buf2.nbytes))
-    # if not take_second: we can use malloc(buf1.nbytes)
-    # if not take_first: we can use malloc(buf2.nbytes)
-    cdef unsigned char* out = <unsigned char*> malloc(buf1.nbytes + buf2.nbytes)
+    cdef unsigned char* in1 = <unsigned char*> &in1buffer[0]
+    cdef unsigned char* in2 = <unsigned char*> &in2buffer[0]
+    cdef unsigned char* out = <unsigned char*> &outbuffer[0]
 
-    k = fast_merge(out, itemsize, 
-                   &buf1[0], buf1.nbytes, offset1,
-                   &buf2[0], buf2.nbytes, offset2,
-                   take_first, take_second, take_common)
-
-    result = DiskIntArray(out[:k], itemsize)
-    free(out)
-    return result
+    return fast_merge(
+        out, itemsize, 
+        in1, start1, length1, offset1,
+        in2, start2, length2, offset2,
+        take_first, take_second, take_common,
+    )
 
 
-cdef size_t fast_merge(unsigned char* out, size_t itemsize, 
-                       const unsigned char* in1, size_t len1, size_t offset1, 
-                       const unsigned char* in2, size_t len2, size_t offset2, 
-                       size_t take_first, size_t take_second, size_t take_common):
+cdef size_t fast_merge(
+        unsigned char* out, size_t itemsize, 
+        unsigned char* in1, size_t start1, size_t length1, size_t offset1, 
+        unsigned char* in2, size_t start2, size_t length2, size_t offset2, 
+        size_t take_first, size_t take_second, size_t take_common,
+    ):
+
+    in1 += start1 * itemsize
+    in2 += start2 * itemsize
+    length1 *= itemsize
+    length2 *= itemsize
 
     cdef size_t i = 0
     cdef size_t j = 0
@@ -81,7 +65,8 @@ cdef size_t fast_merge(unsigned char* out, size_t itemsize,
                 write_bytes(out + k, x, itemsize)
                 k += itemsize
             i += itemsize
-            if i >= len1: break
+            if i >= length1: 
+                break
             x = read_bytes(in1 + i, itemsize) - offset1
 
         elif x > y: 
@@ -89,7 +74,8 @@ cdef size_t fast_merge(unsigned char* out, size_t itemsize,
                 write_bytes(out + k, y, itemsize)
                 k += itemsize
             j += itemsize
-            if j >= len2: break
+            if j >= length2: 
+                break
             y = read_bytes(in2 + j, itemsize) - offset2
 
         else:
@@ -97,27 +83,29 @@ cdef size_t fast_merge(unsigned char* out, size_t itemsize,
                 write_bytes(out + k, x, itemsize)
                 k += itemsize
             i += itemsize
-            if i >= len1: break
+            if i >= length1: 
+                break
             j += itemsize
-            if j >= len2: break
+            if j >= length2: 
+                break
             x = read_bytes(in1 + i, itemsize) - offset1
             y = read_bytes(in2 + j, itemsize) - offset2
 
     if take_first:
-        while i < len1:
+        while i < length1:
             x = read_bytes(in1 + i, itemsize) - offset1
             i += itemsize
             write_bytes(out + k, x, itemsize)
             k += itemsize
 
     if take_second:
-        while j < len2:
+        while j < length2:
             y = read_bytes(in2 + j, itemsize) - offset2
             j += itemsize
             write_bytes(out + k, y, itemsize)
             k += itemsize
 
-    return k
+    return k // itemsize
 
 
 cdef extern from "string.h":
