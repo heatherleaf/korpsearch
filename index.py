@@ -381,7 +381,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
     logging.debug(f"Sorting {nr_rows} rows.")
     if args.sorter == 'java':
         pivotselector = 'random'  # Options: random, first, central, median-of-three
-        cutoff = str(40_000_000)
+        cutoff = str(10_000_000)
         subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), pivotselector, cutoff])
     else:
         with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
@@ -389,7 +389,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
                 bytes_array,
                 pivotselector = sort.random_pivot, 
                 # Options: random_pivot, take_first_pivot, take_middle_pivot, median_of_three, tukey_ninther
-                cutoff = 40_000_000,
+                cutoff = 10_000_000,
             )
 
     logging.debug(f"Creating suffix array")

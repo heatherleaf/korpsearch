@@ -10,8 +10,9 @@ PivotSelector = Callable[[MutableSequence[CT], int, int], int]
 ###############################################################################
 ## Quicksort
 
-def quicksort(array: MutableSequence[CT], pivotselector: PivotSelector[CT], cutoff: int = 0) -> None:
+def quicksort(array: MutableSequence[CT], pivotselector: PivotSelector[CT], cutoff: int = 1000) -> None:
     """In-place quicksort."""
+    assert cutoff >= 10
     import sys
     lim = sys.getrecursionlimit()
     sys.setrecursionlimit(1000)
@@ -26,13 +27,9 @@ def quicksort_subarray(array: MutableSequence[CT], lo: int, hi: int,
                        pivotselector: PivotSelector[CT], cutoff: int, logger: ProgressBar[CT]) -> None:
     """Quicksorts the subarray array[lo:hi] in place."""
     logger.update(lo - logger.n)
-    size = hi - lo
-    if size == 2:
-        if array[lo] > array[lo+1]:
-            array[lo], array[lo+1] = array[lo+1], array[lo]
-    elif size <= cutoff:
+    if hi - lo <= cutoff:
         builtin_timsort(array, lo, hi)
-    elif size > 2:
+    else:
         mid = partition(array, lo, hi, pivotselector)
         quicksort_subarray(array, lo, mid, pivotselector, cutoff, logger)
         quicksort_subarray(array, mid+1, hi, pivotselector, cutoff, logger)
