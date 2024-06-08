@@ -27,6 +27,8 @@ public class DiskFixedSizeArray extends AbstractList<DiskFixedSizeArray.Record> 
         channel = (FileChannel) Files.newByteChannel(arrayPath, StandardOpenOption.READ, StandardOpenOption.WRITE);
         buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, channel.size());
         this.recordSize = recordSize;
+        if (channel.size() % recordSize != 0)
+            throw new IllegalArgumentException("File size is not divisible by record size");
         this.arraySize = (int) (channel.size() / recordSize);
     }
 
@@ -104,6 +106,7 @@ public class DiskFixedSizeArray extends AbstractList<DiskFixedSizeArray.Record> 
                 reportError("Cutoff must be a positive integer");
             }
         }
+        if (cutoff < 10) reportError("Cutoff must be >= 10");
 
         Quicksort<Record> sorter = new Quicksort<>(Comparator.naturalOrder(), selector, cutoff);
 

@@ -12,6 +12,7 @@ public class Quicksort<E> {
         this.comparator = cmp;
         this.selector = selector;
         this.cutoff = cutoff;
+        if (cutoff < 10) throw new IllegalArgumentException("Too small cutoff");
     }
 
     public void sort(List<E> array) {
@@ -20,12 +21,12 @@ public class Quicksort<E> {
 
     public void sort(List<E> array, int lo, int hi) {
         int size = hi - lo;
-        if (size == 2) {
-            if (comparator.compare(array.get(lo), array.get(lo+1)) > 0)
-                swap(array, lo, lo+1);
-        } else if (size <= cutoff) {
+        if (size > 100000) {
+            System.out.print("Sorted: " + lo + " rows\r");
+        }
+        if (size <= cutoff) {
             builtinSort(array, lo, size);
-        } else if (size > 2) {
+        } else {
             int mid = partition(array, lo, hi);
             sort(array, lo, mid);
             sort(array, mid+1, hi);
