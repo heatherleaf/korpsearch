@@ -3,7 +3,7 @@
 
 help:
 	@echo "'make java-arrays': build the Java implementation of Disk Fixed Size Arrays"
-	@echo "'make fast-merge': build the faster merge module using Cython"
+	@echo "'make cython': build the faster modules 'fast_merge' and 'multikey_quicksort' using Cython"
 	@echo "'make clean': remove files built by the commands above"
 	@echo "'make lint': type-check and linting using mypy, pyright, and ruff"
 
@@ -27,7 +27,7 @@ lint:
 	ruff check --config ${RUFFCONFIG} *.py || true
 
 
-fast-merge:
+cython:
 	python3 setup.py build_ext --inplace
 
 

@@ -8,6 +8,21 @@ PivotSelector = Callable[[MutableSequence[CT], int, int], int]
 
 
 ###############################################################################
+## Multikey quicksort, Cython
+
+def multikeysort(mview: memoryview, itemsize: int):
+    try:
+        from multikey_quicksort import multikey_quicksort  # type: ignore
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError(
+            "Module 'multikey_quicksort' not found. "
+            "To install, run: 'python setup.py build_ext --inplace'."
+        )
+
+    multikey_quicksort(mview, itemsize)
+
+
+###############################################################################
 ## Quicksort
 
 def quicksort(array: MutableSequence[CT], pivotselector: PivotSelector[CT], cutoff: int = 1000) -> None:

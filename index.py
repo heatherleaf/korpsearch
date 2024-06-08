@@ -16,7 +16,7 @@ from util import progress_bar, get_integer_size, ByteOrder, binsearch_first, bin
 
 
 # Possible sorting alternatives, the first is the default:
-SORTER_CHOICES = ['tmpfile', 'internal', 'java', 'lmdb']
+SORTER_CHOICES = ['tmpfile', 'internal', 'java', 'lmdb', 'multikey']
 
 ################################################################################
 ## Literals, templates and instances
@@ -383,6 +383,12 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
         pivotselector = 'random'  # Options: random, first, central, median-of-three
         cutoff = str(10_000_000)
         subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), pivotselector, cutoff])
+    elif args.sorter == 'multikey':
+        from mmap import mmap
+        with open(tmpfile, 'r+b') as file:
+            mview = memoryview(mmap(file.fileno(), 0))
+        assert len(mview) % rowsize == 0
+        sort.multikeysort(mview, rowsize)
     else:
         with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
             sort.quicksort(
