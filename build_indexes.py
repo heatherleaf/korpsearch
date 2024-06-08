@@ -5,7 +5,7 @@ from pathlib import Path
 from collections.abc import Iterator
 import logging
 
-from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES
+from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
 from util import setup_logger, add_suffix, CompressedFileReader
 
@@ -100,18 +100,22 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
 ## Main
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--corpus', '-c', type=Path, required=True, help='corpus base name (i.e. without suffix)')
-parser.add_argument('--clean', action='store_true', help='remove the corpus index and all query indexes')
-parser.add_argument('--force', action='store_true', help='build indexes even if they exist')
-parser.add_argument('--corpus-index', '-i', action='store_true', help='build the corpus index')
-parser.add_argument('--features', '-f', nargs='+', default=[],
+parser.add_argument('--corpus', '-c', type=Path, metavar='PATH', required=True, 
+    help='corpus base name (i.e. without suffix)')
+parser.add_argument('--clean', action='store_true', 
+    help='remove the corpus index and all query indexes')
+parser.add_argument('--force', action='store_true', 
+    help='build indexes even if they exist')
+parser.add_argument('--corpus-index', '-i', action='store_true', 
+    help='build the corpus index')
+parser.add_argument('--features', '-f', nargs='+', default=[], metavar='FEAT',
     help='build all possible (unary and binary) query indexes for the given features')
-parser.add_argument('--templates', '-t', nargs='+', default=[],
+parser.add_argument('--templates', '-t', nargs='+', default=[], metavar='TMPL',
     help='build query indexes for the given templates: e.g., pos:0 (unary index), or word:0+pos:2 (binary index)')
 
-parser.add_argument('--max-dist', type=int, default=2, 
+parser.add_argument('--max-dist', type=int, default=2, metavar='DIST',
     help='[only with the --features option] max distance between token pairs (default: 2)')
-parser.add_argument('--min-frequency', type=int, default=0,
+parser.add_argument('--min-frequency', type=int, default=0, metavar='FREQ',
     help='[only for binary indexes] min unary frequency for all values in a binary instance (default: 0)')
 parser.add_argument('--no-sentence-breaks', action='store_true', 
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
@@ -123,7 +127,14 @@ parser.add_argument('--silent', action="store_const", dest='loglevel', const=log
 
 parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
     help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]})')
-parser.add_argument('--keep-tmpfiles', action='store_true', help="keep temporary files (default: don't keep)")
+parser.add_argument('--cutoff', type=int, default=1_000_000, 
+    help="[only for sorters 'tmpfile' and 'java'] " 
+         "the cutoff when to use the builtin sorting implementation (default: 1 million)")
+parser.add_argument('--pivot-selector', choices=PIVOT_SELECTORS, default=next(iter(PIVOT_SELECTORS)), 
+    help="[only for sorters 'tmpfile' and 'java'] "
+         f"pivot selector: one of {', '.join(PIVOT_SELECTORS)} (default: {next(iter(PIVOT_SELECTORS))})")
+parser.add_argument('--keep-tmpfiles', action='store_true', 
+    help="keep temporary files (default: don't keep)")
 
 
 if __name__ == '__main__':

@@ -18,6 +18,16 @@ from util import progress_bar, get_integer_size, ByteOrder, binsearch_first, bin
 # Possible sorting alternatives, the first is the default:
 SORTER_CHOICES = ['tmpfile', 'internal', 'java', 'lmdb', 'multikey']
 
+# Possible pivot selectors, used by the 'tmpfile' and 'java' sorters:
+PIVOT_SELECTORS = {
+    'random': sort.random_pivot,
+    'first': sort.take_first_pivot,
+    'central': sort.take_first_pivot,
+    'median3': sort.median_of_three,
+    'ninther': sort.tukey_ninther,
+}
+
+
 ################################################################################
 ## Literals, templates and instances
 
@@ -374,28 +384,32 @@ def collect_and_sort_internally(collect_positions: RowCollector, index_path: Pat
 def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path, 
                              index_size: int, bytesize: int, rowsize: int, args: Namespace) -> None:
     tmpfile = index_path.parent / 'index.tmp'
-    with open(tmpfile, 'wb') as OUT:
-        collect_positions(OUT.write)
-        nr_rows = OUT.tell() // rowsize
+    with open(tmpfile, 'wb') as file:
+        collect_positions(file.write)
+        nr_rows = file.tell() // rowsize
 
     logging.debug(f"Sorting {nr_rows} rows.")
+
     if args.sorter == 'java':
-        pivotselector = 'random'  # Options: random, first, central, median-of-three
-        cutoff = str(10_000_000)
-        subprocess.run(['java', '-jar', 'DiskFixedSizeArray.jar', tmpfile, str(rowsize), pivotselector, cutoff])
+        pivotselector = args.pivot_selector or 'random'
+        cmd = ['java', '-jar', 'DiskFixedSizeArray.jar', 
+               tmpfile, str(rowsize), pivotselector, str(args.cutoff or 1_000_000)]
+        subprocess.run(cmd)
+
     elif args.sorter == 'multikey':
         from mmap import mmap
         with open(tmpfile, 'r+b') as file:
             mview = memoryview(mmap(file.fileno(), 0))
-        assert len(mview) % rowsize == 0
+        assert len(mview) % rowsize == 0, \
+            f"File size ({len(mview)}) is not divisible by rowsize ({rowsize})"
         sort.multikeysort(mview, rowsize)
+
     else:
         with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
             sort.quicksort(
                 bytes_array,
-                pivotselector = sort.random_pivot, 
-                # Options: random_pivot, take_first_pivot, take_middle_pivot, median_of_three, tukey_ninther
-                cutoff = 10_000_000,
+                pivotselector = PIVOT_SELECTORS.get(args.pivot_selector, sort.random_pivot), 
+                cutoff = args.cutoff or 1_000_000,
             )
 
     logging.debug(f"Creating suffix array")
