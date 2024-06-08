@@ -10,7 +10,7 @@ PivotSelector = Callable[[MutableSequence[CT], int, int], int]
 ###############################################################################
 ## Multikey quicksort, Cython
 
-def multikeysort(mview: memoryview, itemsize: int):
+def multikeysort(mview: memoryview, itemsize: int) -> None:
     try:
         from multikey_quicksort import multikey_quicksort  # type: ignore
     except ModuleNotFoundError:

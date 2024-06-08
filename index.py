@@ -393,7 +393,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
     if args.sorter == 'java':
         pivotselector = args.pivot_selector or 'random'
         cmd = ['java', '-jar', 'DiskFixedSizeArray.jar', 
-               tmpfile, str(rowsize), pivotselector, str(args.cutoff or 1_000_000)]
+               str(tmpfile), str(rowsize), pivotselector, str(args.cutoff or 1_000_000)]
         subprocess.run(cmd)
 
     elif args.sorter == 'multikey':
