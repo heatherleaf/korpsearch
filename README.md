@@ -63,10 +63,13 @@ There are several possible sorting implementations you can test with (using the 
 
 - `java` is a Java implementation of the `tmpfile` option, so it is also useful for very large corpora. 
   It is approximately 2-3 times faster than using PyPy with `tmpfile`.
-  Note that you have to compile the Java version first, by running `make java-arrays`.
+  Note that you have to compile the Java version first, by running `make java-sort`.
 
 - `lmdb` uses the [LMDB database engine](https://lmdb.readthedocs.io/) for sorting the index.
   Note that you have to install the external `lmdb` library first.
+
+- `multikey` uses a Cython implementation of [multikey quicksort](https://en.wikipedia.org/wiki/Multi-key_quicksort)
+  for sorting the index. Note that you have to compile the Cython module first, by running `make multikey-sort`.
 
 ## Searching from the command line
 
@@ -91,7 +94,7 @@ The default implementation is in pure Python (in `merge.py`), but there is a fas
 To use this you first have to install [Cython](https://cython.readthedocs.io/en/stable/src/quickstart/install.html). 
 Then you can compile the `fast_merge` module:
 
-    make cython
+    make fast-merge
 
 
 ## Using the web demo
