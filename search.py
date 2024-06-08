@@ -40,11 +40,11 @@ def hash_query(corpus: Corpus, query: Query, **extra_args: object) -> Path:
     return query_dir / query_hash
 
 
-def run_query(query: Query, results_file: Optional[Path], no_binary: bool = False, use_internal: bool = False) -> IndexSet:
+def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> IndexSet:
     search_results: list[tuple[Query, IndexSet]] = []
     subqueries: list[tuple[Query, Index]] = []
     for subq in query.subqueries():
-        if no_binary and len(subq) > 1:
+        if args.no_binary and len(subq) > 1:
             continue
         try:
             subqueries.append((subq, subq.index()))
@@ -87,7 +87,7 @@ def run_query(query: Query, results_file: Optional[Path], no_binary: bool = Fals
         intersection_type = intersection.merge_update(
             results,
             results_file, 
-            use_internal = use_internal,
+            use_internal = args.internal_merge,
             merge_type = MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
@@ -98,29 +98,28 @@ def run_query(query: Query, results_file: Optional[Path], no_binary: bool = Fals
     return intersection
 
 
-def search_corpus(corpus: Corpus, query: Query, filter_results: bool, 
-                  no_cache: bool, no_diskarray: bool, no_binary: bool, internal_intersection: bool) -> IndexSet:
-
-    final_results_file = None if no_diskarray else hash_query(corpus, query, filtered=filter_results)
+def search_corpus(corpus: Corpus, query: Query, args: Namespace) -> IndexSet:
+    print(args)
+    final_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=args.filter)
     try:
-        assert final_results_file and not no_cache
+        assert final_results_file and not args.no_cache
         results = IndexSet.open(final_results_file)
         logging.debug(f"Using cached results file: {final_results_file}")
         return results
     except (FileNotFoundError, AssertionError):
         pass
 
-    if not filter_results:
-        return run_query(query, final_results_file, no_binary, internal_intersection)
+    if not args.filter:
+        return run_query(query, final_results_file, args)
 
-    unfiltered_results_file = None if no_diskarray else hash_query(corpus, query, filtered=False)
+    unfiltered_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=False)
     assert unfiltered_results_file != final_results_file
     try:
-        assert unfiltered_results_file and not no_cache
+        assert unfiltered_results_file and not args.no_cache
         results = IndexSet.open(unfiltered_results_file)
         logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
     except (FileNotFoundError, AssertionError):
-        results = run_query(query, unfiltered_results_file, no_binary, internal_intersection)
+        results = run_query(query, unfiltered_results_file, args)
         logging.debug(f"Unfiltered results: {results}")
 
     results.filter_update(query.check_position, final_results_file)
@@ -155,7 +154,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                 features_to_show.remove('word')
             features_to_show.insert(0, 'word')
 
-        results = search_corpus(corpus, query, args.filter, args.no_cache, args.no_diskarray, args.no_binary, args.internal_intersection)
+        results = search_corpus(corpus, query, args)
         logging.info(f"Results: {results}")
 
         query_offset = query.max_offset()
