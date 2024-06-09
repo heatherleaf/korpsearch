@@ -12,10 +12,7 @@ import merge
 
 fast_merge = None
 try:
-    import platform
-    if platform.python_implementation() == 'CPython':
-        # fast_merge is NOT faster in PyPy!
-        import fast_merge  # type: ignore
+    import fast_merge  # type: ignore
 except ModuleNotFoundError:
     print("Module 'fast_merge' not found. "
           "To install, run: 'python setup.py build_ext --inplace'. "
