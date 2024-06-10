@@ -27,10 +27,10 @@ cdef void fast_mk_quicksort(
         return
 
     # Optimisation: if there are only two elements left, we compare them and maybe swap.
-    # (Apparently it doesn't make any difference in speed...)
+    # (Apparently it doesn't make much difference in speed...)
     if size == 2:
-        first = array + start*itemsize # + offset
-        if memcmp(first, first + itemsize, itemsize) > 0:
+        first = array + start*itemsize + offset
+        if memcmp(first, first + itemsize, itemsize - offset) > 0:
             swap(array, tmp, itemsize, start, start+1)
         return
 
