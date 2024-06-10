@@ -1,6 +1,7 @@
 # cython: language_level=3
 
 from libc.stdlib cimport malloc
+from libc.stdio cimport printf, fflush, stdout
 
 
 def multikey_quicksort(mview: memoryview, itemsize: int) -> None:
@@ -21,10 +22,21 @@ cdef void fast_mk_quicksort(
         unsigned char* array, unsigned char* tmp, size_t itemsize, 
         size_t start, size_t end, size_t offset,
     ):
-    if end - start <= 1:
+    cdef size_t size = end - start
+    if size <= 1:
         return
-    if end - start > 100_000:
-        print("Sorted:", start, "rows", end="\r")
+
+    # Optimisation: if there are only two elements left, we compare them and maybe swap.
+    # (Apparently it doesn't make any difference in speed...)
+    if size == 2:
+        first = array + start*itemsize # + offset
+        if memcmp(first, first + itemsize, itemsize) > 0:
+            swap(array, tmp, itemsize, start, start+1)
+        return
+
+    if size > 100_000:
+        printf("Sorted: %zu rows\r", start)
+        fflush(stdout)
 
     # Use the very simple take-first pivot,
     # so no need to swap the pivot into the first position.
@@ -51,7 +63,7 @@ cdef void fast_mk_quicksort(
     fast_mk_quicksort(array, tmp, itemsize, pivotEnd, end, offset)
 
 
-cdef unsigned char getCharAtOffset(unsigned char* array, size_t itemsize, size_t i, size_t offset):
+cdef inline unsigned char getCharAtOffset(unsigned char* array, size_t itemsize, size_t i, size_t offset):
     return array[i * itemsize + offset]
 
 
@@ -63,4 +75,7 @@ cdef inline void swap(unsigned char* array, unsigned char* tmp, size_t itemsize,
 
 cdef extern from "string.h":
     void *memcpy(void *dest, void *src, size_t len)
+
+cdef extern from "string.h":
+    int memcmp(void *dest, void *src, size_t len)
 
