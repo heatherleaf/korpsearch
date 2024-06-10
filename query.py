@@ -87,7 +87,7 @@ class Query:
             return Instance([lit.value for lit in self.positive_literals()])
 
     def index(self) -> Index:
-        return Index(self.corpus, self.template)
+        return Index.get(self.corpus, self.template)
 
     def subqueries(self) -> Iterator['Query']:
         # Subqueries are generated in decreasing order of complexity

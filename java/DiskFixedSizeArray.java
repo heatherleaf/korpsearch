@@ -27,6 +27,8 @@ public class DiskFixedSizeArray extends AbstractList<DiskFixedSizeArray.Record> 
         channel = (FileChannel) Files.newByteChannel(arrayPath, StandardOpenOption.READ, StandardOpenOption.WRITE);
         buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, channel.size());
         this.recordSize = recordSize;
+        if (channel.size() % recordSize != 0)
+            throw new IllegalArgumentException("File size is not divisible by record size");
         this.arraySize = (int) (channel.size() / recordSize);
     }
 
@@ -90,6 +92,7 @@ public class DiskFixedSizeArray extends AbstractList<DiskFixedSizeArray.Record> 
         if (args.length > 2) {
             char s = args[2].charAt(0);
             selector = (s == 'f' ? new Quicksort.TakeFirstPivotSelector() :
+                        s == 'c' ? new Quicksort.TakeMiddlePivotSelector() :
                         s == 'r' ? new Quicksort.RandomPivotSelector() :
                         s == 'm' ? new Quicksort.MedianOfThreePivotSelector() :
                         reportError("Unknown pivot selector"));
@@ -103,6 +106,7 @@ public class DiskFixedSizeArray extends AbstractList<DiskFixedSizeArray.Record> 
                 reportError("Cutoff must be a positive integer");
             }
         }
+        if (cutoff < 10) reportError("Cutoff must be >= 10");
 
         Quicksort<Record> sorter = new Quicksort<>(Comparator.naturalOrder(), selector, cutoff);
 
@@ -116,7 +120,7 @@ public class DiskFixedSizeArray extends AbstractList<DiskFixedSizeArray.Record> 
     public static <E> E reportError(String err) {
         System.err.println(
             "Usage: java DiskFixedSizeArray path-to-diskarray record-size [pivot-selector [cutoff]]\n" +
-            "Where: pivot-selector = take (f)irst / (r)andom / (m)edian-of-three\n" + 
+            "Where: pivot-selector = take (f)irst / (c)entral / (r)andom / (m)edian-of-three\n" + 
             "       cutoff = cutoff for calling Java's built-in sort\n\n" +
             "Sorts the given file, which consists of fixed-size byte records.\n" + 
             "The records are stored in big-endian order (when viewed as integers).\n"
