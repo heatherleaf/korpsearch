@@ -6,7 +6,7 @@ def merge(
         result: memoryview, take_first: bool, take_second: bool, take_common: bool,
     ) -> int:
     """
-    Merge two sorted arrays A (arr1) and B (arr2).
+    Merge two sorted arrays A (arr1) and B (arr2), of unsigned (4-byte = 32-bit) integers.
     The result array must have enough space for all elements.
     Returns the size of the merged result (so the result array can be truncated).
 
@@ -22,19 +22,18 @@ def merge(
     difference   (A - B)   True           False          False
     """
 
-    assert arr1.itemsize == arr2.itemsize
-    cdef int itemsize = arr1.itemsize
+    assert arr1.itemsize == arr2.itemsize == 4, "I can only handle 4-byte integer arrays."
 
     cdef unsigned int[::1] in1buffer = arr1
     cdef unsigned int[::1] in2buffer = arr2
     cdef unsigned int[::1] outbuffer = result
 
-    cdef unsigned char* in1 = <unsigned char*> &in1buffer[0]
-    cdef unsigned char* in2 = <unsigned char*> &in2buffer[0]
-    cdef unsigned char* out = <unsigned char*> &outbuffer[0]
+    cdef unsigned int* in1 = <unsigned int*> &in1buffer[0]
+    cdef unsigned int* in2 = <unsigned int*> &in2buffer[0]
+    cdef unsigned int* out = <unsigned int*> &outbuffer[0]
 
     return fast_merge(
-        out, itemsize, 
+        out, 
         in1, start1, length1, offset1,
         in2, start2, length2, offset2,
         take_first, take_second, take_common,
@@ -42,83 +41,65 @@ def merge(
 
 
 cdef size_t fast_merge(
-        unsigned char* out, size_t itemsize, 
-        unsigned char* in1, size_t start1, size_t length1, size_t offset1, 
-        unsigned char* in2, size_t start2, size_t length2, size_t offset2, 
+        unsigned int* out, 
+        unsigned int* in1, size_t start1, size_t length1, size_t offset1, 
+        unsigned int* in2, size_t start2, size_t length2, size_t offset2, 
         size_t take_first, size_t take_second, size_t take_common,
     ):
 
-    in1 += start1 * itemsize
-    in2 += start2 * itemsize
-    length1 *= itemsize
-    length2 *= itemsize
+    in1 += start1
+    in2 += start2
 
     cdef size_t i = 0
     cdef size_t j = 0
     cdef size_t k = 0
 
-    x = read_bytes(in1 + i, itemsize) - offset1
-    y = read_bytes(in2 + j, itemsize) - offset2
+    x = in1[i] - offset1
+    y = in2[j] - offset2
     while True:
         if x < y: 
             if take_first:
-                write_bytes(out + k, x, itemsize)
-                k += itemsize
-            i += itemsize
+                out[k] = x
+                k += 1
+            i += 1
             if i >= length1: 
                 break
-            x = read_bytes(in1 + i, itemsize) - offset1
+            x = in1[i] - offset1
 
         elif x > y: 
             if take_second:
-                write_bytes(out + k, y, itemsize)
-                k += itemsize
-            j += itemsize
+                out[k] = y
+                k += 1
+            j += 1
             if j >= length2: 
                 break
-            y = read_bytes(in2 + j, itemsize) - offset2
+            y = in2[j] - offset2
 
         else:
             if take_common:
-                write_bytes(out + k, x, itemsize)
-                k += itemsize
-            i += itemsize
+                out[k] = x
+                k += 1
+            i += 1
             if i >= length1: 
                 break
-            j += itemsize
+            j += 1
             if j >= length2: 
                 break
-            x = read_bytes(in1 + i, itemsize) - offset1
-            y = read_bytes(in2 + j, itemsize) - offset2
+            x = in1[i] - offset1
+            y = in2[j] - offset2
 
     if take_first:
         while i < length1:
-            x = read_bytes(in1 + i, itemsize) - offset1
-            i += itemsize
-            write_bytes(out + k, x, itemsize)
-            k += itemsize
+            x = in1[i] - offset1
+            i += 1
+            out[k] = x
+            k += 1
 
     if take_second:
         while j < length2:
-            y = read_bytes(in2 + j, itemsize) - offset2
-            j += itemsize
-            write_bytes(out + k, y, itemsize)
-            k += itemsize
+            y = in2[j] - offset2
+            j += 1
+            out[k] = y
+            k += 1
 
-    return k // itemsize
-
-
-cdef extern from "string.h":
-    void *memcpy(void *dest, const void *src, size_t len)
-
-
-cdef inline size_t read_bytes(const void *ptr, size_t size):
-    """Read an integer of the given number of bytes from a pointer."""
-    cdef size_t result = 0
-    memcpy(&result, ptr, size)
-    return result
-
-
-cdef inline void write_bytes(void *ptr, size_t value, size_t size):
-    """Write an integer of the given number of bytes to a pointer."""
-    memcpy(ptr, &value, size)
+    return k

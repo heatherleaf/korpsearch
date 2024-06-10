@@ -12,7 +12,7 @@ from disk import InternedString, DiskFixedBytesArray, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
 import sort
-from util import progress_bar, get_integer_size, ByteOrder, binsearch_first, binsearch_range
+from util import progress_bar, ByteOrder, binsearch_first, binsearch_range
 
 
 # Possible sorting alternatives, the first is the default:
@@ -284,6 +284,9 @@ class BinaryIndex(Index):
 # Because then we can treat a tuple of integers as a bytestring (when comparing them).
 SORTING_BYTEORDER: ByteOrder = 'big'
 
+# Index sets should only consist of 4-byte (unsigned) integers.
+BYTESIZE = 4
+
 
 def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
     assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
@@ -291,9 +294,8 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
 
     logging.debug(f"Building simple unary index for {template} @ {index_path}, using sorter '{args.sorter}'")
     index_size = len(corpus)
-    bytesize = get_integer_size(index_size)
-    bitsize = bytesize * 8
-    rowsize = bytesize * 2
+    bitsize = BYTESIZE * 8
+    rowsize = BYTESIZE * 2
     tmpl: TemplateLiteral = template.template[0]
     features = corpus.tokens[tmpl.feature]
 
@@ -304,7 +306,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
                 row = (instance_value.index << bitsize) + pos
                 collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
 
-    collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, args)
+    collect_and_sort_positions(collect_positions, index_path, index_size, BYTESIZE, rowsize, args)
 
 
 def build_binary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
@@ -314,7 +316,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     logging.debug(f"Building binary index for {template} @ {index_path}, using sorter '{args.sorter}'")
 
     index_size = len(corpus) - template.maxdelta()
-    bytesize = get_integer_size(index_size)
+    bytesize = 4
     bitsize = bytesize * 8
     rowsize = bytesize * 3
 

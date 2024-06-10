@@ -62,6 +62,7 @@ class IndexSet:
 
     def __init__(self, values: DiskIntArray, path: Optional[Path] = None, 
                  start: int = 0, size: int = -1, offset: int = 0) -> None:
+        assert values.array.itemsize == 4, "IndexSets must contain 4-byte integer arrays."
         if size < 0:
             size = len(values) - start
         while size > 0 and values.array[start] < offset:
@@ -166,6 +167,7 @@ class IndexSet:
         if not resultpath:
             return DiskIntArray.create(max_size, itemsize = self.values.array.itemsize)
         if self.path and DiskIntArray.getpath(self.path) == DiskIntArray.getpath(resultpath):
+            assert max_size <= len(self), "Indexset: cannot update unions in-place"
             return self.values
         if other and other.path: 
             assert DiskIntArray.getpath(other.path) != DiskIntArray.getpath(resultpath)
