@@ -1,5 +1,5 @@
 
-from typing import NamedTuple, Any
+from typing import NamedTuple, Optional, Any
 from collections.abc import Iterator, Callable, Collection, Sequence
 from functools import total_ordering
 from pathlib import Path
@@ -39,6 +39,10 @@ class Literal(NamedTuple):
 
     def __str__(self) -> str:
         return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
+
+    def test(self, corpus: Corpus, pos: int) -> bool:
+        value = corpus.tokens[self.feature][pos + self.offset]
+        return (value == self.value) != self.negative
 
     @staticmethod
     def parse(corpus: Corpus, litstr: str) -> 'Literal':
@@ -129,6 +133,11 @@ class Template:
     def __hash__(self) -> int:
         return hash((self.template, self.literals))
 
+    def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
+        if not all(lit.test(corpus, pos) for lit in self.literals):
+            return None
+        return Instance([corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template])
+
     @staticmethod
     def parse(corpus: Corpus, template_str: str) -> 'Template':
         try:
@@ -214,6 +223,22 @@ class Index:
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         raise NotImplementedError("Must be overridden by a subclass")
+
+    def sanity_check(self) -> None:
+        logging.info(f"Checking search index: {self.template}")
+        prev_pos = -1
+        prev_instance = None
+        for i in progress_bar(range(len(self.index)), desc="Checking index"):
+            pos = self.index.array[i]
+            instance = self.template.instantiate(self.corpus, pos)
+            assert instance is not None
+            if prev_instance is not None: 
+                assert prev_instance <= instance, f"Index position {i}: {prev_instance} > {instance}"
+                if prev_instance == instance:
+                    assert prev_pos < pos, f"Index position {i}: {prev_instance} == {instance} but {prev_pos} >= {pos}"
+            prev_pos = pos
+            prev_instance = instance
+
 
     @staticmethod
     def indexpath(corpus: Corpus, template: Template) -> Path:

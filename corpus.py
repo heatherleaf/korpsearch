@@ -108,6 +108,27 @@ class Corpus:
         for sa in self.tokens.values(): sa.close()
         DiskIntArray.close(self.sentence_pointers)
 
+
+    def sanity_check(self) -> None:
+        logging.info("Sanity checking corpus.")
+        for feat in self.features:
+            logging.debug(f"Checking corpus index: {feat}")
+            self.tokens[feat].sanity_check()
+        assert self.sentence_pointers.path
+        logging.debug(f"Checking sentence pointers: {self.sentence_pointers.path.name}")
+        sent_index = self.tokens[self.sentence_feature]
+        sent_pointers = self.sentence_pointers.array
+        assert sent_pointers[0] == sent_pointers[1] == 0, "Sentence 0 should not exist."
+        sentence = 1
+        sval = self.sentence_start_value
+        for token, sval_ in enumerate(progress_bar(sent_index, "Checking sentences")):
+            if sval == bytes(sval_):
+                assert sent_pointers[sentence] == token, f"Sentence {sentence} doesn't point to the right token position."
+                sentence += 1
+        assert sentence == len(sent_pointers)
+        logging.info("Done checking corpus.")
+
+
     @staticmethod
     def build_from_csv(basedir: Path, csv_corpusfile: Path) -> None:
         logging.debug(f"Building corpus index from file: {str(csv_corpusfile)}")

@@ -221,6 +221,17 @@ class StringCollection:
         self.strings.close()
         self.starts.close()
 
+    def sanity_check(self) -> None:
+        starts = self.starts.array
+        assert starts[0] == starts[1] == 0
+        old = b''
+        for start, end in zip(starts[1:], starts[2:]):
+            assert start < end, f"StringCollection position error: {start} >= {end}"
+            new = self.strings[start : end]
+            assert old < new, f"StringCollection order error: {old!r} >= {new!r}"
+            old = new
+
+
     @staticmethod
     def build(path: Path, strings: Iterable[bytes]) -> None:
         stringset = set(strings)
@@ -331,6 +342,10 @@ class DiskStringArray:
     def close(self) -> None:
         self._array.close()
         self._strings.close()
+
+    def sanity_check(self) -> None:
+        self._strings.sanity_check()
+
 
     @staticmethod
     def create(path: Path, strings: Iterable[bytes], max_size: int) -> 'DiskStringArray':

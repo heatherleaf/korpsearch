@@ -49,6 +49,9 @@ def main(args: argparse.Namespace) -> None:
         except (FileNotFoundError, AssertionError):
             Corpus.build_from_csv(corpusdir, corpusfile)
             logging.info(f"Created the corpus index")
+        if args.sanity_check:
+            with Corpus(base) as corpus:
+                corpus.sanity_check()
 
     if args.features or args.templates:
         with Corpus(base) as corpus:
@@ -64,6 +67,8 @@ def main(args: argparse.Namespace) -> None:
                 except (FileNotFoundError, AssertionError):
                     Index.build(corpus, tmpl, args)
                     built += 1
+                if args.sanity_check:
+                    Index(corpus, tmpl).sanity_check()
             if built == len(templates):
                 logging.info(f"Created {built} new query indexes")
             else:
@@ -135,6 +140,8 @@ parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', co
     help='verbose output')
 parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
     help='silent (no output)')
+parser.add_argument('--sanity-check', action='store_true', 
+    help="check that the created indexes are correct (default: don't check)")
 
 parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
     help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]})')
