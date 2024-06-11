@@ -16,7 +16,7 @@ from util import progress_bar, ByteOrder, binsearch_first, binsearch_range
 
 
 # Possible sorting alternatives, the first is the default:
-SORTER_CHOICES = ['tmpfile', 'internal', 'java', 'lmdb', 'multikey']
+SORTER_CHOICES = ['tmpfile', 'internal', 'qsort', 'java', 'lmdb', 'multikey']
 
 # Possible pivot selectors, used by the 'tmpfile' and 'java' sorters:
 PIVOT_SELECTORS = {
@@ -423,13 +423,13 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
                str(tmpfile), str(rowsize), pivotselector, str(args.cutoff or 1_000_000)]
         subprocess.run(cmd)
 
-    elif args.sorter == 'multikey':
+    elif args.sorter in ['qsort', 'multikey']:
         from mmap import mmap
         with open(tmpfile, 'r+b') as file:
             mview = memoryview(mmap(file.fileno(), 0))
         assert len(mview) % rowsize == 0, \
             f"File size ({len(mview)}) is not divisible by rowsize ({rowsize})"
-        sort.multikeysort(mview, rowsize)
+        sort.cythonsort(args.sorter, mview, rowsize)
 
     else:
         with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:

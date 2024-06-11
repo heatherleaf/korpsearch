@@ -10,16 +10,35 @@ PivotSelector = Callable[[MutableSequence[CT], int, int], int]
 ###############################################################################
 ## Multikey quicksort, Cython
 
+def cythonsort(sorter: str, mview: memoryview, itemsize: int) -> None:
+    if sorter == 'multikey':
+        multikeysort(mview, itemsize)
+    elif sorter == 'qsort':
+        cqsort(mview, itemsize)
+    else:
+        raise ValueError(f"Unknown sorter: {sorter}")
+
+
 def multikeysort(mview: memoryview, itemsize: int) -> None:
     try:
         from multikey_quicksort import multikey_quicksort  # type: ignore
     except ModuleNotFoundError:
         raise ModuleNotFoundError(
             "Module 'multikey_quicksort' not found. "
-            "To install, run: 'python setup.py build_ext --inplace'."
+            "To install, run: 'make multikey-sort'."
         )
-
     multikey_quicksort(mview, itemsize)
+
+
+def cqsort(mview: memoryview, itemsize: int) -> None:
+    try:
+        from qsort_index import qsort_index  # type: ignore
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError(
+            "Module 'qsort_index' not found. "
+            "To install, run: 'make qsort-index'."
+        )
+    qsort_index(mview, itemsize)
 
 
 ###############################################################################
