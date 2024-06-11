@@ -15,7 +15,7 @@ try:
     import fast_merge  # type: ignore
 except ModuleNotFoundError:
     print("Module 'fast_merge' not found. "
-          "To install, run: 'python setup.py build_ext --inplace'. "
+          "To install, run: 'make fast-merge'. "
           "Defaulting to an internal implementation.\n", 
           file=sys.stderr)
 
