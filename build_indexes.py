@@ -53,24 +53,22 @@ def main(args: argparse.Namespace) -> None:
     if args.features or args.templates:
         with Corpus(base) as corpus:
             indexdir.mkdir(exist_ok=True)
-            templates = set(yield_templates(corpus, args))
-            existing_templates: set[Template] = set()
+            templates = list(yield_templates(corpus, args))
+            logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, templates))}")
+            built = 0
             for tmpl in templates:
                 try:
-                    with Index.get(corpus, tmpl) as _index:
+                    with Index.get(corpus, tmpl) as index:
                         assert not args.force
-                    existing_templates.add(tmpl)
+                        logging.debug(f"Existing index: {index.template}")
                 except (FileNotFoundError, AssertionError):
-                    pass
-            if existing_templates:
-                logging.info(f"Skipping {len(existing_templates)} existing indexes")
-                templates -= existing_templates
-            if templates:
-                sorted_templates = sorted(templates)
-                logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, sorted_templates))}")
-                for template in sorted_templates:
-                    Index.build(corpus, template, args)
-                logging.info(f"Created {len(templates)} query indexes")
+                    Index.build(corpus, tmpl, args)
+                    built += 1
+            if built == len(templates):
+                logging.info(f"Created {built} new query indexes")
+            else:
+                logging.info(f"Created {built} new query indexes, "
+                             f"skipped {len(templates)-built} existing")
 
 
 def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
@@ -89,13 +87,16 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                 }
                 yield Template(tmpl.template, literals)
     if args.features:
+        # First build the unary indexes.
         if not args.no_sentence_breaks:
             yield Template([TemplateLiteral(0, corpus.sentence_feature)])
         for feat in args.features:
             yield Template([TemplateLiteral(0, feat)])
-            for feat1 in args.features:
+        # Binary indexes depend on unary indexes, so we build them afterwards.
+        for feat1 in args.features:
+            for feat2 in args.features:
                 for dist in range(1, args.max_dist+1):
-                    template = [TemplateLiteral(0, feat), TemplateLiteral(dist, feat1)]
+                    template = [TemplateLiteral(0, feat1), TemplateLiteral(dist, feat2)]
                     if args.no_sentence_breaks:
                         yield Template(template)
                     else:
