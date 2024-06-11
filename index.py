@@ -331,7 +331,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
                 row = (instance_value.index << bitsize) + pos
                 collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
 
-    collect_and_sort_positions(collect_positions, index_path, index_size, BYTESIZE, rowsize, args)
+    collect_and_sort_positions(collect_positions, index_path, index_size, rowsize, args)
 
 
 def build_binary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
@@ -341,9 +341,8 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     logging.info(f"Building binary index: {template}")
 
     index_size = len(corpus) - template.maxdelta()
-    bytesize = 4
-    bitsize = bytesize * 8
-    rowsize = bytesize * 3
+    bitsize = BYTESIZE * 8
+    rowsize = BYTESIZE * 3
 
     def test_literals(pos: int) -> bool:
         return all(
@@ -379,24 +378,24 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
         if skipped_instances:
             logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
-    collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, args)
+    collect_and_sort_positions(collect_positions, index_path, index_size, rowsize, args)
 
 
 RowAdder = Callable[[bytes], Any]
 RowCollector = Callable[[RowAdder], None]
 
 def collect_and_sort_positions(collect_positions: RowCollector, index_path: Path, 
-                               index_size: int, bytesize: int, rowsize: int, args: Namespace) -> None:
+                               index_size: int, rowsize: int, args: Namespace) -> None:
     if args.sorter == 'internal':
-        collect_and_sort_internally(collect_positions, index_path, index_size, bytesize, args)
+        collect_and_sort_internally(collect_positions, index_path, index_size, args)
     elif args.sorter == 'lmdb':
-        collect_and_sort_lmdb(collect_positions, index_path, index_size, bytesize, args)
+        collect_and_sort_lmdb(collect_positions, index_path, index_size, args)
     else:
-        collect_and_sort_tmpfile(collect_positions, index_path, index_size, bytesize, rowsize, args)
+        collect_and_sort_tmpfile(collect_positions, index_path, index_size, rowsize, args)
 
 
 def collect_and_sort_internally(collect_positions: RowCollector, index_path: Path, 
-                                index_size: int, bytesize: int, args: Namespace) -> None:
+                                index_size: int, args: Namespace) -> None:
     tmplist: list[bytes] = []
     collect_positions(tmplist.append)
     logging.debug(f"Sorting {len(tmplist)} rows in memory, using sorter '{args.sorter}'.")
@@ -404,12 +403,12 @@ def collect_and_sort_internally(collect_positions: RowCollector, index_path: Pat
     logging.debug(f"Creating suffix array")
     with DiskIntArray.create(len(tmplist), index_path, max_value=index_size) as suffix_array:
         for i, row in enumerate(tmplist):
-            pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
+            pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
             suffix_array[i] = pos
 
 
 def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path, 
-                             index_size: int, bytesize: int, rowsize: int, args: Namespace) -> None:
+                             index_size: int, rowsize: int, args: Namespace) -> None:
     tmpfile = index_path.parent / 'index.tmp'
     with open(tmpfile, 'wb') as file:
         collect_positions(file.write)
@@ -444,7 +443,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
         with open(tmpfile, 'rb') as IN:
             i = 0
             while (row := IN.read(rowsize)):
-                pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
+                pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
                 suffix_array[i] = pos
                 i += 1
 
@@ -453,7 +452,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
 
 
 def collect_and_sort_lmdb(collect_positions: RowCollector, index_path: Path, 
-                          index_size: int, bytesize: int, args: Namespace) -> None:
+                          index_size: int, args: Namespace) -> None:
     logging.debug(f"Sorting using database '{args.sorter}'.")
     import lmdb  # type: ignore
     tmpdir = index_path.parent / 'index.tmpdb'
@@ -467,7 +466,7 @@ def collect_and_sort_lmdb(collect_positions: RowCollector, index_path: Path,
         nrows = db.stat()['entries']
         with DiskIntArray.create(nrows, index_path, max_value=index_size) as suffix_array:
             for i, (row, _) in enumerate(db.cursor()):
-                pos = int.from_bytes(row[-bytesize:], SORTING_BYTEORDER)
+                pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
                 suffix_array[i] = pos
     env.close()
     if not args.keep_tmpfiles:
