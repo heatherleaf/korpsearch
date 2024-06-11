@@ -292,7 +292,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
     assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
     assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
 
-    logging.debug(f"Building simple unary index for {template} @ {index_path}, using sorter '{args.sorter}'")
+    logging.info(f"Building unary index: {template}")
     index_size = len(corpus)
     bitsize = BYTESIZE * 8
     rowsize = BYTESIZE * 2
@@ -313,7 +313,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     assert len(template) == 2, f"BinaryIndex templates must have length 2: {template}"
     assert all(lit.negative for lit in template.literals), f"Cannot handle positive template literals: {template}"
 
-    logging.debug(f"Building binary index for {template} @ {index_path}, using sorter '{args.sorter}'")
+    logging.info(f"Building binary index: {template}")
 
     index_size = len(corpus) - template.maxdelta()
     bytesize = 4
@@ -352,7 +352,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
                     row = (((val1.index << bitsize) + val2.index) << bitsize) + pos
                     collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
         if skipped_instances:
-            logging.info(f"Skipped {skipped_instances} low-frequency instances")
+            logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
     collect_and_sort_positions(collect_positions, index_path, index_size, bytesize, rowsize, args)
 
@@ -374,7 +374,7 @@ def collect_and_sort_internally(collect_positions: RowCollector, index_path: Pat
                                 index_size: int, bytesize: int, args: Namespace) -> None:
     tmplist: list[bytes] = []
     collect_positions(tmplist.append)
-    logging.debug(f"Sorting {len(tmplist)} rows.")
+    logging.debug(f"Sorting {len(tmplist)} rows in memory, using sorter '{args.sorter}'.")
     tmplist.sort()
     logging.debug(f"Creating suffix array")
     with DiskIntArray.create(len(tmplist), index_path, max_value=index_size) as suffix_array:
@@ -390,7 +390,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
         collect_positions(file.write)
         nr_rows = file.tell() // rowsize
 
-    logging.debug(f"Sorting {nr_rows} rows.")
+    logging.debug(f"Sorting {nr_rows} rows on disk, using sorter '{args.sorter}'.")
 
     if args.sorter == 'java':
         pivotselector = args.pivot_selector or 'random'
@@ -429,6 +429,7 @@ def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path,
 
 def collect_and_sort_lmdb(collect_positions: RowCollector, index_path: Path, 
                           index_size: int, bytesize: int, args: Namespace) -> None:
+    logging.debug(f"Sorting using database '{args.sorter}'.")
     import lmdb  # type: ignore
     tmpdir = index_path.parent / 'index.tmpdb'
     if tmpdir.exists():
