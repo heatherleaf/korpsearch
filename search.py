@@ -99,7 +99,6 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
 
 
 def search_corpus(corpus: Corpus, query: Query, args: Namespace) -> IndexSet:
-    print(args)
     final_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=args.filter)
     try:
         assert final_results_file and not args.no_cache
