@@ -22,6 +22,16 @@ def main(args: argparse.Namespace) -> None:
     corpusdir = add_suffix(base, Corpus.dir_suffix)
     indexdir = add_suffix(base, Index.dir_suffix)
 
+    if not corpusfile.is_file():
+        # If this is not the path to the corpus file, 
+        # try to infer which is the actual file.
+        candidates = list(file for suffix in CSV_SUFFIXES
+                          for file in corpusfile.parent.glob(corpusfile.name + suffix + "*"))
+        if len(candidates) > 1:
+            raise ValueError(f"Too many possible source files: {', '.join(f.name for f in candidates)}")
+        if candidates:
+            corpusfile = candidates[0]
+
     if args.clean:
         shutil.rmtree(corpusdir, ignore_errors=True)
         shutil.rmtree(indexdir, ignore_errors=True)

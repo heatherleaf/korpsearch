@@ -12,7 +12,6 @@ from util import progress_bar, ProgressBar, CompressedFileReader, add_suffix, bi
 ################################################################################
 ## Corpus
 
-
 class Corpus:
     dir_suffix = '.corpus'
     features_file = 'features.cfg'
@@ -111,7 +110,7 @@ class Corpus:
 
     @staticmethod
     def build_from_csv(basedir: Path, csv_corpusfile: Path) -> None:
-        logging.debug(f"Building corpus index")
+        logging.debug(f"Building corpus index from file: {str(csv_corpusfile)}")
         corpus = CompressedFileReader(csv_corpusfile)
         csv_filesize = corpus.file_size()
 
