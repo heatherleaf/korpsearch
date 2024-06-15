@@ -7,12 +7,9 @@ help:
 	@echo "'make cython': build all Cython modules"
 	@echo "'make fast-merge': build the 'fast_merge' module for merging qery sets"
 	@echo "'make faster-index-builder': build the 'faster_index_builder' module for index building"
-	@echo "'make java-sort': build the Java implementation of the search index sorter"
 
 
 clean:
-	$(MAKE) -C java clean
-	rm -f *.jar
 	rm -f *.c
 	rm -f *.*.so
 	rm -rf build
@@ -38,11 +35,3 @@ faster-index-builder: faster_index_builder.c
 
 %.c: %.pyx
 	cythonize -i $^
-
-
-java-sort: DiskFixedSizeArray.jar
-
-DiskFixedSizeArray.jar: java/*.java
-	$(MAKE) -C java java-arrays
-	cp java/$@ $@
-
