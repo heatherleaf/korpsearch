@@ -239,7 +239,7 @@ class StringCollection:
         stringset = set(strings)
         stringset.add(b'')
         stringlist = sorted(stringset)
-        assert not stringlist[0]
+        assert stringlist[0] == b''
 
         path = StringCollection.getpath(path)
         with open(path, 'wb') as stringsfile:
@@ -250,6 +250,7 @@ class StringCollection:
         with DiskIntArray.create(len(starts), path, max_value=starts[-1]) as arr:
             for i, start in enumerate(starts):
                 arr[i] = start
+            assert arr[0] == arr[1] == 0
 
     @classmethod
     def getpath(cls, path: Path) -> Path:
@@ -293,8 +294,9 @@ class InternedString:
             raise TypeError(f"Comparing InternedString against {type(other)}")
 
     def __bool__(self) -> bool:
-        arr = self.db.starts.array
-        return arr[self.index] < arr[self.index + 1]
+        # arr = self.db.starts.array
+        # return arr[self.index] < arr[self.index + 1]
+        return self.index > 0
 
     def __hash__(self) -> int:
         return hash(self.index)

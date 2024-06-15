@@ -46,7 +46,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
 
     tmpl = template.template[0]
     assert tmpl.offset == 0
-    features = corpus.tokens[tmpl.feature]
+    features = corpus.tokens[tmpl.feature].raw()
 
     collector: Collector
     if args.sorter == 'internal':
@@ -59,7 +59,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
 
     for pos, value in enumerate(progress_bar(features, desc="Collecting positions")):
         if value:
-            collector.append2(value.index, pos)
+            collector.append2(value, pos)
 
     collector.finalise(index_path)
 
@@ -74,7 +74,8 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     tmpl1, tmpl2 = template.template
     assert tmpl1.offset == 0
     assert tmpl2.offset == template.maxdelta()
-    features1, features2 = corpus.tokens[tmpl1.feature], corpus.tokens[tmpl2.feature]
+    features1 = corpus.tokens[tmpl1.feature].raw()
+    features2 = corpus.tokens[tmpl2.feature].raw()
     min_freq = args.min_frequency
 
     unary1 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl1.feature)]))
@@ -84,14 +85,13 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     # is much smaller than the corpus size.
     cache1: dict[int, bool] = {}
     cache2: dict[int, bool] = {}
-    def unary_min_frequency(unary: UnaryIndex, unary_key: InternedString, cache: dict[int, bool]) -> bool:
-        index = unary_key.index
-        if index not in cache:
+    def unary_min_frequency(unary: UnaryIndex, unary_key: int, cache: dict[int, bool]) -> bool:
+        if unary_key not in cache:
             search_key = unary.search_key()
             start = binsearch_first(0, len(unary)-1, unary_key, search_key)
             end = start + min_freq - 1
-            cache[index] = (end < len(unary) and search_key(end) == unary_key)
-        return cache[index]
+            cache[unary_key] = (end < len(unary) and search_key(end) == unary_key)
+        return cache[unary_key]
 
     collector: Collector
     if args.sorter == 'internal':
@@ -104,7 +104,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
 
     # Optimisation: use the underlying memoryview for each DiskStringArray, 
     # and don't bother with looking up InternedStrings - use the ints directly instead.
-    test_literals = [(corpus.tokens[lit.feature]._array.array, lit.offset, lit.value.index) for lit in template.literals]
+    test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value.index) for lit in template.literals]
 
     skipped_instances = 0
     for pos in progress_bar(range(len(corpus) - template.maxdelta()), desc="Collecting positions"):
@@ -116,7 +116,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
                     ):
                 skipped_instances += 1
             else:
-                collector.append3(val1.index, val2.index, pos)
+                collector.append3(val1, val2, pos)
     if skipped_instances:
         logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 

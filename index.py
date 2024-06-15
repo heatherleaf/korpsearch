@@ -138,31 +138,9 @@ class Template:
             )
 
 
-@total_ordering
-class Instance:
-    values: tuple[InternedString,...]
-
-    def __init__(self, values: Sequence[InternedString]) -> None:
-        assert len(values) > 0
-        self.values = tuple(values)
-
+class Instance(tuple[InternedString,...]):
     def __str__(self) -> str:
-        return '+'.join(map(str, self.values))
-
-    def __iter__(self) -> Iterator[InternedString]:
-        yield from self.values
-
-    def __len__(self) -> int:
-        return len(self.values)
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Instance) and self.values == other.values
-
-    def __lt__(self, other: 'Instance') -> bool:
-        return self.values < other.values
-
-    def __hash__(self) -> int:
-        return hash(self.values)
+        return '+'.join(map(str, self))
 
 
 ################################################################################
@@ -243,16 +221,16 @@ class UnaryIndex(Index):
         assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
         super().__init__(corpus, template)
 
-    def search_key(self) -> Callable[[int], InternedString]:
+    def search_key(self) -> Callable[[int], int]:
         tmpl = self.template.template[0]
-        features = self.corpus.tokens[tmpl.feature]
+        features = self.corpus.tokens[tmpl.feature].raw()
         offset = tmpl.offset
         index = self.index.array
         return lambda k: features[index[k] + offset]
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        return binsearch_range(0, len(self)-1, instance.values[0], self.search_key())
+        return binsearch_range(0, len(self)-1, instance[0].index, self.search_key())
 
 
 class BinaryIndex(Index):
@@ -263,10 +241,12 @@ class BinaryIndex(Index):
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
         tmpl1, tmpl2 = self.template.template
-        features1, features2 = self.corpus.tokens[tmpl1.feature], self.corpus.tokens[tmpl2.feature]
         offset1, offset2 = tmpl1.offset, tmpl2.offset
+        features1 = self.corpus.tokens[tmpl1.feature].raw()
+        features2 = self.corpus.tokens[tmpl2.feature].raw()
         index = self.index.array
-        def search_key(k: int) -> tuple[InternedString, InternedString]:
+        def search_key(k: int) -> tuple[int, int]:
             return (features1[index[k] + offset1], features2[index[k] + offset2])
-        return binsearch_range(0, len(self)-1, instance.values, search_key)
+        val1, val2 = instance
+        return binsearch_range(0, len(self)-1, (val1.index, val2.index), search_key)
 
