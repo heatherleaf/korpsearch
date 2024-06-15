@@ -33,6 +33,13 @@ def add_suffix(path: Path, suffix: str) -> Path:
     return path
 
 
+def uncompressed_suffix(path: Path) -> str:
+    if path.suffix in CompressedFileReader.compressors:
+        return path.with_suffix('').suffix
+    else:
+        return path.suffix
+
+
 ###############################################################################
 ## N:o bytes needed to store integer values
 
@@ -122,18 +129,20 @@ class CompressedFileReader:
     >>>         pbar.update(basefile.file_position() - pbar.n)
     >>>         ...do something with line...
     """
+    compressors = {
+        '.gz': gzip,
+        '.bz2': bz2,
+        '.xz': lzma,
+    }
+
     basefile: BinaryIO
     reader: BinaryIO
 
     def __init__(self, path: Path) -> None:
         path = Path(path)
         self.basefile = binfile = open(path, 'rb')
-        self.reader = (
-            gzip.open(binfile, mode='rb') if path.suffix == '.gz'  else   # type: ignore
-            bz2.open(binfile, mode='rb')  if path.suffix == '.bz2' else
-            lzma.open(binfile, mode='rb') if path.suffix == '.xz'  else
-            binfile
-        )
+        compressor = self.compressors.get(path.suffix)
+        self.reader = compressor.open(binfile, mode='rb') if compressor else binfile
 
     def file_position(self) -> int:
         return self.basefile.tell()
