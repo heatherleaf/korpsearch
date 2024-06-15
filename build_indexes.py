@@ -8,7 +8,7 @@ import logging
 from index import Literal, TemplateLiteral, Template, Index
 from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
-from util import setup_logger, add_suffix, CompressedFileReader
+from util import setup_logger, add_suffix, CompressedFileReader, SENTENCE
 
 
 CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
@@ -48,7 +48,7 @@ def main(args: argparse.Namespace) -> None:
                 assert not args.force
             logging.info(f"Corpus index already exists")
         except (FileNotFoundError, AssertionError):
-            Corpus.build_from_csv(corpusdir, corpusfile)
+            Corpus.build(corpusdir, corpusfile)
             logging.info(f"Created the corpus index")
         if args.sanity_check:
             with Corpus(base) as corpus:
@@ -78,8 +78,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
-    sfeature = corpus.sentence_feature
-    svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+    svalue = corpus.intern(SENTENCE, SENTENCE)
     if args.templates:
         for tmplstr in args.templates:
             tmpl = Template.parse(corpus, tmplstr)
@@ -88,14 +87,14 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             else:
                 dist = tmpl.maxdelta()
                 literals = set(tmpl.literals) | {
-                    Literal(True, offset, sfeature, svalue)
+                    Literal(True, offset, SENTENCE, svalue)
                     for offset in range(1, dist+1)
                 }
                 yield Template(tmpl.template, literals)
     if args.features:
         # First build the unary indexes.
         if not args.no_sentence_breaks:
-            yield Template([TemplateLiteral(0, corpus.sentence_feature)])
+            yield Template([TemplateLiteral(0, SENTENCE)])
         for feat in args.features:
             yield Template([TemplateLiteral(0, feat)])
         # Binary indexes depend on unary indexes, so we build them afterwards.
@@ -107,7 +106,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                         yield Template(template)
                     else:
                         literals = {
-                            Literal(True, offset, sfeature, svalue)
+                            Literal(True, offset, SENTENCE, svalue)
                             for offset in range(1, dist+1)
                         }
                         yield Template(template, literals)

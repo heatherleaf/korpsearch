@@ -17,7 +17,7 @@ from util import progress_bar, binsearch_range
 class Literal(NamedTuple):
     negative: bool
     offset: int
-    feature: str
+    feature: bytes
     value: InternedString
 
     def __str__(self) -> str:
@@ -32,6 +32,7 @@ class Literal(NamedTuple):
         try:
             feature, rest = litstr.split(':')
             assert feature.replace('_','').isalnum()
+            feature = feature.lower().encode()
             try:
                 offset, value = rest.split('=')
                 return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
@@ -44,7 +45,7 @@ class Literal(NamedTuple):
 
 class TemplateLiteral(NamedTuple):
     offset: int
-    feature: str
+    feature: bytes
 
     def __str__(self) -> str:
         return f"{self.feature}:{self.offset}"
@@ -54,7 +55,8 @@ class TemplateLiteral(NamedTuple):
         try:
             feature, offset = litstr.split(':')
             assert feature.replace('_','').isalnum()
-            return TemplateLiteral(int(offset), feature.lower())
+            feature = feature.lower().encode()
+            return TemplateLiteral(int(offset), feature)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed template literal: {litstr}")
 
@@ -91,7 +93,7 @@ class Template:
         max_offset = max(offsets)
         tokens: list[str] = []
         for offset in range(min_offset, max_offset+1):
-            tok = ','.join('?' + l.feature for l in self.template if l.offset == offset)
+            tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
             lit = ','.join(f'{l.feature}{"≠" if l.negative else "="}"{l.value}"' 
                            for l in self.literals if l.offset == offset)
             if lit:

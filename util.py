@@ -9,6 +9,17 @@ from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
+
+###############################################################################
+## Project-specific constants
+
+EMPTY = b''
+SENTENCE = b's'
+
+
+###############################################################################
+## Type definitions
+
 ByteOrder = Literal['little', 'big']
 
 T = TypeVar('T')
