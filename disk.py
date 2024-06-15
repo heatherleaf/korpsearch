@@ -181,13 +181,15 @@ class StringCollection:
 
     _intern: dict[bytes, int]
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, preload: bool = False) -> None:
         path = self.getpath(path)
         with open(path, 'r+b') as file:
             self.strings = mmap(file.fileno(), 0)
         self.starts = DiskIntArray(path)
-        self._intern = {}
         assert self.starts.array[0] == self.starts.array[1]
+        self._intern = {}
+        if preload:
+            self.preload()
 
     def __len__(self) -> int:
         return len(self.starts) - 1
@@ -311,9 +313,9 @@ class DiskStringArray:
     _strings: StringCollection
     _array: DiskIntArray
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, preload: bool = False) -> None:
         self._array = DiskIntArray(path)
-        self._strings = StringCollection(path)
+        self._strings = StringCollection(path, preload)
 
     def raw(self) -> memoryview:
         return self._array.array
@@ -350,8 +352,7 @@ class DiskStringArray:
     @staticmethod
     def create(path: Path, strings: Iterable[bytes], max_size: int) -> 'DiskStringArray':
         StringCollection.build(path, strings)
-        collection = StringCollection(path)
-        collection.preload()
+        collection = StringCollection(path, preload=True)
         DiskIntArray.create(max_size, path, max_value = len(collection)-1)
-        return DiskStringArray(path)
+        return DiskStringArray(path, preload=True)
 
