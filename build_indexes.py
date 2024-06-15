@@ -5,7 +5,8 @@ from pathlib import Path
 from collections.abc import Iterator
 import logging
 
-from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES, PIVOT_SELECTORS
+from index import Literal, TemplateLiteral, Template, Index
+from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
 from util import setup_logger, add_suffix, CompressedFileReader
 
@@ -65,7 +66,7 @@ def main(args: argparse.Namespace) -> None:
                         assert not args.force
                         logging.debug(f"Existing index: {index.template}")
                 except (FileNotFoundError, AssertionError):
-                    Index.build(corpus, tmpl, args)
+                    build_index(corpus, tmpl, args)
                     built += 1
                 if args.sanity_check:
                     Index(corpus, tmpl).sanity_check()

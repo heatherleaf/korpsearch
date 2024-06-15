@@ -3,29 +3,12 @@ from typing import NamedTuple, Optional, Any
 from collections.abc import Iterator, Callable, Collection, Sequence
 from functools import total_ordering
 from pathlib import Path
-from argparse import Namespace
-import shutil
 import logging
-import subprocess
 
-from disk import InternedString, DiskFixedBytesArray, DiskIntArray
+from disk import InternedString, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
-import sort
-from util import progress_bar, ByteOrder, binsearch_first, binsearch_range
-
-
-# Possible sorting alternatives, the first is the default:
-SORTER_CHOICES = ['tmpfile', 'internal', 'qsort', 'java', 'lmdb', 'multikey']
-
-# Possible pivot selectors, used by the 'tmpfile' and 'java' sorters:
-PIVOT_SELECTORS = {
-    'random': sort.random_pivot,
-    'first': sort.take_first_pivot,
-    'central': sort.take_first_pivot,
-    'median3': sort.median_of_three,
-    'ninther': sort.tukey_ninther,
-}
+from util import progress_bar, binsearch_range
 
 
 ################################################################################
@@ -254,19 +237,6 @@ class Index:
         else:
             raise ValueError(f"Cannot handle indexes of length {len(template)}: {template}")
 
-    @staticmethod
-    def build(corpus: Corpus, template: Template, args: Namespace) -> None:
-        index_path = Index.indexpath(corpus, template)
-        index_path.parent.mkdir(exist_ok=True)
-        if len(template) == 1:
-            build_unary_index(corpus, index_path, template, args)
-        elif len(template) == 2: 
-            build_binary_index(corpus, index_path, template, args)
-        else:
-            raise ValueError(f"Cannot build indexes of length {len(template)}: {template}")
-        with DiskIntArray(index_path) as suffix_array:
-            logging.info(f"Built index for {template}, with {len(suffix_array)} elements")
-
 
 class UnaryIndex(Index):
     def __init__(self, corpus: Corpus, template: Template) -> None:
@@ -299,176 +269,4 @@ class BinaryIndex(Index):
         def search_key(k: int) -> tuple[InternedString, InternedString]:
             return (features1[index[k] + offset1], features2[index[k] + offset2])
         return binsearch_range(0, len(self)-1, instance.values, search_key)
-
-
-###################################################################################################
-## Different ways of building different indexes
-
-
-# We need big-endian byte order (i.e., most-significant byte first).
-# Because then we can treat a tuple of integers as a bytestring (when comparing them).
-SORTING_BYTEORDER: ByteOrder = 'big'
-
-# Index sets should only consist of 4-byte (unsigned) integers.
-BYTESIZE = 4
-
-
-def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
-    assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
-    assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
-
-    logging.info(f"Building unary index: {template}")
-    index_size = len(corpus)
-    bitsize = BYTESIZE * 8
-    rowsize = BYTESIZE * 2
-    tmpl: TemplateLiteral = template.template[0]
-    features = corpus.tokens[tmpl.feature]
-
-    def collect_positions(collect: RowAdder) -> None:
-        for pos in progress_bar(range(index_size), desc="Collecting positions"):
-            instance_value = features[pos + tmpl.offset]
-            if instance_value:
-                row = (instance_value.index << bitsize) + pos
-                collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
-
-    collect_and_sort_positions(collect_positions, index_path, index_size, rowsize, args)
-
-
-def build_binary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
-    assert len(template) == 2, f"BinaryIndex templates must have length 2: {template}"
-    assert all(lit.negative for lit in template.literals), f"Cannot handle positive template literals: {template}"
-
-    logging.info(f"Building binary index: {template}")
-
-    index_size = len(corpus) - template.maxdelta()
-    bitsize = BYTESIZE * 8
-    rowsize = BYTESIZE * 3
-
-    def test_literals(pos: int) -> bool:
-        return all(
-            corpus.tokens[lit.feature][pos+lit.offset] != lit.value
-            for lit in template.literals
-        )
-
-    tmpl1, tmpl2 = template.template
-    features1, features2 = corpus.tokens[tmpl1.feature], corpus.tokens[tmpl2.feature]
-
-    unary1 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl1.feature)]))
-    unary2 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl2.feature)]))
-
-    def unary_min_frequency(unary: UnaryIndex, unary_key: InternedString) -> bool:
-        search_key = unary.search_key()
-        start = binsearch_first(0, len(unary)-1, unary_key, search_key)
-        end = start + args.min_frequency - 1
-        return end < len(unary2) and search_key(end) == unary_key
-
-    def collect_positions(collect: RowAdder) -> None:
-        skipped_instances = 0
-        for pos in progress_bar(range(index_size), desc="Collecting positions"):
-            val1, val2 = features1[pos + tmpl1.offset], features2[pos + tmpl2.offset]
-            if val1 and val2 and test_literals(pos):
-                if args.min_frequency and not (
-                            unary_min_frequency(unary1, val1) and
-                            unary_min_frequency(unary2, val2)
-                        ):
-                    skipped_instances += 1
-                else:
-                    row = (((val1.index << bitsize) + val2.index) << bitsize) + pos
-                    collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
-        if skipped_instances:
-            logging.debug(f"Skipped {skipped_instances} low-frequency instances")
-
-    collect_and_sort_positions(collect_positions, index_path, index_size, rowsize, args)
-
-
-RowAdder = Callable[[bytes], Any]
-RowCollector = Callable[[RowAdder], None]
-
-def collect_and_sort_positions(collect_positions: RowCollector, index_path: Path, 
-                               index_size: int, rowsize: int, args: Namespace) -> None:
-    if args.sorter == 'internal':
-        collect_and_sort_internally(collect_positions, index_path, index_size, args)
-    elif args.sorter == 'lmdb':
-        collect_and_sort_lmdb(collect_positions, index_path, index_size, args)
-    else:
-        collect_and_sort_tmpfile(collect_positions, index_path, index_size, rowsize, args)
-
-
-def collect_and_sort_internally(collect_positions: RowCollector, index_path: Path, 
-                                index_size: int, args: Namespace) -> None:
-    tmplist: list[bytes] = []
-    collect_positions(tmplist.append)
-    logging.debug(f"Sorting {len(tmplist)} rows in memory, using sorter '{args.sorter}'.")
-    tmplist.sort()
-    logging.debug(f"Creating suffix array")
-    with DiskIntArray.create(len(tmplist), index_path, max_value=index_size) as suffix_array:
-        for i, row in enumerate(tmplist):
-            pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
-            suffix_array[i] = pos
-
-
-def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path, 
-                             index_size: int, rowsize: int, args: Namespace) -> None:
-    tmpfile = index_path.parent / 'index.tmp'
-    with open(tmpfile, 'wb') as file:
-        collect_positions(file.write)
-        nr_rows = file.tell() // rowsize
-
-    logging.debug(f"Sorting {nr_rows} rows on disk, using sorter '{args.sorter}'.")
-
-    if args.sorter == 'java':
-        pivotselector = args.pivot_selector or 'random'
-        cmd = ['java', '-jar', 'DiskFixedSizeArray.jar', 
-               str(tmpfile), str(rowsize), pivotselector, str(args.cutoff or 1_000_000)]
-        subprocess.run(cmd)
-
-    elif args.sorter in ['qsort', 'multikey']:
-        from mmap import mmap
-        with open(tmpfile, 'r+b') as file:
-            mview = memoryview(mmap(file.fileno(), 0))
-        assert len(mview) % rowsize == 0, \
-            f"File size ({len(mview)}) is not divisible by rowsize ({rowsize})"
-        sort.cythonsort(args.sorter, mview, rowsize)
-
-    else:
-        with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
-            sort.quicksort(
-                bytes_array,
-                pivotselector = PIVOT_SELECTORS.get(args.pivot_selector, sort.random_pivot), 
-                cutoff = args.cutoff or 1_000_000,
-            )
-
-    logging.debug(f"Creating suffix array")
-    with DiskIntArray.create(nr_rows, index_path, max_value=index_size) as suffix_array:
-        with open(tmpfile, 'rb') as IN:
-            i = 0
-            while (row := IN.read(rowsize)):
-                pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
-                suffix_array[i] = pos
-                i += 1
-
-    if not args.keep_tmpfiles:
-        tmpfile.unlink()
-
-
-def collect_and_sort_lmdb(collect_positions: RowCollector, index_path: Path, 
-                          index_size: int, args: Namespace) -> None:
-    logging.debug(f"Sorting using database '{args.sorter}'.")
-    import lmdb  # type: ignore
-    tmpdir = index_path.parent / 'index.tmpdb'
-    if tmpdir.exists():
-        shutil.rmtree(tmpdir)
-    env: Any = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)  # type: ignore
-    with env.begin(write=True) as db:
-        collect_positions(lambda row: db.put(row, b''))
-    logging.debug(f"Creating suffix array")
-    with env.begin() as db:
-        nrows = db.stat()['entries']
-        with DiskIntArray.create(nrows, index_path, max_value=index_size) as suffix_array:
-            for i, (row, _) in enumerate(db.cursor()):
-                pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
-                suffix_array[i] = pos
-    env.close()
-    if not args.keep_tmpfiles:
-        shutil.rmtree(tmpdir, ignore_errors=True)
 
