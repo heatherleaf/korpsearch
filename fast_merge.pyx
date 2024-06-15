@@ -1,4 +1,5 @@
 # cython: language_level=3
+# type: ignore
 
 def merge(
         arr1: memoryview, start1: int, length1: int, offset1: int, 

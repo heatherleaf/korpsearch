@@ -2,6 +2,7 @@
 from pathlib import Path
 from argparse import Namespace
 from typing import BinaryIO
+from abc import abstractmethod
 import logging
 
 from disk import DiskFixedBytesArray, DiskIntArray, InternedString
@@ -47,10 +48,11 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
     assert tmpl.offset == 0
     features = corpus.tokens[tmpl.feature]
 
+    collector: Collector
     if args.sorter == 'internal':
         collector = ListCollector(2)
     elif args.sorter == 'cython':
-        from faster_index_builder import FasterCollector 
+        from faster_index_builder import FasterCollector  # type: ignore
         collector = FasterCollector(2, index_path.parent / 'cindex.tmp', args) 
     else:
         collector = TmpfileCollector(2, index_path.parent / 'index.tmp', args)
@@ -91,10 +93,11 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
             cache[index] = (end < len(unary) and search_key(end) == unary_key)
         return cache[index]
 
+    collector: Collector
     if args.sorter == 'internal':
         collector = ListCollector(3)
     elif args.sorter == 'cython':
-        from faster_index_builder import FasterCollector 
+        from faster_index_builder import FasterCollector  # type: ignore
         collector = FasterCollector(3, index_path.parent / 'cindex.tmp', args) 
     else:
         collector = TmpfileCollector(3, index_path.parent / 'index.tmp', args)
@@ -128,8 +131,14 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
 # 
 # Note for the constants 4 and 32 below: we assume 32-bit (4-byte) unsigned integers
 
+class Collector:
+    @abstractmethod
+    def append2(self, a: int, b: int) -> None: ...
+    def append3(self, a: int, b: int, c: int) -> None: ...
+    def finalise(self, index_path: Path) -> None: ...
 
-class ListCollector:
+
+class ListCollector(Collector):
     rows: list[int]
     rowsize: int
 
@@ -159,7 +168,7 @@ class ListCollector:
                 suffix_array[i] = row & 0xFFFFFFFF
 
 
-class TmpfileCollector:
+class TmpfileCollector(Collector):
     path: Path
     file: BinaryIO
     rowsize: int
