@@ -1,9 +1,10 @@
 
 from pathlib import Path
 from collections.abc import Iterator, Callable
-from abc import abstractmethod
 
-from util import CompressedFileReader, uncompressed_suffix, progress_bar, EMPTY, SENTENCE
+from util import EMPTY, SENTENCE
+from util import CompressedFileReader, uncompressed_suffix
+from util import progress_bar, ProgressBar
 
 Token = tuple[bytes, ...]
 Sentence = list[Token]
@@ -30,6 +31,7 @@ def csv_reader(path: Path, description: str) -> Iterator[Sentence]:
         yield [header]
 
         n_feats = len(header)
+        pbar: ProgressBar[None]
         with progress_bar(total=corpus.file_size(), desc=description) as pbar:
             sentence: Sentence = []
             for line in linereader:

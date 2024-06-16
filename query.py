@@ -5,6 +5,7 @@ from collections.abc import Iterator, Sequence
 
 from index import Literal, TemplateLiteral, Template, Instance, Index
 from corpus import Corpus
+from util import SENTENCE
 from disk import InternedString
 
 
@@ -17,8 +18,8 @@ class Query:
 
     corpus: Corpus
     literals: list[Literal]
-    features: set[str]
-    featured_query: dict[str, list[tuple[bool, int, InternedString]]]
+    features: set[bytes]
+    featured_query: dict[bytes, list[tuple[bool, int, InternedString]]]
     template: Template
 
     def __init__(self, corpus: Corpus, literals: Sequence[Literal]) -> None:
@@ -132,14 +133,13 @@ class Query:
         query: list[Literal] = []
         for offset, token in enumerate(tokens):
             for match in Query.token_regex.finditer(token):
-                feature, negated, value = match.groups()
-                feature = feature.lower()
+                featstr, negated, value = match.groups()
+                feature = featstr.lower().encode()
                 negative = (negated == '!')
                 value = corpus.intern(feature, value.encode())
                 query.append(Literal(negative, offset, feature, value))
         if not no_sentence_breaks:
-            sfeature = corpus.sentence_feature
-            svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+            svalue = corpus.intern(SENTENCE, SENTENCE)
             for offset in range(1, len(tokens)):
-                query.append(Literal(True, offset, sfeature, svalue))
+                query.append(Literal(True, offset, SENTENCE, svalue))
         return Query(corpus, query)

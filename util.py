@@ -14,6 +14,7 @@ from abc import abstractmethod
 ## Project-specific constants
 
 EMPTY = b''
+WORD = b'word'
 SENTENCE = b's'
 
 

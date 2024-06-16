@@ -6,10 +6,9 @@ from typing import Any
 from contextlib import ExitStack
 from collections.abc import Iterator, Sequence
 
-from corpus_reader import Token, Sentence
 from corpus_reader import corpus_reader
 from disk import DiskIntArray, DiskStringArray, InternedString
-from util import progress_bar, ProgressBar, CompressedFileReader, add_suffix, binsearch_last, SENTENCE, EMPTY
+from util import progress_bar, add_suffix, binsearch_last, SENTENCE
 
 ################################################################################
 ## Corpus
@@ -111,7 +110,7 @@ class Corpus:
     def sanity_check(self) -> None:
         logging.info("Sanity checking corpus")
         for feat in self.features:
-            logging.debug(f"Checking corpus index: {feat}")
+            logging.debug(f"Checking corpus index: {feat.decode()}")
             self.tokens[feat].sanity_check()
         assert self.sentence_pointers.path
         logging.debug(f"Checking sentence pointers: {self.sentence_pointers.path.name}")

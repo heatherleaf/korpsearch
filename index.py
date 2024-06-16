@@ -21,7 +21,7 @@ class Literal(NamedTuple):
     value: InternedString
 
     def __str__(self) -> str:
-        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
+        return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{self.value}"
 
     def test(self, corpus: Corpus, pos: int) -> bool:
         value = corpus.tokens[self.feature][pos + self.offset]
@@ -30,9 +30,9 @@ class Literal(NamedTuple):
     @staticmethod
     def parse(corpus: Corpus, litstr: str) -> 'Literal':
         try:
-            feature, rest = litstr.split(':')
-            assert feature.replace('_','').isalnum()
-            feature = feature.lower().encode()
+            featstr, rest = litstr.split(':')
+            assert featstr.replace('_','').isalnum()
+            feature = featstr.lower().encode()
             try:
                 offset, value = rest.split('=')
                 return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
@@ -48,14 +48,14 @@ class TemplateLiteral(NamedTuple):
     feature: bytes
 
     def __str__(self) -> str:
-        return f"{self.feature}:{self.offset}"
+        return f"{self.feature.decode()}:{self.offset}"
 
     @staticmethod
     def parse(litstr: str) -> 'TemplateLiteral':
         try:
-            feature, offset = litstr.split(':')
-            assert feature.replace('_','').isalnum()
-            feature = feature.lower().encode()
+            featstr, offset = litstr.split(':')
+            assert featstr.replace('_','').isalnum()
+            feature = featstr.lower().encode()
             return TemplateLiteral(int(offset), feature)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed template literal: {litstr}")
@@ -94,7 +94,7 @@ class Template:
         tokens: list[str] = []
         for offset in range(min_offset, max_offset+1):
             tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
-            lit = ','.join(f'{l.feature}{"≠" if l.negative else "="}"{l.value}"' 
+            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{l.value}"' 
                            for l in self.literals if l.offset == offset)
             if lit:
                 tokens.append(tok + '|' + lit)
