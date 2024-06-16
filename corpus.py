@@ -8,7 +8,7 @@ from collections.abc import Iterator, Sequence
 
 from corpus_reader import corpus_reader
 from disk import DiskIntArray, DiskStringArray, InternedString
-from util import progress_bar, add_suffix, binsearch_last, SENTENCE
+from util import progress_bar, add_suffix, binsearch_last, Feature, FValue, SENTENCE
 
 ################################################################################
 ## Corpus
@@ -19,8 +19,8 @@ class Corpus:
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
 
-    features: list[bytes]
-    tokens: dict[bytes, DiskStringArray]
+    features: list[Feature]
+    tokens: dict[Feature, DiskStringArray]
     sentence_pointers: DiskIntArray
     path: Path
 
@@ -48,7 +48,7 @@ class Corpus:
     def __len__(self) -> int:
         return len(self.tokens[self.features[0]])
 
-    def intern(self, feature: bytes, value: bytes) -> InternedString:
+    def intern(self, feature: Feature, value: FValue) -> InternedString:
         return self.tokens[feature].intern(value)
 
     def num_sentences(self) -> int:
@@ -68,7 +68,7 @@ class Corpus:
         return range(start, end)
 
     def render_sentence(self, sent: int, pos: int = -1, offset: int = -1, 
-                        features: Sequence[bytes] = (), context: int = -1) -> str:
+                        features: Sequence[Feature] = (), context: int = -1) -> str:
         if not features:
             features = self.features[:1]
         tokens: list[str] = []
@@ -83,7 +83,7 @@ class Corpus:
                     tokens.append('...')
             if p == pos:
                 tokens.append('[')
-            tokens.append('/'.join(str(self.tokens[feat][p]) for feat in features))
+            tokens.append('/'.join(self.tokens[feat].get_string(p) for feat in features))
             if p == pos+offset:
                 tokens.append(']')
             if context >= 0:
@@ -128,7 +128,7 @@ class Corpus:
 
 
     @staticmethod
-    def indexpath(basepath: Path, feature: bytes) -> Path:
+    def indexpath(basepath: Path, feature: Feature) -> Path:
         return basepath / (Corpus.feature_prefix + feature.decode()) / feature.decode()
 
 
@@ -139,7 +139,7 @@ class Corpus:
         features, sentence_iterator = corpus_reader(corpusfile, "Collecting strings")
         with open(basedir / Corpus.features_file, 'w') as OUT:
             json.dump([feat.decode() for feat in features], OUT)
-        stringsets: list[set[bytes]] = [set() for _feature in features]
+        stringsets: list[set[FValue]] = [set() for _feature in features]
         n_sentences = n_tokens = 0
         for sentence in sentence_iterator:
             n_sentences += 1

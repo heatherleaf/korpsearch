@@ -1,5 +1,5 @@
 
-from typing import Optional, Any
+from typing import Optional, Any, NewType
 from collections.abc import Iterator, Callable, Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,20 +8,20 @@ import logging
 from disk import InternedString, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
-from util import progress_bar, binsearch_range, check_feature
+from util import progress_bar, binsearch_range, check_feature, Feature, FValue
 
 
 ################################################################################
 ## Literals, templates and instances
 
-Instance = tuple[InternedString, ...]
+Instance = NewType('Instance', tuple[InternedString, ...])
 
 
 @dataclass(frozen=True, order=True)
 class Literal:
     negative: bool
     offset: int
-    feature: bytes
+    feature: Feature
     value: InternedString
 
     def __post_init__(self) -> None:
@@ -38,14 +38,16 @@ class Literal:
     def parse(corpus: Corpus, litstr: str) -> 'Literal':
         try:
             featstr, rest = litstr.split(':')
-            feature = featstr.lower().encode()
+            feature = Feature(featstr.lower().encode())
             check_feature(feature)
             try:
-                offset, value = rest.split('=')
-                return Literal(False, int(offset), feature, corpus.intern(feature, value.encode()))
+                offset, valstr = rest.split('=')
+                negative = False
             except ValueError:
-                offset, value = rest.split('#')
-                return Literal(True, int(offset), feature, corpus.intern(feature, value.encode()))
+                offset, valstr = rest.split('#')
+                negative = True
+            value = FValue(valstr.encode())
+            return Literal(negative, int(offset), feature, corpus.intern(feature, value))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -53,7 +55,7 @@ class Literal:
 @dataclass(frozen=True, order=True)
 class TemplateLiteral:
     offset: int
-    feature: bytes
+    feature: Feature
 
     def __post_init__(self) -> None:
         check_feature(self.feature)
@@ -65,7 +67,7 @@ class TemplateLiteral:
     def parse(litstr: str) -> 'TemplateLiteral':
         try:
             featstr, offset = litstr.split(':')
-            feature = featstr.lower().encode()
+            feature = Feature(featstr.lower().encode())
             check_feature(feature)
             return TemplateLiteral(int(offset), feature)
         except (ValueError, AssertionError):
@@ -125,7 +127,7 @@ class Template:
     def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
         if not all(lit.test(corpus, pos) for lit in self.literals):
             return None
-        return Instance([corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template])
+        return Instance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
     @staticmethod
     def parse(corpus: Corpus, template_str: str) -> 'Template':
@@ -224,7 +226,7 @@ class UnaryIndex(Index):
 
     def search_key(self) -> Callable[[int], InternedString]:
         tmpl = self.template.template[0]
-        features = self.corpus.tokens[tmpl.feature].raw()
+        features = self.corpus.tokens[tmpl.feature]
         offset = tmpl.offset
         index = self.index.array
         return lambda k: features[index[k] + offset]
@@ -243,10 +245,10 @@ class BinaryIndex(Index):
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
         tmpl1, tmpl2 = self.template.template
         offset1, offset2 = tmpl1.offset, tmpl2.offset
-        features1 = self.corpus.tokens[tmpl1.feature].raw()
-        features2 = self.corpus.tokens[tmpl2.feature].raw()
+        features1 = self.corpus.tokens[tmpl1.feature]
+        features2 = self.corpus.tokens[tmpl2.feature]
         index = self.index.array
         def search_key(k: int) -> Instance:
-            return (features1[index[k] + offset1], features2[index[k] + offset2])
+            return Instance((features1[index[k] + offset1], features2[index[k] + offset2]))
         return binsearch_range(0, len(self)-1, instance, search_key)
 

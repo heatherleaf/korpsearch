@@ -6,7 +6,7 @@ import math
 import logging
 import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional
+from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional, NewType
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
@@ -14,12 +14,17 @@ from abc import abstractmethod
 ###############################################################################
 ## Project-specific constants and functions
 
-EMPTY = b''
-WORD = b'word'
-SENTENCE = b's'
+Feature = NewType('Feature', bytes)
+FValue = NewType('FValue', bytes)
+
+WORD = Feature(b'word')
+SENTENCE = Feature(b's')
+
+EMPTY = FValue(b'')
+START = FValue(b's')
 
 
-def check_feature(feature: bytes) -> None:
+def check_feature(feature: Feature) -> None:
     assert isinstance(feature, bytes), f"Feature must be a bytestring: {feature!r}"
     assert re.match(br'^[a-z_][a-z_0-9]*$', feature), f"Ill-formed feature: {feature.decode()}"
 

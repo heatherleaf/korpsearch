@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from mmap import mmap
 import itertools
-from typing import overload, BinaryIO, Optional, Union, Any
+from typing import overload, BinaryIO, Optional, Union, Any, NewType
 from collections.abc import Iterator, Iterable, MutableSequence
 
 from util import add_suffix, get_integer_size, get_typecode, binsearch
@@ -172,7 +172,7 @@ class DiskFixedBytesArray(MutableSequence[bytes]):
 ################################################################################
 ## String interning
 
-InternedString = int
+InternedString = NewType('InternedString', int)
 
 
 class StringCollection:
@@ -205,13 +205,13 @@ class StringCollection:
         if not self._intern:
             self._intern = {}
             for i in range(len(self)):
-                self._intern[bytes(self.from_index(i))] = i
+                self._intern[self.from_index(i)] = InternedString(i)
 
     def intern(self, string: bytes) -> InternedString:
         if self._intern:
             return self._intern[string]
         else:
-            return binsearch(0, len(self)-1, string, lambda i: bytes(self.from_index(i)))
+            return InternedString(binsearch(0, len(self)-1, string, lambda i: self.from_index(i)))
 
     def __enter__(self) -> 'StringCollection':
         return self
@@ -278,7 +278,7 @@ class DiskStringArray:
         return len(self._array)
 
     def __getitem__(self, i: int) -> InternedString:
-        return self._array.array[i]
+        return InternedString(self._array.array[i])
 
     def get_bytes(self, i: int) -> bytes:
         return self._strings.from_index(self[i])
@@ -290,7 +290,8 @@ class DiskStringArray:
         self._array.array[i] = value
 
     def __iter__(self) -> Iterator[InternedString]:
-        yield from self._array.array
+        for i in self._array.array:
+            yield InternedString(i)
 
     def __enter__(self) -> 'DiskStringArray':
         return self

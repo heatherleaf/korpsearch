@@ -8,7 +8,7 @@ import logging
 from index import Literal, TemplateLiteral, Template, Index
 from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
-from util import setup_logger, add_suffix, CompressedFileReader, SENTENCE
+from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
 
 
 CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
@@ -78,7 +78,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
-    svalue = corpus.intern(SENTENCE, SENTENCE)
+    svalue = corpus.intern(SENTENCE, START)
     if args.templates:
         for tmplstr in args.templates:
             tmpl = Template.parse(corpus, tmplstr)
@@ -92,7 +92,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                 }
                 yield Template(tmpl.template, literals)
     if args.features:
-        features: list[bytes] = [feat.encode() for feat in args.features]
+        features: list[Feature] = [feat.encode() for feat in args.features]
         # First build the unary indexes.
         if not args.no_sentence_breaks:
             yield Template([TemplateLiteral(0, SENTENCE)])
