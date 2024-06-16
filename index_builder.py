@@ -5,7 +5,7 @@ from typing import BinaryIO
 from abc import abstractmethod
 import logging
 
-from disk import DiskFixedBytesArray, DiskIntArray, InternedString
+from disk import DiskFixedBytesArray, DiskIntArray
 from corpus import Corpus
 from index import Template, TemplateLiteral, Index, UnaryIndex
 import sort
@@ -52,8 +52,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
     if args.sorter == 'internal':
         collector = ListCollector(2)
     elif args.sorter == 'cython':
-        from faster_index_builder import FasterCollector  # type: ignore
-        collector = FasterCollector(2, index_path.parent / 'cindex.tmp', args) 
+        collector = CythonCollector(2, index_path.parent / 'cindex.tmp', args)
     else:
         collector = TmpfileCollector(2, index_path.parent / 'index.tmp', args)
 
@@ -97,8 +96,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     if args.sorter == 'internal':
         collector = ListCollector(3)
     elif args.sorter == 'cython':
-        from faster_index_builder import FasterCollector  # type: ignore
-        collector = FasterCollector(3, index_path.parent / 'cindex.tmp', args) 
+        collector = CythonCollector(3, index_path.parent / 'cindex.tmp', args) 
     else:
         collector = TmpfileCollector(3, index_path.parent / 'index.tmp', args)
 
@@ -211,3 +209,16 @@ class TmpfileCollector(Collector):
 
         if not self.args.keep_tmpfiles:
             self.path.unlink()
+
+
+class CythonCollector(TmpfileCollector):
+    def finalise(self, index_path: Path) -> None:
+        nr_rows = self.file.tell() // (self.rowsize * 4)
+        self.file.close()
+
+        from faster_index_builder import finalise  # type: ignore
+        finalise(self.path, nr_rows, self.rowsize, index_path)
+
+        if not self.args.keep_tmpfiles:
+            self.path.unlink()
+

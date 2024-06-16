@@ -6,62 +6,22 @@ from libc.stdio cimport FILE
 
 from pathlib import Path
 from mmap import mmap
-from argparse import Namespace
 import logging
 
 from disk import DiskIntArray
 
 
-# Note: FasterCollector.append2/3 does not work well together with PyPy,
-# probably it's not good to switch between Python and Cython often
-# because it break the JIT compilation.
+def finalise(tmppath: Path, nr_rows: int, rowsize: int, index_path: Path):
+    with open(tmppath, 'r+b') as file:
+        tmpview = memoryview(mmap(file.fileno(), 0))
 
+    logging.debug(f"Sorting {nr_rows} rows using C 'qsort'")
+    sort_index(tmpview, nr_rows, rowsize)
 
-cdef class FasterCollector:
-    args: Namespace
-    tmppath: Path
-    cdef FILE* tmpfile
-    cdef size_t rowsize
-
-    def __init__(self, rowsize: int, tmppath: Path, args: Namespace):
-        self.rowsize = rowsize
-        self.args = args
-        self.tmppath = tmppath
-        self.tmpfile = fopen(bytes(tmppath), 'w')
-
-    cpdef void append2(self, uint32_t a, uint32_t b):
-        # assert self.rowsize == 2
-        fwrite_value(a, self.tmpfile)
-        fwrite_value(b, self.tmpfile)
-
-    cpdef void append3(self, uint32_t a, uint32_t b, uint32_t c):
-        # assert self.rowsize == 2
-        fwrite_value(a, self.tmpfile)
-        fwrite_value(b, self.tmpfile)
-        fwrite_value(c, self.tmpfile)
-
-    cpdef void append(self, values: tuple[uint32_t, ...]):
-        # assert len(values) == self.rowsize
-        cdef uint32_t val
-        for val in values:
-            fwrite_value(val, self.tmpfile)
-
-    def finalise(self, index_path: Path):
-        cdef size_t nr_rows = ftell(self.tmpfile) // (self.rowsize * 4)
-        fclose(self.tmpfile)
-        with open(self.tmppath, 'r+b') as file:
-            tmpview = memoryview(mmap(file.fileno(), 0))
-
-        logging.debug(f"Sorting {nr_rows} rows using C 'qsort'")
-        sort_index(tmpview, nr_rows, self.rowsize)
-
-        logging.debug(f"Creating index file: {index_path}")
-        with DiskIntArray.create(nr_rows, index_path) as suffix_array:
-            # Turn the byte-view into a view of 4-byte unsigned ints (uint32).
-            create_index_array(tmpview.cast('I'), suffix_array, nr_rows, self.rowsize)
-
-        if not self.args.keep_tmpfiles:
-            self.tmppath.unlink()
+    logging.debug(f"Creating index file: {index_path}")
+    with DiskIntArray.create(nr_rows, index_path) as suffix_array:
+        # Turn the byte-view into a view of 4-byte unsigned ints (uint32)
+        create_index_array(tmpview.cast('I'), suffix_array, nr_rows, rowsize)
 
 
 cdef void sort_index(
