@@ -59,19 +59,14 @@ There are several possible sorting implementations you can test with (using the 
   The main advantage is that it doesn't use up any internal memory, so it is useful for very large corpora.
 
 - `internal` uses Python's builtin sort function, which is extremely fast
-  (around 3-4 times faster than `tmpfile` using PyPy).
-  However, it has to load the whole corpus in memory so it is not very useful for very large corpora.
+  (up to 5–10 times faster than `tmpfile`).
+  However, it has to load the whole corpus in memory so it is not very useful for very large corpora
+  (depending on your computer, but can cause problems from 10–100 million tokens).
 
-- `java` is a Java implementation of the `tmpfile` option, so it is also useful for very large corpora. 
-  It is approximately 2-3 times faster than `tmpfile` using PyPy.
-  Note that you have to compile the Java version first, by running `make java-sort`.
-
-- `multikey` uses a Cython implementation of [multikey quicksort](https://en.wikipedia.org/wiki/Multi-key_quicksort)
-  for sorting the index – this is also around 2-3 times faster than `tmpfile`.
-  Note that you have to compile the Cython module first, by running `make multikey-sort`.
-
-- `lmdb` uses the [LMDB database engine](https://lmdb.readthedocs.io/) for sorting the index.
-  Note that you have to install the external `lmdb` library first.
+- `cython` uses a Cython implementation using C's builtin `qsort` function for sorting the index.
+  – this is also up to 5–10 times faster than `tmpfile`, but doesn't have any memory problems
+  because it uses a temporary file.
+  Note that you have to compile the Cython module first, by running `make faster-index-builder`.
 
 ## Searching from the command line
 
