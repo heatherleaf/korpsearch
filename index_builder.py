@@ -2,10 +2,11 @@
 from pathlib import Path
 from argparse import Namespace
 from typing import BinaryIO
+from mmap import mmap
 from abc import abstractmethod
 import logging
 
-from disk import DiskFixedBytesArray, DiskIntArray
+from disk import DiskIntArray
 from corpus import Corpus
 from index import Template, TemplateLiteral, Index, UnaryIndex
 import sort
@@ -125,7 +126,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
 # Special classes for collecting, sorting and building the final index
 #  - ListCollector collects the intermediate result in a Python list
 #  - TmpfileCollector stores the intermediate result in a temporary binary file
-#  - FasterCollector is written in Cython, in file faster_index_builder.pyx
+#  - FasterCollector calls C functions (via Cython) for the sorting
 # 
 # Note for the constants 4 and 32 below: we assume 32-bit (4-byte) unsigned integers
 
@@ -163,6 +164,7 @@ class ListCollector(Collector):
         logging.debug(f"Creating index file")
         with DiskIntArray.create(nr_rows, index_path) as suffix_array:
             for i, row in enumerate(self.rows):
+                # Keep the least significant 4 bytes (32-bits)
                 suffix_array[i] = row & 0xFFFFFFFF
 
 
@@ -189,22 +191,25 @@ class TmpfileCollector(Collector):
         self.file.write(value.to_bytes(12, 'big'))
 
     def finalise(self, index_path: Path) -> None:
-        nr_rows = self.file.tell() // (self.rowsize * 4)
+        rowbytes = self.rowsize * 4
+        nr_rows = self.file.tell() // rowbytes
         self.file.close()
 
         logging.debug(f"Sorting {nr_rows} rows")
-        with DiskFixedBytesArray(self.path, self.rowsize * 4) as bytes_array:
-            sort.quicksort(
-                bytes_array,
-                pivotselector = PIVOT_SELECTORS.get(self.args.pivot_selector, sort.random_pivot), 
-                cutoff = self.args.cutoff or 1_000_000,
-            )
+        with open(self.path, 'r+b') as file:
+            with mmap(file.fileno(), 0) as bytes_mmap:
+                sort.quicksort(
+                    bytes_mmap,
+                    rowbytes,
+                    pivotselector = PIVOT_SELECTORS.get(self.args.pivot_selector, sort.random_pivot), 
+                    cutoff = self.args.cutoff or 1_000_000,
+                )
 
         logging.debug(f"Creating index file")
         with DiskIntArray.create(nr_rows, index_path) as suffix_array:
             with open(self.path, 'rb') as file:
                 for i in range(nr_rows):
-                    row = file.read(self.rowsize * 4)
+                    row = file.read(rowbytes)
                     suffix_array[i] = int.from_bytes(row[-4:], 'big')
 
         if not self.args.keep_tmpfiles:

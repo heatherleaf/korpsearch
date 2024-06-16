@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 from mmap import mmap
 import itertools
-from typing import overload, BinaryIO, Optional, Union, Any, NewType
-from collections.abc import Iterator, Iterable, MutableSequence
+from typing import Optional, Union, Any, NewType
+from collections.abc import Iterator, Iterable
 
 from util import add_suffix, get_integer_size, get_typecode, binsearch
 
@@ -101,72 +101,6 @@ class DiskIntArray:
     @classmethod
     def getconfig(cls, path: Path) -> Path:
         return add_suffix(cls.getpath(path), cls.config_suffix)
-
-
-################################################################################
-## On-disk array of fixed-width byte sequences
-
-class DiskFixedBytesArray(MutableSequence[bytes]):
-    itemsize: int
-    _file: BinaryIO
-    _mmap: mmap
-    _len: int
-
-    def __init__(self, path: Path, itemsize: int) -> None:
-        with open(path, 'r+b') as file:
-            self._mmap = mmap(file.fileno(), 0)
-        self.itemsize = itemsize
-        self._len = len(self._mmap) // self.itemsize
-        assert len(self._mmap) % self.itemsize == 0, \
-            f"Array length ({len(self._mmap)}) is not divisible by itemsize ({self.itemsize})"
-
-    def __len__(self) -> int:
-        return self._len
-
-    def __setitem__(self, index: Union[int,slice], value: Union[bytes,Iterable[bytes]]) -> None:
-        assert isinstance(index, int) and isinstance(value, bytes), "DiskFixedBytesArray cannot handle slices"
-        itemsize = self.itemsize
-        start = index * itemsize
-        assert len(value) == itemsize
-        self._mmap[start : start+itemsize] = value
-
-    def __delitem__(self, index: Union[int,slice]) -> None:
-        # Required to be a MutableSequence, but mmap arrays cannot change size
-        raise NotImplementedError("DiskFixedBytesArray cannot change size")
-
-    def insert(self, index: int, value: bytes) -> None:
-        # Required to be a MutableSequence, but mmap arrays cannot change size
-        raise NotImplementedError("DiskFixedBytesArray cannot change size")
-
-    @overload
-    def __getitem__(self, index: int) -> bytes: pass
-    @overload
-    def __getitem__(self, index: slice) -> MutableSequence[bytes]: pass
-    def __getitem__(self, index: Union[int,slice]) -> Union[bytes, MutableSequence[bytes]]:
-        if isinstance(index, slice):
-            return self._slice(index)  # type: ignore
-        itemsize = self.itemsize
-        start = index * itemsize
-        return self._mmap[start : start+itemsize]
-
-    def _slice(self, sl: slice) -> Iterator[bytes]:
-        array = self._mmap
-        itemsize = self.itemsize
-        start, stop, step = sl.indices(len(self))
-        for i in range(start * itemsize, stop * itemsize, step * itemsize):
-            yield array[i : i+itemsize]
-
-    def __iter__(self) -> Iterator[bytes]:
-        return self._slice(slice(None))
-
-    def __enter__(self) -> 'DiskFixedBytesArray':
-        return self
-
-    def __exit__(self, *_: Any) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self._mmap.close()
 
 
 ################################################################################
