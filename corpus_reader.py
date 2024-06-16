@@ -36,7 +36,7 @@ def csv_reader(path: Path, description: str) -> CorpusReader:
         pbar: ProgressBar[None]
         with progress_bar(total=corpus.file_size(), desc=description) as pbar:
             sentence: Sentence = []
-            for line in corpus.reader:
+            for n, line in enumerate(corpus.reader, 2):
                 line = line.strip()
                 if line.startswith(b'# '):
                     pbar.update(corpus.file_position() - pbar.n)
@@ -48,6 +48,7 @@ def csv_reader(path: Path, description: str) -> CorpusReader:
                     token += map(FValue, line.split(b'\t'))
                     if len(token) < n_feats:
                         token += [EMPTY] * (n_feats - len(token))
+                    assert len(token) == n_feats, f"Line {n}, too many columns (>{n_feats}): {token}"
                     sentence.append(tuple(token))
             pbar.update(corpus.file_position() - pbar.n)
             if sentence: 
