@@ -139,37 +139,35 @@ class Corpus:
         features, sentence_iterator = corpus_reader(corpusfile, "Collecting strings")
         with open(basedir / Corpus.features_file, 'w') as OUT:
             json.dump([feat.decode() for feat in features], OUT)
-        strings: list[set[bytes]] = [set() for _feature in features]
+        stringsets: list[set[bytes]] = [set() for _feature in features]
         n_sentences = n_tokens = 0
         for sentence in sentence_iterator:
             n_sentences += 1
             for token in sentence:
                 n_tokens += 1
-                for i, value in enumerate(token):
-                    strings[i].add(value)
-        logging.debug(f" --> read {sum(map(len, strings))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
+                for strings, value in zip(stringsets, token):
+                    strings.add(value)
+        logging.debug(f" --> read {sum(map(len, stringsets))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
 
         path = basedir / Corpus.sentences_path
         with DiskIntArray.create(n_sentences+1, path, max_value = n_tokens) as sentence_array:
             sentence_array[0] = 0  # sentence 0 doesn't exist
 
-            with ExitStack() as stack:
-                index_arrays: list[memoryview] = []
-                interned_strings: list[dict[bytes, int]] = []
-                for i, feature in enumerate(features):
+            with ExitStack() as stack:  # to close all feature builders at once
+                feature_builders: list[DiskStringArray] = []
+                for feature, strings in zip(features, stringsets):
                     path = Corpus.indexpath(basedir, feature)
                     path.parent.mkdir(exist_ok=True)
-                    str_array = stack.enter_context(DiskStringArray.create(path, strings[i], n_tokens))
-                    index_arrays.append(str_array.raw())
-                    interned_strings.append(str_array._strings._intern)
+                    str_array = stack.enter_context(DiskStringArray.create(path, strings, n_tokens))
+                    feature_builders.append(str_array)
 
                 _features, sentence_iterator = corpus_reader(corpusfile, "Building indexes")
                 ctr = 0
                 for n, sentence in enumerate(sentence_iterator, 1):
                     sentence_array[n] = ctr
                     for token in sentence:
-                        for i, value in enumerate(token):
-                            index_arrays[i][ctr] = interned_strings[i][value]
+                        for builder, value in zip(feature_builders, token):
+                            builder[ctr] = builder.intern(value)
                         ctr += 1
                 assert ctr == n_tokens
 

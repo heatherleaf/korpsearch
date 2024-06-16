@@ -2,7 +2,7 @@
 from pathlib import Path
 from collections.abc import Iterator, Callable
 
-from util import EMPTY, SENTENCE
+from util import EMPTY, SENTENCE, check_feature
 from util import CompressedFileReader, uncompressed_suffix
 from util import progress_bar, ProgressBar
 
@@ -28,6 +28,7 @@ def csv_reader(path: Path, description: str) -> Iterator[Sentence]:
     with corpus as linereader:
         # the first line in the CSV should be a header with the names of each column (=features)
         header = (SENTENCE,) + tuple(linereader.readline().strip().split(b'\t'))
+        for feat in header: check_feature(feat)
         yield [header]
 
         n_feats = len(header)

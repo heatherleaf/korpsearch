@@ -1,6 +1,7 @@
 
 import os
 import sys
+import re
 import math
 import logging
 import gzip, bz2, lzma
@@ -11,11 +12,16 @@ from abc import abstractmethod
 
 
 ###############################################################################
-## Project-specific constants
+## Project-specific constants and functions
 
 EMPTY = b''
 WORD = b'word'
 SENTENCE = b's'
+
+
+def check_feature(feature: bytes) -> None:
+    assert isinstance(feature, bytes), f"Feature must be a bytestring: {feature!r}"
+    assert re.match(br'^[a-z_][a-z_0-9]*$', feature), f"Ill-formed feature: {feature.decode()}"
 
 
 ###############################################################################
@@ -154,7 +160,10 @@ class CompressedFileReader:
         path = Path(path)
         self.basefile = binfile = open(path, 'rb')
         compressor = self.compressors.get(path.suffix)
-        self.reader = compressor.open(binfile, mode='rb') if compressor else binfile
+        if compressor:
+            self.reader = compressor.open(binfile, mode='rb')  # type: ignore
+        else:
+            self.reader = binfile
 
     def file_position(self) -> int:
         return self.basefile.tell()

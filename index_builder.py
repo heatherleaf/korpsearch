@@ -102,7 +102,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
 
     # Optimisation: use the underlying memoryview for each DiskStringArray, 
     # and don't bother with looking up InternedStrings - use the ints directly instead.
-    test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value.index) for lit in template.literals]
+    test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value) for lit in template.literals]
 
     skipped_instances = 0
     for pos in progress_bar(range(len(corpus) - template.maxdelta()), desc="Collecting positions"):

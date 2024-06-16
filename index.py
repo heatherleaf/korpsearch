@@ -1,24 +1,31 @@
 
-from typing import NamedTuple, Optional, Any
+from typing import Optional, Any
 from collections.abc import Iterator, Callable, Collection, Sequence
-from functools import total_ordering
+from dataclasses import dataclass
 from pathlib import Path
 import logging
 
 from disk import InternedString, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
-from util import progress_bar, binsearch_range
+from util import progress_bar, binsearch_range, check_feature
 
 
 ################################################################################
 ## Literals, templates and instances
 
-class Literal(NamedTuple):
+Instance = tuple[InternedString, ...]
+
+
+@dataclass(frozen=True, order=True)
+class Literal:
     negative: bool
     offset: int
     feature: bytes
     value: InternedString
+
+    def __post_init__(self) -> None:
+        check_feature(self.feature)
 
     def __str__(self) -> str:
         return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{self.value}"
@@ -31,21 +38,25 @@ class Literal(NamedTuple):
     def parse(corpus: Corpus, litstr: str) -> 'Literal':
         try:
             featstr, rest = litstr.split(':')
-            assert featstr.replace('_','').isalnum()
             feature = featstr.lower().encode()
+            check_feature(feature)
             try:
                 offset, value = rest.split('=')
-                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                return Literal(False, int(offset), feature, corpus.intern(feature, value.encode()))
             except ValueError:
                 offset, value = rest.split('#')
-                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                return Literal(True, int(offset), feature, corpus.intern(feature, value.encode()))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
 
-class TemplateLiteral(NamedTuple):
+@dataclass(frozen=True, order=True)
+class TemplateLiteral:
     offset: int
     feature: bytes
+
+    def __post_init__(self) -> None:
+        check_feature(self.feature)
 
     def __str__(self) -> str:
         return f"{self.feature.decode()}:{self.offset}"
@@ -54,24 +65,27 @@ class TemplateLiteral(NamedTuple):
     def parse(litstr: str) -> 'TemplateLiteral':
         try:
             featstr, offset = litstr.split(':')
-            assert featstr.replace('_','').isalnum()
             feature = featstr.lower().encode()
+            check_feature(feature)
             return TemplateLiteral(int(offset), feature)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed template literal: {litstr}")
 
 
-@total_ordering
+@dataclass(frozen=True, order=True, init=False)
 class Template:
+    size: int  # Having 'size' first means shorter templates are ordered before longer
     template: tuple[TemplateLiteral,...]
-    literals: tuple[Literal,...]
+    literals: tuple[Literal,...] = ()
 
     def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[Literal] = []) -> None:
-        self.template = tuple(template)
-        self.literals = tuple(sorted(set(literals)))
+        # We need to use __setattr__ because the class is frozen:
+        object.__setattr__(self, 'template', tuple(template))
+        object.__setattr__(self, 'literals', tuple(sorted(set(literals))))
+        object.__setattr__(self, 'size', len(self.template))
         try:
             assert self.template == tuple(sorted(set(self.template))), f"Unsorted template"
-            assert self.literals == tuple(sorted(literals)),           f"Duplicate literal(s)"
+            assert self.literals == tuple(sorted(self.literals)),      f"Duplicate literal(s)"
             assert len(self.template) > 0,                             f"Empty template"
             assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0"
             if self.literals:
@@ -106,17 +120,7 @@ class Template:
         return iter(self.template)
 
     def __len__(self) -> int:
-        return len(self.template)
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Template) and \
-            (self.template, self.literals) == (other.template, other.literals)
-
-    def __lt__(self, other: 'Template') -> bool:
-        return (len(self), self.template, self.literals) < (len(other), other.template, other.literals)
-
-    def __hash__(self) -> int:
-        return hash((self.template, self.literals))
+        return self.size
 
     def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
         if not all(lit.test(corpus, pos) for lit in self.literals):
@@ -138,11 +142,6 @@ class Template:
             raise ValueError(
                 "Ill-formed template - it should be on the form pos:0 or word:0+pos:2: " + template_str
             )
-
-
-class Instance(tuple[InternedString,...]):
-    def __str__(self) -> str:
-        return '+'.join(map(str, self))
 
 
 ################################################################################
@@ -223,7 +222,7 @@ class UnaryIndex(Index):
         assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
         super().__init__(corpus, template)
 
-    def search_key(self) -> Callable[[int], int]:
+    def search_key(self) -> Callable[[int], InternedString]:
         tmpl = self.template.template[0]
         features = self.corpus.tokens[tmpl.feature].raw()
         offset = tmpl.offset
@@ -232,7 +231,7 @@ class UnaryIndex(Index):
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        return binsearch_range(0, len(self)-1, instance[0].index, self.search_key())
+        return binsearch_range(0, len(self)-1, instance[0], self.search_key())
 
 
 class BinaryIndex(Index):
@@ -247,8 +246,7 @@ class BinaryIndex(Index):
         features1 = self.corpus.tokens[tmpl1.feature].raw()
         features2 = self.corpus.tokens[tmpl2.feature].raw()
         index = self.index.array
-        def search_key(k: int) -> tuple[int, int]:
+        def search_key(k: int) -> Instance:
             return (features1[index[k] + offset1], features2[index[k] + offset2])
-        val1, val2 = instance
-        return binsearch_range(0, len(self)-1, (val1.index, val2.index), search_key)
+        return binsearch_range(0, len(self)-1, instance, search_key)
 

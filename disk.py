@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 from mmap import mmap
 import itertools
-from functools import total_ordering
 from typing import overload, BinaryIO, Optional, Union, Any
 from collections.abc import Iterator, Iterable, MutableSequence
 
@@ -173,13 +172,16 @@ class DiskFixedBytesArray(MutableSequence[bytes]):
 ################################################################################
 ## String interning
 
+InternedString = int
+
+
 class StringCollection:
     strings_suffix = '.strings'
 
     strings: mmap
     starts: DiskIntArray
 
-    _intern: dict[bytes, int]
+    _intern: dict[bytes, InternedString]
 
     def __init__(self, path: Path, preload: bool = False) -> None:
         path = self.getpath(path)
@@ -194,8 +196,10 @@ class StringCollection:
     def __len__(self) -> int:
         return len(self.starts) - 1
 
-    def from_index(self, index: int) -> 'InternedString':
-        return InternedString(self, index)
+    def from_index(self, index: int) -> bytes:
+        arr = self.starts.array
+        start, nextstart = arr[index], arr[index + 1]
+        return self.strings[start : nextstart]
 
     def preload(self) -> None:
         if not self._intern:
@@ -203,15 +207,11 @@ class StringCollection:
             for i in range(len(self)):
                 self._intern[bytes(self.from_index(i))] = i
 
-    def intern(self, string: Union[bytes,'InternedString']) -> 'InternedString':
-        if isinstance(string, InternedString):
-            assert string.db is self
-            return string
+    def intern(self, string: bytes) -> InternedString:
         if self._intern:
-            index = self._intern[string]
+            return self._intern[string]
         else:
-            index = binsearch(0, len(self)-1, string, lambda i: bytes(self.from_index(i)))
-        return self.from_index(index)
+            return binsearch(0, len(self)-1, string, lambda i: bytes(self.from_index(i)))
 
     def __enter__(self) -> 'StringCollection':
         return self
@@ -257,57 +257,6 @@ class StringCollection:
         return add_suffix(path, cls.strings_suffix)
 
 
-@total_ordering
-class InternedString:
-    __slots__ = ['db', 'index']
-    db: StringCollection
-    index: int
-
-    def __init__(self, db: StringCollection, index: int) -> None:
-        # We cannot use 'self.db = db', because this will call ' __setattr__'
-        # which in turn will raise an exception
-        object.__setattr__(self, "db", db)
-        object.__setattr__(self, "index", index)
-
-    def __bytes__(self) -> bytes:
-        arr = self.db.starts.array
-        start = arr[self.index]
-        nextstart = arr[self.index + 1]
-        return self.db.strings[start : nextstart]
-
-    def __str__(self) -> str:
-        return bytes(self).decode()
-
-    def __repr__(self) -> str:
-        return f"InternedString({self})"
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, InternedString) and self.db is other.db:
-            return self.index == other.index
-        else:
-            raise TypeError(f"Comparing InternedString against {type(other)}")
-
-    def __lt__(self, other: 'InternedString') -> bool:
-        if self.db is other.db:
-            return self.index < other.index
-        else:
-            raise TypeError(f"Comparing InternedString against {type(other)}")
-
-    def __bool__(self) -> bool:
-        # arr = self.db.starts.array
-        # return arr[self.index] < arr[self.index + 1]
-        return self.index > 0
-
-    def __hash__(self) -> int:
-        return hash(self.index)
-
-    def __setattr__(self, _field: str, _value: object) -> None:
-        raise TypeError("InternedString is read-only")
-
-    def __delattr__(self, _field: str) -> None:
-        raise TypeError("InternedString is read-only")
-
-
 ################################################################################
 ## On-disk arrays of interned strings
 
@@ -329,13 +278,19 @@ class DiskStringArray:
         return len(self._array)
 
     def __getitem__(self, i: int) -> InternedString:
-        return self._strings.from_index(self._array.array[i])
+        return self._array.array[i]
 
-    def __setitem__(self, i: int, value: bytes) -> None:
-        self._array.array[i] = self._strings.intern(value).index
+    def get_bytes(self, i: int) -> bytes:
+        return self._strings.from_index(self[i])
+
+    def get_string(self, i: int) -> str:
+        return self.get_bytes(i).decode()
+
+    def __setitem__(self, i: int, value: InternedString) -> None:
+        self._array.array[i] = value
 
     def __iter__(self) -> Iterator[InternedString]:
-        yield from map(self._strings.from_index, self._array.array)
+        yield from self._array.array
 
     def __enter__(self) -> 'DiskStringArray':
         return self

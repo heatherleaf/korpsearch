@@ -92,14 +92,15 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                 }
                 yield Template(tmpl.template, literals)
     if args.features:
+        features: list[bytes] = [feat.encode() for feat in args.features]
         # First build the unary indexes.
         if not args.no_sentence_breaks:
             yield Template([TemplateLiteral(0, SENTENCE)])
-        for feat in args.features:
+        for feat in features:
             yield Template([TemplateLiteral(0, feat)])
         # Binary indexes depend on unary indexes, so we build them afterwards.
-        for feat1 in args.features:
-            for feat2 in args.features:
+        for feat1 in features:
+            for feat2 in features:
                 for dist in range(1, args.max_dist+1):
                     template = [TemplateLiteral(0, feat1), TemplateLiteral(dist, feat2)]
                     if args.no_sentence_breaks:
