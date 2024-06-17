@@ -98,7 +98,7 @@ def binsearch(start: int, end: int, key: CT, lookup: Callable[[int], CT], error:
         mykey = lookup(mid)
         if mykey == key:
             return mid
-        if lookup(mid) < key:
+        elif mykey < key:
             start = mid + 1
         else:
             end = mid - 1
