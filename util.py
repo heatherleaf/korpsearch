@@ -75,9 +75,11 @@ def get_integer_size(max_value: int) -> int:
     return itemsize
 
 
-def get_typecode(itemsize: int) -> str:
+TypeFormat = Literal['B'] | Literal['H'] | Literal['I'] | Literal['Q']
+
+def get_typecode(itemsize: int) -> TypeFormat:
     """Returns the memoryview typecode for the given bytesize of unsigned integers"""
-    typecodes = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+    typecodes: dict[int, TypeFormat] = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
     return typecodes[itemsize]
 
 
