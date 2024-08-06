@@ -5,9 +5,10 @@ from pathlib import Path
 from collections.abc import Iterator
 import logging
 
-from index import Literal, TemplateLiteral, Template, Index, SORTER_CHOICES, PIVOT_SELECTORS
+from index import Literal, TemplateLiteral, Template, Index
+from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
-from util import setup_logger, add_suffix, CompressedFileReader
+from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
 
 
 CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
@@ -47,7 +48,7 @@ def main(args: argparse.Namespace) -> None:
                 assert not args.force
             logging.info(f"Corpus index already exists")
         except (FileNotFoundError, AssertionError):
-            Corpus.build_from_csv(corpusdir, corpusfile)
+            Corpus.build(corpusdir, corpusfile)
             logging.info(f"Created the corpus index")
         if args.sanity_check:
             with Corpus(base) as corpus:
@@ -65,7 +66,7 @@ def main(args: argparse.Namespace) -> None:
                         assert not args.force
                         logging.debug(f"Existing index: {index.template}")
                 except (FileNotFoundError, AssertionError):
-                    Index.build(corpus, tmpl, args)
+                    build_index(corpus, tmpl, args)
                     built += 1
                 if args.sanity_check:
                     Index(corpus, tmpl).sanity_check()
@@ -77,8 +78,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
-    sfeature = corpus.sentence_feature
-    svalue = corpus.intern(sfeature, corpus.sentence_start_value)
+    svalue = corpus.intern(SENTENCE, START)
     if args.templates:
         for tmplstr in args.templates:
             tmpl = Template.parse(corpus, tmplstr)
@@ -87,26 +87,27 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             else:
                 dist = tmpl.maxdelta()
                 literals = set(tmpl.literals) | {
-                    Literal(True, offset, sfeature, svalue)
+                    Literal(True, offset, SENTENCE, svalue)
                     for offset in range(1, dist+1)
                 }
                 yield Template(tmpl.template, literals)
     if args.features:
+        features: list[Feature] = [feat.encode() for feat in args.features]
         # First build the unary indexes.
         if not args.no_sentence_breaks:
-            yield Template([TemplateLiteral(0, corpus.sentence_feature)])
-        for feat in args.features:
+            yield Template([TemplateLiteral(0, SENTENCE)])
+        for feat in features:
             yield Template([TemplateLiteral(0, feat)])
         # Binary indexes depend on unary indexes, so we build them afterwards.
-        for feat1 in args.features:
-            for feat2 in args.features:
+        for feat1 in features:
+            for feat2 in features:
                 for dist in range(1, args.max_dist+1):
                     template = [TemplateLiteral(0, feat1), TemplateLiteral(dist, feat2)]
                     if args.no_sentence_breaks:
                         yield Template(template)
                     else:
                         literals = {
-                            Literal(True, offset, sfeature, svalue)
+                            Literal(True, offset, SENTENCE, svalue)
                             for offset in range(1, dist+1)
                         }
                         yield Template(template, literals)

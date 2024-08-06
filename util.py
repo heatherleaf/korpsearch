@@ -1,13 +1,36 @@
 
 import os
 import sys
+import re
 import math
 import logging
 import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional
+from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional, NewType
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
+
+
+###############################################################################
+## Project-specific constants and functions
+
+Feature = NewType('Feature', bytes)
+FValue = NewType('FValue', bytes)
+
+WORD = Feature(b'word')
+SENTENCE = Feature(b's')
+
+EMPTY = FValue(b'')
+START = FValue(b's')
+
+
+def check_feature(feature: Feature) -> None:
+    assert isinstance(feature, bytes), f"Feature must be a bytestring: {feature!r}"
+    assert re.match(br'^[a-z_][a-z_0-9]*$', feature), f"Ill-formed feature: {feature.decode()}"
+
+
+###############################################################################
+## Type definitions
 
 ByteOrder = Literal['little', 'big']
 
@@ -31,6 +54,13 @@ def add_suffix(path: Path, suffix: str) -> Path:
         path = Path(str(path) + suffix)
         # Alternatively: Path(path).with_suffix(path.suffix + suffix)
     return path
+
+
+def uncompressed_suffix(path: Path) -> str:
+    if path.suffix in CompressedFileReader.compressors:
+        return path.with_suffix('').suffix
+    else:
+        return path.suffix
 
 
 ###############################################################################
@@ -68,7 +98,7 @@ def binsearch(start: int, end: int, key: CT, lookup: Callable[[int], CT], error:
         mykey = lookup(mid)
         if mykey == key:
             return mid
-        if lookup(mid) < key:
+        elif mykey < key:
             start = mid + 1
         else:
             end = mid - 1
@@ -122,18 +152,23 @@ class CompressedFileReader:
     >>>         pbar.update(basefile.file_position() - pbar.n)
     >>>         ...do something with line...
     """
+    compressors = {
+        '.gz': gzip,
+        '.bz2': bz2,
+        '.xz': lzma,
+    }
+
     basefile: BinaryIO
     reader: BinaryIO
 
     def __init__(self, path: Path) -> None:
         path = Path(path)
         self.basefile = binfile = open(path, 'rb')
-        self.reader = (
-            gzip.open(binfile, mode='rb') if path.suffix == '.gz'  else   # type: ignore
-            bz2.open(binfile, mode='rb')  if path.suffix == '.bz2' else
-            lzma.open(binfile, mode='rb') if path.suffix == '.xz'  else
-            binfile
-        )
+        compressor = self.compressors.get(path.suffix)
+        if compressor:
+            self.reader = compressor.open(binfile, mode='rb')  # type: ignore
+        else:
+            self.reader = binfile
 
     def file_position(self) -> int:
         return self.basefile.tell()

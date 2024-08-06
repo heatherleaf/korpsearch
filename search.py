@@ -11,6 +11,7 @@ from index import Index
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
+from util import SENTENCE, WORD
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -136,7 +137,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
         logging.info(f"Query: {query}, {query.offset()}")
 
         if args.show:
-            features_to_show = args.show.split(',')
+            features_to_show = args.show.encode().split(b',')
             for f in features_to_show:
                 if f not in corpus.features:
                     raise ValueError(f"Unknown feature: {f}")
@@ -144,14 +145,14 @@ def main_search(args: Namespace) -> dict[str, Any]:
             features_to_show = [
                 feat for feat in corpus.features 
                 if feat in query.features 
-                if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
+                if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
             ]
 
         # Always include the 'word' feature, and put it first
-        if 'word' in corpus.features:
-            if 'word' in features_to_show:
-                features_to_show.remove('word')
-            features_to_show.insert(0, 'word')
+        if WORD in corpus.features:
+            if WORD in features_to_show:
+                features_to_show.remove(WORD)
+            features_to_show.insert(0, WORD)
 
         results = search_corpus(corpus, query, args)
         logging.info(f"Results: {results}")
@@ -163,7 +164,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                 sentence = corpus.get_sentence_from_position(match_pos)
                 match_start = match_pos - corpus.sentence_pointers.array[sentence]
                 tokens = [
-                    {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
+                    {feat.decode(): corpus.tokens[feat].get_string(p) for feat in features_to_show}
                     for p in corpus.sentence_positions(sentence)
                 ]
 

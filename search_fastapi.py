@@ -15,7 +15,7 @@ from search import main_search
 
 CORPUS_DIR = Path('corpora')
 
-VERSION = '0.1'
+VERSION = '0.2'
 
 
 setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG)
@@ -23,8 +23,10 @@ setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=10
 app = FastAPI()
 app.mount("/webdemo", StaticFiles(directory="webdemo"), name="webdemo")
 
+APIResult = dict[str, Any]
 
-def api_call(call: Callable[..., dict[str, Any]], *args: Any, **xargs: Any) -> dict[str, Any]:
+
+def api_call(call: Callable[..., dict[str, Any]], *args: Any, **xargs: Any) -> APIResult:
     start_time = time()
     try: 
         result = call(*args, **xargs)
@@ -41,10 +43,10 @@ def api_call(call: Callable[..., dict[str, Any]], *args: Any, **xargs: Any) -> d
 
 
 @app.get("/info")
-async def info() -> dict[str, list[Path]]:
+async def info() -> APIResult:
     return api_call(get_info)
 
-def get_info() -> dict[str, list[Path]]:
+def get_info() -> APIResult:
     return {
         'corpora': [
             corpus.with_suffix('')
@@ -54,16 +56,17 @@ def get_info() -> dict[str, list[Path]]:
 
 
 @app.get("/corpus_info")
-async def corpus_info(corpus: str) -> dict[str, Any]:
+async def corpus_info(corpus: str) -> APIResult:
     return api_call(get_corpus_info, corpus)
 
-def get_corpus_info(corpus_path: Path) -> dict[str, Any]:
+def get_corpus_info(corpus_path: Path) -> APIResult:
     corpus_path = Path(corpus_path)
     with Corpus(corpus_path) as corpus:
         indexes: list[str] = []
         for index_path in corpus_path.with_suffix('.indexes').glob('*:*'):
             templ = Template.parse(corpus, index_path.name)
             indexes.append(templ.querystr())
+        features = [feat.decode() for feat in corpus.features]
         return {
             'info': {
                 'id': corpus_path,
@@ -71,7 +74,7 @@ def get_corpus_info(corpus_path: Path) -> dict[str, Any]:
                 'description': '?',
                 'size': len(corpus),
                 'sentences': corpus.num_sentences(),
-                'features': corpus.features,
+                'features': features,
                 'indexes': indexes,
             }
         }
@@ -91,7 +94,7 @@ async def search(
         no_binary: bool = False, 
         no_sentence_breaks: bool = False,
         internal_intersection: bool = False,
-    ) -> dict[str, Any]:
+    ) -> APIResult:
     return api_call(
         main_search,
         Namespace(

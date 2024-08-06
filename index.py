@@ -1,44 +1,34 @@
 
-from typing import NamedTuple, Optional, Any
+from typing import Optional, Any, NewType
 from collections.abc import Iterator, Callable, Collection, Sequence
-from functools import total_ordering
+from dataclasses import dataclass
 from pathlib import Path
-from argparse import Namespace
-import shutil
 import logging
-import subprocess
 
-from disk import InternedString, DiskFixedBytesArray, DiskIntArray
+from disk import InternedString, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
-import sort
-from util import progress_bar, ByteOrder, binsearch_first, binsearch_range
-
-
-# Possible sorting alternatives, the first is the default:
-SORTER_CHOICES = ['tmpfile', 'internal', 'qsort', 'java', 'lmdb', 'multikey']
-
-# Possible pivot selectors, used by the 'tmpfile' and 'java' sorters:
-PIVOT_SELECTORS = {
-    'random': sort.random_pivot,
-    'first': sort.take_first_pivot,
-    'central': sort.take_first_pivot,
-    'median3': sort.median_of_three,
-    'ninther': sort.tukey_ninther,
-}
+from util import progress_bar, binsearch_range, check_feature, Feature, FValue
 
 
 ################################################################################
 ## Literals, templates and instances
 
-class Literal(NamedTuple):
+Instance = NewType('Instance', tuple[InternedString, ...])
+
+
+@dataclass(frozen=True, order=True)
+class Literal:
     negative: bool
     offset: int
-    feature: str
+    feature: Feature
     value: InternedString
 
+    def __post_init__(self) -> None:
+        check_feature(self.feature)
+
     def __str__(self) -> str:
-        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
+        return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{self.value}"
 
     def test(self, corpus: Corpus, pos: int) -> bool:
         value = corpus.tokens[self.feature][pos + self.offset]
@@ -47,46 +37,57 @@ class Literal(NamedTuple):
     @staticmethod
     def parse(corpus: Corpus, litstr: str) -> 'Literal':
         try:
-            feature, rest = litstr.split(':')
-            assert feature.replace('_','').isalnum()
+            featstr, rest = litstr.split(':')
+            feature = Feature(featstr.lower().encode())
+            check_feature(feature)
             try:
-                offset, value = rest.split('=')
-                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                offset, valstr = rest.split('=')
+                negative = False
             except ValueError:
-                offset, value = rest.split('#')
-                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                offset, valstr = rest.split('#')
+                negative = True
+            value = FValue(valstr.encode())
+            return Literal(negative, int(offset), feature, corpus.intern(feature, value))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
 
-class TemplateLiteral(NamedTuple):
+@dataclass(frozen=True, order=True)
+class TemplateLiteral:
     offset: int
-    feature: str
+    feature: Feature
+
+    def __post_init__(self) -> None:
+        check_feature(self.feature)
 
     def __str__(self) -> str:
-        return f"{self.feature}:{self.offset}"
+        return f"{self.feature.decode()}:{self.offset}"
 
     @staticmethod
     def parse(litstr: str) -> 'TemplateLiteral':
         try:
-            feature, offset = litstr.split(':')
-            assert feature.replace('_','').isalnum()
-            return TemplateLiteral(int(offset), feature.lower())
+            featstr, offset = litstr.split(':')
+            feature = Feature(featstr.lower().encode())
+            check_feature(feature)
+            return TemplateLiteral(int(offset), feature)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed template literal: {litstr}")
 
 
-@total_ordering
+@dataclass(frozen=True, order=True, init=False)
 class Template:
+    size: int  # Having 'size' first means shorter templates are ordered before longer
     template: tuple[TemplateLiteral,...]
-    literals: tuple[Literal,...]
+    literals: tuple[Literal,...] = ()
 
     def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[Literal] = []) -> None:
-        self.template = tuple(template)
-        self.literals = tuple(sorted(set(literals)))
+        # We need to use __setattr__ because the class is frozen:
+        object.__setattr__(self, 'template', tuple(template))
+        object.__setattr__(self, 'literals', tuple(sorted(set(literals))))
+        object.__setattr__(self, 'size', len(self.template))
         try:
             assert self.template == tuple(sorted(set(self.template))), f"Unsorted template"
-            assert self.literals == tuple(sorted(literals)),           f"Duplicate literal(s)"
+            assert self.literals == tuple(sorted(self.literals)),      f"Duplicate literal(s)"
             assert len(self.template) > 0,                             f"Empty template"
             assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0"
             if self.literals:
@@ -108,8 +109,8 @@ class Template:
         max_offset = max(offsets)
         tokens: list[str] = []
         for offset in range(min_offset, max_offset+1):
-            tok = ','.join('?' + l.feature for l in self.template if l.offset == offset)
-            lit = ','.join(f'{l.feature}{"≠" if l.negative else "="}"{l.value}"' 
+            tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
+            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{l.value}"' 
                            for l in self.literals if l.offset == offset)
             if lit:
                 tokens.append(tok + '|' + lit)
@@ -121,22 +122,12 @@ class Template:
         return iter(self.template)
 
     def __len__(self) -> int:
-        return len(self.template)
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Template) and \
-            (self.template, self.literals) == (other.template, other.literals)
-
-    def __lt__(self, other: 'Template') -> bool:
-        return (len(self), self.template, self.literals) < (len(other), other.template, other.literals)
-
-    def __hash__(self) -> int:
-        return hash((self.template, self.literals))
+        return self.size
 
     def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
         if not all(lit.test(corpus, pos) for lit in self.literals):
             return None
-        return Instance([corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template])
+        return Instance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
     @staticmethod
     def parse(corpus: Corpus, template_str: str) -> 'Template':
@@ -153,33 +144,6 @@ class Template:
             raise ValueError(
                 "Ill-formed template - it should be on the form pos:0 or word:0+pos:2: " + template_str
             )
-
-
-@total_ordering
-class Instance:
-    values: tuple[InternedString,...]
-
-    def __init__(self, values: Sequence[InternedString]) -> None:
-        assert len(values) > 0
-        self.values = tuple(values)
-
-    def __str__(self) -> str:
-        return '+'.join(map(str, self.values))
-
-    def __iter__(self) -> Iterator[InternedString]:
-        yield from self.values
-
-    def __len__(self) -> int:
-        return len(self.values)
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Instance) and self.values == other.values
-
-    def __lt__(self, other: 'Instance') -> bool:
-        return self.values < other.values
-
-    def __hash__(self) -> int:
-        return hash(self.values)
 
 
 ################################################################################
@@ -254,19 +218,6 @@ class Index:
         else:
             raise ValueError(f"Cannot handle indexes of length {len(template)}: {template}")
 
-    @staticmethod
-    def build(corpus: Corpus, template: Template, args: Namespace) -> None:
-        index_path = Index.indexpath(corpus, template)
-        index_path.parent.mkdir(exist_ok=True)
-        if len(template) == 1:
-            build_unary_index(corpus, index_path, template, args)
-        elif len(template) == 2: 
-            build_binary_index(corpus, index_path, template, args)
-        else:
-            raise ValueError(f"Cannot build indexes of length {len(template)}: {template}")
-        with DiskIntArray(index_path) as suffix_array:
-            logging.info(f"Built index for {template}, with {len(suffix_array)} elements")
-
 
 class UnaryIndex(Index):
     def __init__(self, corpus: Corpus, template: Template) -> None:
@@ -282,7 +233,7 @@ class UnaryIndex(Index):
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        return binsearch_range(0, len(self)-1, instance.values[0], self.search_key())
+        return binsearch_range(0, len(self)-1, instance[0], self.search_key())
 
 
 class BinaryIndex(Index):
@@ -293,182 +244,11 @@ class BinaryIndex(Index):
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
         tmpl1, tmpl2 = self.template.template
-        features1, features2 = self.corpus.tokens[tmpl1.feature], self.corpus.tokens[tmpl2.feature]
         offset1, offset2 = tmpl1.offset, tmpl2.offset
+        features1 = self.corpus.tokens[tmpl1.feature]
+        features2 = self.corpus.tokens[tmpl2.feature]
         index = self.index.array
-        def search_key(k: int) -> tuple[InternedString, InternedString]:
-            return (features1[index[k] + offset1], features2[index[k] + offset2])
-        return binsearch_range(0, len(self)-1, instance.values, search_key)
-
-
-###################################################################################################
-## Different ways of building different indexes
-
-
-# We need big-endian byte order (i.e., most-significant byte first).
-# Because then we can treat a tuple of integers as a bytestring (when comparing them).
-SORTING_BYTEORDER: ByteOrder = 'big'
-
-# Index sets should only consist of 4-byte (unsigned) integers.
-BYTESIZE = 4
-
-
-def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
-    assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
-    assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
-
-    logging.info(f"Building unary index: {template}")
-    index_size = len(corpus)
-    bitsize = BYTESIZE * 8
-    rowsize = BYTESIZE * 2
-    tmpl: TemplateLiteral = template.template[0]
-    features = corpus.tokens[tmpl.feature]
-
-    def collect_positions(collect: RowAdder) -> None:
-        for pos in progress_bar(range(index_size), desc="Collecting positions"):
-            instance_value = features[pos + tmpl.offset]
-            if instance_value:
-                row = (instance_value.index << bitsize) + pos
-                collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
-
-    collect_and_sort_positions(collect_positions, index_path, index_size, rowsize, args)
-
-
-def build_binary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
-    assert len(template) == 2, f"BinaryIndex templates must have length 2: {template}"
-    assert all(lit.negative for lit in template.literals), f"Cannot handle positive template literals: {template}"
-
-    logging.info(f"Building binary index: {template}")
-
-    index_size = len(corpus) - template.maxdelta()
-    bitsize = BYTESIZE * 8
-    rowsize = BYTESIZE * 3
-
-    def test_literals(pos: int) -> bool:
-        return all(
-            corpus.tokens[lit.feature][pos+lit.offset] != lit.value
-            for lit in template.literals
-        )
-
-    tmpl1, tmpl2 = template.template
-    features1, features2 = corpus.tokens[tmpl1.feature], corpus.tokens[tmpl2.feature]
-
-    unary1 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl1.feature)]))
-    unary2 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl2.feature)]))
-
-    def unary_min_frequency(unary: UnaryIndex, unary_key: InternedString) -> bool:
-        search_key = unary.search_key()
-        start = binsearch_first(0, len(unary)-1, unary_key, search_key)
-        end = start + args.min_frequency - 1
-        return end < len(unary2) and search_key(end) == unary_key
-
-    def collect_positions(collect: RowAdder) -> None:
-        skipped_instances = 0
-        for pos in progress_bar(range(index_size), desc="Collecting positions"):
-            val1, val2 = features1[pos + tmpl1.offset], features2[pos + tmpl2.offset]
-            if val1 and val2 and test_literals(pos):
-                if args.min_frequency and not (
-                            unary_min_frequency(unary1, val1) and
-                            unary_min_frequency(unary2, val2)
-                        ):
-                    skipped_instances += 1
-                else:
-                    row = (((val1.index << bitsize) + val2.index) << bitsize) + pos
-                    collect(row.to_bytes(rowsize, SORTING_BYTEORDER))
-        if skipped_instances:
-            logging.debug(f"Skipped {skipped_instances} low-frequency instances")
-
-    collect_and_sort_positions(collect_positions, index_path, index_size, rowsize, args)
-
-
-RowAdder = Callable[[bytes], Any]
-RowCollector = Callable[[RowAdder], None]
-
-def collect_and_sort_positions(collect_positions: RowCollector, index_path: Path, 
-                               index_size: int, rowsize: int, args: Namespace) -> None:
-    if args.sorter == 'internal':
-        collect_and_sort_internally(collect_positions, index_path, index_size, args)
-    elif args.sorter == 'lmdb':
-        collect_and_sort_lmdb(collect_positions, index_path, index_size, args)
-    else:
-        collect_and_sort_tmpfile(collect_positions, index_path, index_size, rowsize, args)
-
-
-def collect_and_sort_internally(collect_positions: RowCollector, index_path: Path, 
-                                index_size: int, args: Namespace) -> None:
-    tmplist: list[bytes] = []
-    collect_positions(tmplist.append)
-    logging.debug(f"Sorting {len(tmplist)} rows in memory, using sorter '{args.sorter}'.")
-    tmplist.sort()
-    logging.debug(f"Creating suffix array")
-    with DiskIntArray.create(len(tmplist), index_path, max_value=index_size) as suffix_array:
-        for i, row in enumerate(tmplist):
-            pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
-            suffix_array[i] = pos
-
-
-def collect_and_sort_tmpfile(collect_positions: RowCollector, index_path: Path, 
-                             index_size: int, rowsize: int, args: Namespace) -> None:
-    tmpfile = index_path.parent / 'index.tmp'
-    with open(tmpfile, 'wb') as file:
-        collect_positions(file.write)
-        nr_rows = file.tell() // rowsize
-
-    logging.debug(f"Sorting {nr_rows} rows on disk, using sorter '{args.sorter}'.")
-
-    if args.sorter == 'java':
-        pivotselector = args.pivot_selector or 'random'
-        cmd = ['java', '-jar', 'DiskFixedSizeArray.jar', 
-               str(tmpfile), str(rowsize), pivotselector, str(args.cutoff or 1_000_000)]
-        subprocess.run(cmd)
-
-    elif args.sorter in ['qsort', 'multikey']:
-        from mmap import mmap
-        with open(tmpfile, 'r+b') as file:
-            mview = memoryview(mmap(file.fileno(), 0))
-        assert len(mview) % rowsize == 0, \
-            f"File size ({len(mview)}) is not divisible by rowsize ({rowsize})"
-        sort.cythonsort(args.sorter, mview, rowsize)
-
-    else:
-        with DiskFixedBytesArray(tmpfile, rowsize) as bytes_array:
-            sort.quicksort(
-                bytes_array,
-                pivotselector = PIVOT_SELECTORS.get(args.pivot_selector, sort.random_pivot), 
-                cutoff = args.cutoff or 1_000_000,
-            )
-
-    logging.debug(f"Creating suffix array")
-    with DiskIntArray.create(nr_rows, index_path, max_value=index_size) as suffix_array:
-        with open(tmpfile, 'rb') as IN:
-            i = 0
-            while (row := IN.read(rowsize)):
-                pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
-                suffix_array[i] = pos
-                i += 1
-
-    if not args.keep_tmpfiles:
-        tmpfile.unlink()
-
-
-def collect_and_sort_lmdb(collect_positions: RowCollector, index_path: Path, 
-                          index_size: int, args: Namespace) -> None:
-    logging.debug(f"Sorting using database '{args.sorter}'.")
-    import lmdb  # type: ignore
-    tmpdir = index_path.parent / 'index.tmpdb'
-    if tmpdir.exists():
-        shutil.rmtree(tmpdir)
-    env: Any = lmdb.open(str(tmpdir), map_size=1_000_000_000_000)  # type: ignore
-    with env.begin(write=True) as db:
-        collect_positions(lambda row: db.put(row, b''))
-    logging.debug(f"Creating suffix array")
-    with env.begin() as db:
-        nrows = db.stat()['entries']
-        with DiskIntArray.create(nrows, index_path, max_value=index_size) as suffix_array:
-            for i, (row, _) in enumerate(db.cursor()):
-                pos = int.from_bytes(row[-BYTESIZE:], SORTING_BYTEORDER)
-                suffix_array[i] = pos
-    env.close()
-    if not args.keep_tmpfiles:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        def search_key(k: int) -> Instance:
+            return Instance((features1[index[k] + offset1], features2[index[k] + offset2]))
+        return binsearch_range(0, len(self)-1, instance, search_key)
 

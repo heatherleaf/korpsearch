@@ -5,9 +5,8 @@ import json
 from pathlib import Path
 from mmap import mmap
 import itertools
-from functools import total_ordering
-from typing import overload, BinaryIO, Optional, Union, Any
-from collections.abc import Iterator, Iterable, MutableSequence
+from typing import Optional, Union, Any, NewType
+from collections.abc import Iterator, Iterable
 
 from util import add_suffix, get_integer_size, get_typecode, binsearch
 
@@ -105,73 +104,10 @@ class DiskIntArray:
 
 
 ################################################################################
-## On-disk array of fixed-width byte sequences
-
-class DiskFixedBytesArray(MutableSequence[bytes]):
-    itemsize: int
-    _file: BinaryIO
-    _mmap: mmap
-    _len: int
-
-    def __init__(self, path: Path, itemsize: int) -> None:
-        with open(path, 'r+b') as file:
-            self._mmap = mmap(file.fileno(), 0)
-        self.itemsize = itemsize
-        self._len = len(self._mmap) // self.itemsize
-        assert len(self._mmap) % self.itemsize == 0, \
-            f"Array length ({len(self._mmap)}) is not divisible by itemsize ({self.itemsize})"
-
-    def __len__(self) -> int:
-        return self._len
-
-    def __setitem__(self, index: Union[int,slice], value: Union[bytes,Iterable[bytes]]) -> None:
-        assert isinstance(index, int) and isinstance(value, bytes), "DiskFixedBytesArray cannot handle slices"
-        itemsize = self.itemsize
-        start = index * itemsize
-        assert len(value) == itemsize
-        self._mmap[start : start+itemsize] = value
-
-    def __delitem__(self, index: Union[int,slice]) -> None:
-        # Required to be a MutableSequence, but mmap arrays cannot change size
-        raise NotImplementedError("DiskFixedBytesArray cannot change size")
-
-    def insert(self, index: int, value: bytes) -> None:
-        # Required to be a MutableSequence, but mmap arrays cannot change size
-        raise NotImplementedError("DiskFixedBytesArray cannot change size")
-
-    @overload
-    def __getitem__(self, index: int) -> bytes: pass
-    @overload
-    def __getitem__(self, index: slice) -> MutableSequence[bytes]: pass
-    def __getitem__(self, index: Union[int,slice]) -> Union[bytes, MutableSequence[bytes]]:
-        if isinstance(index, slice):
-            return self._slice(index)  # type: ignore
-        itemsize = self.itemsize
-        start = index * itemsize
-        return self._mmap[start : start+itemsize]
-
-    def _slice(self, sl: slice) -> Iterator[bytes]:
-        array = self._mmap
-        itemsize = self.itemsize
-        start, stop, step = sl.indices(len(self))
-        for i in range(start * itemsize, stop * itemsize, step * itemsize):
-            yield array[i : i+itemsize]
-
-    def __iter__(self) -> Iterator[bytes]:
-        return self._slice(slice(None))
-
-    def __enter__(self) -> 'DiskFixedBytesArray':
-        return self
-
-    def __exit__(self, *_: Any) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self._mmap.close()
-
-
-################################################################################
 ## String interning
+
+InternedString = NewType('InternedString', int)
+
 
 class StringCollection:
     strings_suffix = '.strings'
@@ -179,7 +115,7 @@ class StringCollection:
     strings: mmap
     starts: DiskIntArray
 
-    _intern: dict[bytes, int]
+    _intern: dict[bytes, InternedString]
 
     def __init__(self, path: Path, preload: bool = False) -> None:
         path = self.getpath(path)
@@ -194,24 +130,22 @@ class StringCollection:
     def __len__(self) -> int:
         return len(self.starts) - 1
 
-    def from_index(self, index: int) -> 'InternedString':
-        return InternedString(self, index)
+    def from_index(self, index: int) -> bytes:
+        arr = self.starts.array
+        start, nextstart = arr[index], arr[index + 1]
+        return self.strings[start : nextstart]
 
     def preload(self) -> None:
         if not self._intern:
             self._intern = {}
             for i in range(len(self)):
-                self._intern[bytes(self.from_index(i))] = i
+                self._intern[self.from_index(i)] = InternedString(i)
 
-    def intern(self, string: Union[bytes,'InternedString']) -> 'InternedString':
-        if isinstance(string, InternedString):
-            assert string.db is self
-            return string
+    def intern(self, string: bytes) -> InternedString:
         if self._intern:
-            index = self._intern[string]
+            return self._intern[string]
         else:
-            index = binsearch(0, len(self)-1, string, lambda i: bytes(self.from_index(i)))
-        return self.from_index(index)
+            return InternedString(binsearch(0, len(self)-1, string, lambda i: self.from_index(i)))
 
     def __enter__(self) -> 'StringCollection':
         return self
@@ -239,7 +173,7 @@ class StringCollection:
         stringset = set(strings)
         stringset.add(b'')
         stringlist = sorted(stringset)
-        assert not stringlist[0]
+        assert stringlist[0] == b''
 
         path = StringCollection.getpath(path)
         with open(path, 'wb') as stringsfile:
@@ -250,60 +184,11 @@ class StringCollection:
         with DiskIntArray.create(len(starts), path, max_value=starts[-1]) as arr:
             for i, start in enumerate(starts):
                 arr[i] = start
+            assert arr[0] == arr[1] == 0
 
     @classmethod
     def getpath(cls, path: Path) -> Path:
         return add_suffix(path, cls.strings_suffix)
-
-
-@total_ordering
-class InternedString:
-    __slots__ = ['db', 'index']
-    db: StringCollection
-    index: int
-
-    def __init__(self, db: StringCollection, index: int) -> None:
-        # We cannot use 'self.db = db', because this will call ' __setattr__'
-        # which in turn will raise an exception
-        object.__setattr__(self, "db", db)
-        object.__setattr__(self, "index", index)
-
-    def __bytes__(self) -> bytes:
-        arr = self.db.starts.array
-        start = arr[self.index]
-        nextstart = arr[self.index + 1]
-        return self.db.strings[start : nextstart]
-
-    def __str__(self) -> str:
-        return bytes(self).decode()
-
-    def __repr__(self) -> str:
-        return f"InternedString({self})"
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, InternedString) and self.db is other.db:
-            return self.index == other.index
-        else:
-            raise TypeError(f"Comparing InternedString against {type(other)}")
-
-    def __lt__(self, other: 'InternedString') -> bool:
-        if self.db is other.db:
-            return self.index < other.index
-        else:
-            raise TypeError(f"Comparing InternedString against {type(other)}")
-
-    def __bool__(self) -> bool:
-        arr = self.db.starts.array
-        return arr[self.index] < arr[self.index + 1]
-
-    def __hash__(self) -> int:
-        return hash(self.index)
-
-    def __setattr__(self, _field: str, _value: object) -> None:
-        raise TypeError("InternedString is read-only")
-
-    def __delattr__(self, _field: str) -> None:
-        raise TypeError("InternedString is read-only")
 
 
 ################################################################################
@@ -327,13 +212,20 @@ class DiskStringArray:
         return len(self._array)
 
     def __getitem__(self, i: int) -> InternedString:
-        return self._strings.from_index(self._array.array[i])
+        return InternedString(self._array.array[i])
 
-    def __setitem__(self, i: int, value: bytes) -> None:
-        self._array.array[i] = self._strings.intern(value).index
+    def get_bytes(self, i: int) -> bytes:
+        return self._strings.from_index(self[i])
+
+    def get_string(self, i: int) -> str:
+        return self.get_bytes(i).decode()
+
+    def __setitem__(self, i: int, value: InternedString) -> None:
+        self._array.array[i] = value
 
     def __iter__(self) -> Iterator[InternedString]:
-        yield from map(self._strings.from_index, self._array.array)
+        for i in self._array.array:
+            yield InternedString(i)
 
     def __enter__(self) -> 'DiskStringArray':
         return self
