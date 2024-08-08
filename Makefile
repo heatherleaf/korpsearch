@@ -1,25 +1,37 @@
 
-.PHONY: help clean java-arrays fast-merge
+.PHONY: help clean lint cython fast-merge qsort-index multikey-sort java-sort
 
 help:
-	@echo "'make java-arrays': build the Java implementation of Disk Fixed Size Arrays"
-	@echo "'make fast-merge': build the faster merge module using Cython"
 	@echo "'make clean': remove files built by the commands above"
+	@echo "'make lint': type-check and linting using mypy, pyright, and ruff"
+	@echo "'make cython': build all Cython modules"
+	@echo "'make fast-merge': build the 'fast_merge' module for merging qery sets"
+	@echo "'make faster-index-builder': build the 'faster_index_builder' module for index building"
 
 
 clean:
-	$(MAKE) -C java clean
-	rm -f DiskFixedSizeArray.jar
-	rm -f fast_merge.c fast_merge.cpython*.so
+	rm -f *.c
+	rm -f *.*.so
+	rm -rf build
 
 
-fast-merge:
-	python3 setup.py build_ext --inplace
+PYVERSION = 3.9
+
+# F541: Warn about f-strings without placeholders
+RUFFCONFIG = 'lint.ignore = ["F541"]'
+
+lint:
+	mypy --python-version ${PYVERSION} --strict *.py || true
+	@echo
+	pyright --pythonversion ${PYVERSION} *.py || true
+	@echo
+	ruff check --config ${RUFFCONFIG} *.py || true
 
 
-java-arrays: DiskFixedSizeArray.jar
+cython: fast-merge faster-index-builder
 
-DiskFixedSizeArray.jar: java/*.java
-	$(MAKE) -C java java-arrays
-	cp java/$@ $@
+fast-merge: fast_merge.c
+faster-index-builder: faster_index_builder.c
 
+%.c: %.pyx
+	cythonize -i $^

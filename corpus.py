@@ -1,41 +1,39 @@
 
+import re
 import json
 from pathlib import Path
 import logging
-import re
-from typing import BinaryIO, List, Set, Dict, Iterator, Sequence, Union
-from types import TracebackType
+from typing import Any
+from contextlib import ExitStack
+from collections.abc import Iterator, Sequence
 
-from disk import DiskIntArray, DiskIntArrayBuilder, DiskStringArray, DiskStringArrayBuilder, StringCollection, InternedString
-from util import progress_bar, CompressedFileReader, add_suffix
+from corpus_reader import corpus_reader
+from disk import DiskIntArray, DiskStringArray, InternedString, InternedRange, StringCollection
+from util import progress_bar, add_suffix, binsearch_last, Feature, FValue, SENTENCE
 
 ################################################################################
 ## Corpus
-
 
 class Corpus:
     dir_suffix = '.corpus'
     features_file = 'features.cfg'
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
-    sentence_feature = 's'
-    sentence_start_value = b'S'
-    empty_value = b''
 
-    features : List[str]
-    tokens : Dict[str, DiskStringArray]
-    sentence_pointers : DiskIntArray
-    path : Path
+    features: list[Feature]
+    tokens: dict[Feature, DiskStringArray]
+    sentence_pointers: DiskIntArray
+    path: Path
 
-    def __init__(self, corpus:Union[Path,str]):
+    def __init__(self, corpus: Path) -> None:
         self.path = Path(corpus)
         if self.path.suffix != self.dir_suffix:
             self.path = add_suffix(self.path, self.dir_suffix)
         with open(self.path / self.features_file, 'r') as IN:
-            self.features = json.load(IN)
+            self.features = [feat.encode() for feat in json.load(IN)]
         self.sentence_pointers = DiskIntArray(self.path / self.sentences_path)
         self.tokens = {
-            feature: DiskStringArray(self.path / (self.feature_prefix + feature) / feature)
+            feature: DiskStringArray(self.indexpath(self.path, feature))
             for feature in self.features
         }
         assert all(
@@ -51,32 +49,36 @@ class Corpus:
     def __len__(self) -> int:
         return len(self.tokens[self.features[0]])
 
-    def strings(self, feature:str) -> StringCollection:
-        return self.tokens[feature].strings
+    def strings(self, feature: Feature) -> StringCollection:
+        return self.tokens[feature]._strings  # type: ignore
 
-    def intern(self, feature:str, value:bytes, is_prefix = False) -> List[InternedString]:
-        return self.tokens[feature].intern(value, is_prefix)
+    def intern(self, feature: Feature, value: FValue) -> InternedString:
+        return self.tokens[feature].intern(value)
+
+    def interned_rage(self, feature: Feature, value: FValue) -> InternedRange:
+        return self.tokens[feature].interned_range(value)
 
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
 
     def sentences(self) -> Iterator[range]:
-        sents = self.sentence_pointers
+        sents = self.sentence_pointers.array
         for start, end in zip(sents[1:], sents[2:]):
             yield range(start, end)
         yield range(sents[len(sents)-1], len(self))
 
-    def sentence_positions(self, n:int) -> range:
-        sents = self.sentence_pointers
+    def sentence_positions(self, n: int) -> range:
+        sents = self.sentence_pointers.array
         start = sents[n]
         nsents = len(sents)
-        end = sents[n+1] if n+1 < nsents else nsents
+        end = sents[n+1] if n+1 < nsents else len(self)
         return range(start, end)
 
-    def render_sentence(self, sent:int, pos:int=-1, offset:int=-1, features:Sequence[str]=(), context:int=-1) -> str:
+    def render_sentence(self, sent: int, pos: int = -1, offset: int = -1, 
+                        features: Sequence[Feature] = (), context: int = -1) -> str:
         if not features:
             features = self.features[:1]
-        tokens = []
+        tokens: list[str] = []
         positions = self.sentence_positions(sent)
         for p in positions:
             if p < 0 or p >= len(self):
@@ -88,7 +90,7 @@ class Corpus:
                     tokens.append('...')
             if p == pos:
                 tokens.append('[')
-            tokens.append('/'.join(str(self.tokens[feat][p]) for feat in features))
+            tokens.append('/'.join(self.tokens[feat].get_string(p) for feat in features))
             if p == pos+offset:
                 tokens.append(']')
             if context >= 0:
@@ -97,38 +99,52 @@ class Corpus:
                     break
         return ' '.join(tokens)
 
-    def get_sentence_from_position(self, pos:int) -> int:
-        ptrs = self.sentence_pointers
-        start, end = 0, len(ptrs)-1
-        while start <= end:
-            mid = (start + end) // 2
-            if ptrs[mid] <= pos:
-                start = mid + 1
-            else:
-                end = mid - 1
-        return end
+    def get_sentence_from_position(self, pos: int) -> int:
+        ptrs = self.sentence_pointers.array
+        return binsearch_last(0, len(ptrs)-1, pos, lambda k: ptrs[k], error=False)
 
     def __enter__(self) -> 'Corpus':
         return self
 
-    def __exit__(self, exc_type:BaseException, exc_val:BaseException, exc_tb:TracebackType):
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         for sa in self.tokens.values(): sa.close()
-        self.sentence_pointers.close()
+        DiskIntArray.close(self.sentence_pointers)
 
-    def get_matches(self, feature:str, match_regex:str) -> List[InternedString]:
+
+    def sanity_check(self) -> None:
+        logging.info("Sanity checking corpus")
+        for feat in self.features:
+            logging.debug(f"Checking corpus index: {feat.decode()}")
+            self.tokens[feat].sanity_check()
+        assert self.sentence_pointers.path
+        logging.debug(f"Checking sentence pointers: {self.sentence_pointers.path.name}")
+        sent_index = self.tokens[SENTENCE]
+        sent_pointers = self.sentence_pointers.array
+        assert sent_pointers[0] == sent_pointers[1] == 0, "Sentence 0 should not exist"
+        sentence = 1
+        sval = sent_index.intern(SENTENCE)
+        for token, sval_ in enumerate(progress_bar(sent_index, "Checking sentences")):
+            if sval == sval_:
+                assert sent_pointers[sentence] == token, f"Sentence {sentence} doesn't point to the right token position"
+                sentence += 1
+        assert sentence == len(sent_pointers)
+        logging.info("Done checking corpus")
+
+
+    def get_matches(self, feature: Feature, match_regex: str) -> list[InternedString]:
         contains = False
         string_collection = self.strings(feature)
         strings = string_collection.strings
-        positions = string_collection.starts
+        positions = string_collection.starts.array
         # if match_regex.startswith(".*") and match_regex.endswith(".*"):
         #     match_regex = match_regex.strip(".*")
         #     contains = True
         binary_match_regex = bytes(match_regex, "utf-8")
         matches = (value.span() for value in re.finditer(binary_match_regex, strings, re.MULTILINE))
-        real_matches = []
+        real_matches: list[InternedString] = []
         # Can be optimized
         for match in matches:
             start, end = 0, len(positions)-2
@@ -149,80 +165,52 @@ class Corpus:
             # if contains and (match[1] - 1) < start_of_next_word:
             #     real_matches.append(InternedString(string_collection, start_of_word))
             if not contains and match[0] == start_of_this_word and match[1] == (start_of_next_word-1):
-                real_matches.append(InternedString(string_collection, start_of_word))
+                real_matches.append(InternedString(start_of_word))
         return real_matches
 
+
     @staticmethod
-    def build_from_csv(basedir:Path, csv_corpusfile:Path):
-        logging.debug(f"Building corpus index")
-        corpus = CompressedFileReader(csv_corpusfile)
-        csv_filesize = corpus.file_size()
+    def indexpath(basepath: Path, feature: Feature) -> Path:
+        return basepath / (Corpus.feature_prefix + feature.decode()) / feature.decode()
 
-        # the first line in the CSV should be a header with the names of each column (=features)
-        corpus.reader.seek(0)
-        base_features : List[str] = corpus.reader.readline().decode().split()
-        rev_features = [feature + "_rev" for feature in base_features]
-        features = base_features + rev_features
-        assert Corpus.sentence_feature not in features
-        features.insert(0, Corpus.sentence_feature)
 
+    @staticmethod
+    def build(basedir: Path, corpusfile: Path) -> None:
+        logging.debug(f"Building corpus index from file: {str(corpusfile)}")
+
+        features, sentence_iterator = corpus_reader(corpusfile, "Collecting strings")
         with open(basedir / Corpus.features_file, 'w') as OUT:
-            json.dump(features, OUT)
-
-        def iterate_sentences(description:str) -> Iterator[List[List[bytes]]]:
-            # Skip over the header line
-            corpus.reader.seek(0)
-            corpus.reader.readline()
-            with progress_bar(total=csv_filesize, desc=description) as pbar:
-                sentence = []
-                for line in corpus.reader:
-                    pbar.update(corpus.file_position() - pbar.n)
-                    line = line.strip()
-                    if line.startswith(b'# '):
-                        if sentence: 
-                            yield sentence
-                            sentence = []
-                    elif line:
-                        token : List[bytes] = line.split(b'\t')
-                        token = token + [value.decode()[::-1].encode() for value in token]
-                        token.insert(0, Corpus.empty_value if sentence else Corpus.sentence_start_value)
-                        if len(token) < len(features):
-                            token += [Corpus.empty_value] * (len(features) - len(token))
-                        sentence.append(token)
-                if sentence: 
-                    yield sentence
-
-        strings : List[Set[bytes]] = [set() for _feature in features]
+            json.dump([feat.decode() for feat in features], OUT)
+        stringsets: list[set[FValue]] = [set() for _feature in features]
         n_sentences = n_tokens = 0
-        for sentence in iterate_sentences("Collecting strings"):
+        for sentence in sentence_iterator:
             n_sentences += 1
             for token in sentence:
                 n_tokens += 1
-                for i, feat in enumerate(token):
-                    strings[i].add(feat)
-        logging.debug(f" --> read {sum(map(len, strings))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
+                for strings, value in zip(stringsets, token):
+                    strings.add(value)
+        logging.debug(f" --> read {sum(map(len, stringsets))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
 
-        sentence_builder = DiskIntArrayBuilder(basedir / Corpus.sentences_path, max_value=n_tokens)
-        sentence_builder.append(0) # sentence 0 doesn't exist
+        path = basedir / Corpus.sentences_path
+        with DiskIntArray.create(n_sentences+1, path, max_value = n_tokens) as sentence_array:
+            sentence_array[0] = 0  # sentence 0 doesn't exist
 
-        feature_builders : List[DiskStringArrayBuilder] = []
-        for i, feature in enumerate(features):
-            path = basedir / (Corpus.feature_prefix + feature) / feature
-            path.parent.mkdir(exist_ok=True)
-            builder = DiskStringArrayBuilder(path, strings[i])
-            feature_builders.append(builder)
+            with ExitStack() as stack:  # to close all feature builders at once
+                feature_builders: list[DiskStringArray] = []
+                for feature, strings in zip(features, stringsets):
+                    path = Corpus.indexpath(basedir, feature)
+                    path.parent.mkdir(exist_ok=True)
+                    str_array = stack.enter_context(DiskStringArray.create(path, strings, n_tokens))
+                    feature_builders.append(str_array)
 
-        ctr = 0
-        for sentence in iterate_sentences("Building indexes"):
-            sentence_builder.append(ctr)
-            for token in sentence:
-                ctr += 1
-                for i, feat in enumerate(token):
-                    feature_builders[i].append(feat)
-        assert ctr == n_tokens
-
-        sentence_builder.close()
-        for builder in feature_builders: 
-            builder.close()
+                _features, sentence_iterator = corpus_reader(corpusfile, "Building indexes")
+                ctr = 0
+                for n, sentence in enumerate(sentence_iterator, 1):
+                    sentence_array[n] = ctr
+                    for token in sentence:
+                        for builder, value in zip(feature_builders, token):
+                            builder[ctr] = builder.intern(value)
+                        ctr += 1
+                assert ctr == n_tokens
 
         logging.info(f"Built corpus index, {n_tokens} tokens, {n_sentences} sentences")

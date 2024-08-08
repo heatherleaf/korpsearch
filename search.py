@@ -4,15 +4,15 @@ from pathlib import Path
 import logging
 import json
 import time
+from typing import Any, Optional
 from argparse import Namespace
-from typing import List, Tuple
 
-from disk import DiskIntArray, DiskIntArrayBuilder
-from index import Index, collect_and_sort_positions
+from index import Index
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
-from util import clean_up
+from util import SENTENCE, WORD, clean_up
+from disk import DiskIntArray
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -20,14 +20,14 @@ CACHE_DIR.mkdir(exist_ok=True)
 INFO_FILE = Path('__info__')
 
 
-def hash_repr(*objs, size=16):
+def hash_repr(*objs: object, size: int = 16) -> str:
     hasher = hashlib.md5()
     for obj in objs:
         hasher.update(repr(obj).encode())
     return hasher.hexdigest() [:size]
 
 
-def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
+def hash_query(corpus: Corpus, query: Query, **extra_args: object) -> Path:
     corpus_hash = hash_repr(corpus, size=8)
     query_dir = CACHE_DIR / (corpus.path.stem + '.' + corpus_hash)
     if not query_dir.is_dir():
@@ -42,39 +42,48 @@ def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     return query_dir / query_hash
 
 
-def collect_and_sort_prefix(index_view:IndexSet, tmpfile:Path, offset:int=0, bytesize:int=4, sorter:str="tmpfile") -> IndexSet:
-    values = index_view.values[index_view.start:(index_view.start+index_view.size)]
-    def collector(collect):
-        for val in values: collect(val.to_bytes(bytesize, 'big'))
-    collect_and_sort_positions(collector, tmpfile, 0, bytesize, bytesize, False, sorter)
-    return IndexSet(DiskIntArray(tmpfile), offset = offset)
+def collect_and_sort_prefix(index_view: IndexSet, tmpfile: Path) -> IndexSet:
+    from merge import sort
+    result = DiskIntArray.create(index_view.size, tmpfile)
+    sort(index_view.values.array, index_view.start, index_view.size, result.array)
+    return IndexSet(result, offset = index_view.offset)
 
-def run_outer(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
+
+def run_outer(query: Query, results_file: Optional[Path], args: Namespace) -> IndexSet:
     tmp_results = Path("tmp_results")
     union = None
     for disjunct in query.expand():
         partial_query = Query(query.corpus, disjunct)
-        partial_results = run_query(partial_query, tmp_results, use_internal)
+        partial_results = run_query(partial_query, tmp_results, args)
         if union:
             union.merge_update(
-                partial_results,
-                None, use_internal=use_internal,
-                merge_type=MergeType.UNION
+                partial_results, None,
+                use_internal = args.internal_merge,
+                merge_type = MergeType.UNION,
             )
-            try: partial_results.values.close()
-            except AttributeError: pass
-        else: union = partial_results
-        try: clean_up(tmp_results, [".ia", ".ia-cfg"])
-        except FileNotFoundError: pass
+            try: 
+                partial_results.values.close()
+            except AttributeError: 
+                pass
+        else: 
+            union = partial_results
+        try: 
+            clean_up(tmp_results, [".ia", ".ia.cfg"])
+        except FileNotFoundError: 
+            pass
+    assert union
     return union
 
-def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
-    search_results : List[Tuple[Query, IndexSet]]= []
-    subqueries : List[Tuple[Query, Index]] = []
+
+def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> IndexSet:
+    search_results: list[tuple[Query, IndexSet]] = []
+    subqueries: list[tuple[Query, Index]] = []
     for subq in query.subqueries():
+        if args.no_binary and len(subq) > 1:
+            continue
         try:
             subqueries.append((subq, subq.index()))
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             continue
 
     logging.info(f"Searching {len(subqueries)} indexes:")
@@ -82,13 +91,11 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     for subq, index in subqueries:
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"     -- subsumed: {subq}")
-            index.close()
             continue
         try:
             results = index.search(subq.instance(), offset=subq.offset())
         except KeyError:
             logging.debug(f"     -- {subq.instance()} not found: {subq}")
-            index.close()
             continue
         search_results.append((subq, results))
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
@@ -102,12 +109,12 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         except ValueError:
             first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
             first_result = search_results[first_ok]
-            first_result = (first_result[0],collect_and_sort_prefix(first_result[1], prefix_tmp, first_result[1].offset))
+            first_result = (first_result[0], collect_and_sort_prefix(first_result[1], prefix_tmp))
         del search_results[first_ok]
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
     for i, (subq, results) in enumerate(search_results, 1):
-        logging.debug(f"     {subq!s:{maxwidth}} : {len(results)} elements")
+        logging.debug(f"{i}     {subq!s:{maxwidth}} : {len(results)} elements")
 
     subq, intersection = search_results[0]
     assert not subq.is_negative()
@@ -123,17 +130,20 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
             if len(results) > 0.1 * lengths[1]:
                 logging.debug(f"     -- skipping prefix: {subq}")
                 continue
-            results = collect_and_sort_prefix(results, prefix_tmp, results.offset)
+            results = collect_and_sort_prefix(results, prefix_tmp)
             
         intersection_type = intersection.merge_update(
             results,
-            results_file, use_internal=use_internal,
-            merge_type=MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
+            results_file, 
+            use_internal = args.internal_merge,
+            merge_type = MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
-        try: clean_up(prefix_tmp, [".ia", ".ia-cfg"])
-        except FileNotFoundError: pass
+        try: 
+            clean_up(prefix_tmp, [".ia", ".ia.cfg"])
+        except FileNotFoundError: 
+            pass
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
@@ -142,47 +152,45 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     return intersection
 
 
-def search_corpus(corpus:Corpus, query:Query, filter_results:bool, 
-                  no_cache:bool, internal_intersection:bool) -> IndexSet:
-    unfiltered_results_file = hash_query(corpus, query)
-    final_results_file = hash_query(corpus, query, filter=filter_results)
-
+def search_corpus(corpus: Corpus, query: Query, args: Namespace) -> IndexSet:
+    final_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=args.filter)
     try:
-        assert not no_cache
-        results = IndexSet(DiskIntArray(final_results_file))
+        assert final_results_file and not args.no_cache
+        results = IndexSet.open(final_results_file)
         logging.debug(f"Using cached results file: {final_results_file}")
-
+        return results
     except (FileNotFoundError, AssertionError):
-        if filter_results:
-            assert unfiltered_results_file != final_results_file
-            try:
-                assert not no_cache
-                results = IndexSet(DiskIntArray(unfiltered_results_file))
-                logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
-            except (FileNotFoundError, AssertionError):
-                results = run_outer(query, unfiltered_results_file, internal_intersection)
-            logging.debug(f"Unfiltered results: {results}")
-            results.filter_update(query.check_position, final_results_file)
+        pass
 
-        else:
-            results = run_outer(query, final_results_file, internal_intersection)
+    if not args.filter:
+        return run_outer(query, final_results_file, args)
 
+    unfiltered_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=False)
+    assert unfiltered_results_file != final_results_file
+    try:
+        assert unfiltered_results_file and not args.no_cache
+        results = IndexSet.open(unfiltered_results_file)
+        logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
+    except (FileNotFoundError, AssertionError):
+        results = run_outer(query, unfiltered_results_file, args)
+        logging.debug(f"Unfiltered results: {results}")
+
+    results.filter_update(query.check_position, final_results_file)
     return results
 
 
-def main_search(args:Namespace) -> dict:
+def main_search(args: Namespace) -> dict[str, Any]:
     if not (args.end and args.end >= 0):
         args.end = args.start + args.num - 1
 
     with Corpus(args.corpus) as corpus:
-        out = {}
         start_time = time.time()
 
         query = Query.parse(corpus, args.query, args.no_sentence_breaks)
         logging.info(f"Query: {query}, {query.offset()}")
 
         if args.show:
-            features_to_show = args.show.split(',')
+            features_to_show = args.show.encode().split(b',')
             for f in features_to_show:
                 if f not in corpus.features:
                     raise ValueError(f"Unknown feature: {f}")
@@ -190,28 +198,27 @@ def main_search(args:Namespace) -> dict:
             features_to_show = [
                 feat for feat in corpus.features 
                 if feat in query.features 
-                if args.no_sentence_breaks or feat != corpus.sentence_feature # don't show the sentence feature
-                if not feat.endswith("_rev") # don't show reversed features
+                if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
+                if not feat.endswith(b'_rev')  # don't show reversed features
             ]
 
         # Always include the 'word' feature, and put it first
-        if 'word' in corpus.features:
-            if 'word' in features_to_show:
-                features_to_show.remove('word')
-            features_to_show.insert(0, 'word')
+        if WORD in corpus.features:
+            if WORD in features_to_show:
+                features_to_show.remove(WORD)
+            features_to_show.insert(0, WORD)
 
-        results = search_corpus(corpus, query, args.filter, args.no_cache, args.internal_intersection)
+        results = search_corpus(corpus, query, args)
         logging.info(f"Results: {results}")
-        out['hits'] = len(results)
 
         query_offset = query.max_offset()
-        matches = []
+        matches: list[dict[str, Any]] = []
         try:
             for match_pos in results.slice(args.start, args.end+1):
                 sentence = corpus.get_sentence_from_position(match_pos)
-                match_start = match_pos - corpus.sentence_pointers[sentence]
+                match_start = match_pos - corpus.sentence_pointers.array[sentence]
                 tokens = [
-                    {feat: str(corpus.tokens[feat][p]) for feat in features_to_show}
+                    {feat.decode(): corpus.tokens[feat].get_string(p) for feat in features_to_show}
                     for p in corpus.sentence_positions(sentence)
                 ]
 
@@ -226,10 +233,12 @@ def main_search(args:Namespace) -> dict:
                 })
         except IndexError:
             pass
-        if matches:
-            out['start'] = args.start
-            out['end'] = args.start + len(matches) - 1
-        out['kwic'] = matches
 
-        out['time'] = time.time() - start_time
-        return out
+        return {
+            'time': time.time() - start_time,
+            'hits': len(results),
+            'start': args.start,
+            'end': args.start + len(matches) - 1,
+            'kwic': matches,
+        }
+

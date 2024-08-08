@@ -1,96 +1,106 @@
 # cython: language_level=3
+# type: ignore
 
-from disk import LowlevelIntArray
-import sys
+def merge(
+        arr1: memoryview, start1: int, length1: int, offset1: int, 
+        arr2: memoryview, start2: int, length2: int, offset2: int, 
+        result: memoryview, take_first: bool, take_second: bool, take_common: bool,
+    ) -> int:
+    """
+    Merge two sorted arrays A (arr1) and B (arr2), of unsigned (4-byte = 32-bit) integers.
+    The result array must have enough space for all elements.
+    Returns the size of the merged result (so the result array can be truncated).
 
-from libc.stdlib cimport malloc, free
-
-ctypedef const unsigned char[::1] buffer
-
-
-cdef buffer to_buffer(array, start, length):
-    """Convert an array to an array of bytes."""
-    assert array._byteorder == sys.byteorder
-    start *= array._elemsize
-    length *= array._elemsize
-    return array._mmap[start : start+length]
-
-def merge(arr1, start1, length1, offset1, arr2, start2, length2, offset2, take_first, take_second, take_common):
-    """Merge two sorted arrays A and B.
-
-    * If take_first is True then elements in A-B are included.
-    * If take_second is True then elements in B-A are included.
-    * If take_common is True then elements in intersection(A,B) are included.
+    * If take_first  is True then elements in A - B are included.
+    * If take_second is True then elements in B - A are included.
+    * If take_common is True then elements in A & B are included.
 
     You can get the following set operations (among others):
 
-    Operation           take_first     take_second    take_common
-    union(A,B)          True           True           True
-    intersection(A,B)   False          False          True
-    A-B                 True           False          False
+    Operation              take_first     take_second    take_common
+    union        (A | B)   True           True           True
+    intersection (A & B)   False          False          True
+    difference   (A - B)   True           False          False
     """
 
-    assert arr1._elemsize == arr2._elemsize
-    cdef int size = arr1._elemsize
+    assert arr1.itemsize == arr2.itemsize == 4, "I can only handle 4-byte integer arrays."
 
-    cdef buffer buf1 = to_buffer(arr1, start1, length1)
-    cdef buffer buf2 = to_buffer(arr2, start2, length2)
+    cdef unsigned int[::1] in1buffer = arr1
+    cdef unsigned int[::1] in2buffer = arr2
+    cdef unsigned int[::1] outbuffer = result
 
-    cdef const unsigned char* in1 = &buf1[0]
-    cdef const unsigned char* in2 = &buf2[0]
-    cdef size_t len1 = buf1.nbytes
-    cdef size_t len2 = buf2.nbytes
+    cdef unsigned int* in1 = <unsigned int*> &in1buffer[0]
+    cdef unsigned int* in2 = <unsigned int*> &in2buffer[0]
+    cdef unsigned int* out = <unsigned int*> &outbuffer[0]
 
-    out = <char*>malloc(len1 + len2)
+    return fast_merge(
+        out, 
+        in1, start1, length1, offset1,
+        in2, start2, length2, offset2,
+        take_first, take_second, take_common,
+    )
+
+
+cdef size_t fast_merge(
+        unsigned int* out, 
+        unsigned int* in1, size_t start1, size_t length1, size_t offset1, 
+        unsigned int* in2, size_t start2, size_t length2, size_t offset2, 
+        size_t take_first, size_t take_second, size_t take_common,
+    ):
+
+    in1 += start1
+    in2 += start2
 
     cdef size_t i = 0
     cdef size_t j = 0
     cdef size_t k = 0
 
-    while i < len1 and j < len2:
-        x = read_bytes(in1+i, size) - offset1
-        y = read_bytes(in2+j, size) - offset2
-
+    x = in1[i] - offset1
+    y = in2[j] - offset2
+    while True:
         if x < y: 
-            i += size
             if take_first:
-                write_bytes(out+k, x, size)
-                k += size
+                out[k] = x
+                k += 1
+            i += 1
+            if i >= length1: 
+                break
+            x = in1[i] - offset1
+
         elif x > y: 
-            j += size
             if take_second:
-                write_bytes(out+k, y, size)
-                k += size
+                out[k] = y
+                k += 1
+            j += 1
+            if j >= length2: 
+                break
+            y = in2[j] - offset2
+
         else:
-            i += size
-            j += size
             if take_common:
-                write_bytes(out+k, x, size)
-                k += size
+                out[k] = x
+                k += 1
+            i += 1
+            if i >= length1: 
+                break
+            j += 1
+            if j >= length2: 
+                break
+            x = in1[i] - offset1
+            y = in2[j] - offset2
 
     if take_first:
-        memcpy(out+k, in1+i, len1-i)
-        k += len1-i
+        while i < length1:
+            x = in1[i] - offset1
+            i += 1
+            out[k] = x
+            k += 1
+
     if take_second:
-        memcpy(out+k, in2+j, len2-j)
-        k += len2-j
+        while j < length2:
+            y = in2[j] - offset2
+            j += 1
+            out[k] = y
+            k += 1
 
-    result = LowlevelIntArray(bytemap=out[:k], elemsize=size, byteorder=sys.byteorder)
-    free(out)
-    return result
-
-
-cdef extern from "string.h":
-    void *memcpy(void *dest, const void *src, size_t len)
-
-
-cdef inline size_t read_bytes(const void *ptr, int size):
-    """Read an integer of the given number of bytes from a pointer."""
-    cdef size_t result = 0
-    memcpy(&result, ptr, size)
-    return result
-
-
-cdef inline void write_bytes(void *ptr, size_t value, int size):
-    """Write an integer of the given number of bytes to a pointer."""
-    memcpy(ptr, &value, size)
+    return k

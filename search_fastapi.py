@@ -5,16 +5,17 @@ from pathlib import Path
 from argparse import Namespace
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from typing import List
+from typing import Any
+from collections.abc import Callable
 
 from corpus import Corpus
-from index import Index, Template, TemplateLiteral
+from index import Template
 from util import setup_logger
 from search import main_search
 
 CORPUS_DIR = Path('corpora')
 
-VERSION = '0.1'
+VERSION = '0.2'
 
 
 setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG)
@@ -22,8 +23,10 @@ setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=10
 app = FastAPI()
 app.mount("/webdemo", StaticFiles(directory="webdemo"), name="webdemo")
 
+APIResult = dict[str, Any]
 
-def api_call(call, *args, **xargs):
+
+def api_call(call: Callable[..., dict[str, Any]], *args: Any, **xargs: Any) -> APIResult:
     start_time = time()
     try: 
         result = call(*args, **xargs)
@@ -40,10 +43,10 @@ def api_call(call, *args, **xargs):
 
 
 @app.get("/info")
-async def info():
+async def info() -> APIResult:
     return api_call(get_info)
 
-def get_info():
+def get_info() -> APIResult:
     return {
         'corpora': [
             corpus.with_suffix('')
@@ -53,16 +56,17 @@ def get_info():
 
 
 @app.get("/corpus_info")
-async def corpus_info(corpus: str):
+async def corpus_info(corpus: str) -> APIResult:
     return api_call(get_corpus_info, corpus)
 
-def get_corpus_info(corpus_path):
+def get_corpus_info(corpus_path: Path) -> APIResult:
     corpus_path = Path(corpus_path)
     with Corpus(corpus_path) as corpus:
-        indexes = []
+        indexes: list[str] = []
         for index_path in corpus_path.with_suffix('.indexes').glob('*:*'):
             templ = Template.parse(corpus, index_path.name)
             indexes.append(templ.querystr())
+        features = [feat.decode() for feat in corpus.features]
         return {
             'info': {
                 'id': corpus_path,
@@ -70,7 +74,7 @@ def get_corpus_info(corpus_path):
                 'description': '?',
                 'size': len(corpus),
                 'sentences': corpus.num_sentences(),
-                'features': corpus.features,
+                'features': features,
                 'indexes': indexes,
             }
         }
@@ -86,9 +90,11 @@ async def search(
         show: str = "", 
         filter: bool = False,
         no_cache: bool = False, 
+        no_diskarray: bool = False, 
+        no_binary: bool = False, 
         no_sentence_breaks: bool = False,
         internal_intersection: bool = False,
-    ):
+    ) -> APIResult:
     return api_call(
         main_search,
         Namespace(
@@ -100,6 +106,8 @@ async def search(
             show = show, 
             filter = filter,
             no_cache = no_cache, 
+            no_diskarray = no_diskarray,
+            no_binary = no_binary,
             no_sentence_breaks = no_sentence_breaks,
             internal_intersection = internal_intersection,
         )
