@@ -7,6 +7,7 @@ from pathlib import Path
 from mmap import mmap
 from array import array
 import itertools
+from typing import List
 from functools import total_ordering
 from typing import overload, Dict, BinaryIO, Union, Iterator, Optional, Iterable, Sequence, MutableSequence
 from types import TracebackType
@@ -332,7 +333,7 @@ class StringCollection:
         self._startsarray = DiskIntArray(self._path.with_suffix(self.starts_suffix))
         self.starts = self._startsarray.array
         self._intern = {}
-        assert self.starts[0] == self.starts[1]
+        # assert self.starts[0] == self.starts[1]
 
     def __len__(self) -> int:
         return len(self.starts)-1
@@ -346,13 +347,17 @@ class StringCollection:
             for i in range(len(self)):
                 self._intern[bytes(self.from_index(i))] = i
 
-    def intern(self, string:Union[bytes,'InternedString']) -> 'InternedString':
+    def intern(self, string:Union[bytes,'InternedString'],
+               is_prefix:bool = False) -> List['InternedString']:
         if isinstance(string, InternedString):
             assert string.db is self
             return string
 
         if self._intern:
             return self.from_index(self._intern[string])
+
+        if is_prefix:
+            return self.intern_prefix(string)
 
         lo : int = 0
         hi : int = len(self)-1
@@ -364,7 +369,37 @@ class StringCollection:
             elif string > here:
                 lo = mid+1
             else:
-                return self.from_index(mid)
+                return (self.from_index(mid), self.from_index(mid))
+        raise KeyError(f"StringCollection: string '{str(string)}' not found in database")
+
+    def intern_prefix(self, string:bytes) -> List['InternedString']:
+        lo : int = 0
+        hi : int = len(self)-1
+        while lo <= hi:
+            mid : int = (lo + hi) // 2
+            here : bytes = bytes(self.from_index(mid))
+            if string < here:
+                hi = mid-1
+            elif string > here:
+                lo = mid+1
+            else: 
+                lo = mid 
+                break 
+        first_index : int = self.from_index(lo)
+        lo : int = 0
+        hi : int = len(self)-1
+        # Add last char to get last match
+        string : bytes = string + bytes([255])
+        while lo <= hi:
+            mid : int = (lo + hi) // 2
+            here : bytes = bytes(self.from_index(mid))
+            if string < here:
+                hi = mid-1
+            elif string > here:
+                lo = mid+1
+        last_index : int = self.from_index(hi)
+        if last_index >= first_index:
+            return (first_index, last_index)
         raise KeyError(f"StringCollection: string '{str(string)}' not found in database")
 
     def __enter__(self) -> 'StringCollection':
@@ -390,11 +425,11 @@ class StringCollectionBuilder:
         path = add_suffix(path, StringCollection.strings_suffix)
         with open(path, 'wb') as stringsfile:
             for string in stringlist: 
-                stringsfile.write(string)
+                stringsfile.write(string + b"\n")
 
         DiskIntArrayBuilder.build(
             path.with_suffix(StringCollection.starts_suffix),
-            itertools.accumulate((len(s) for s in stringlist), initial=0),
+            itertools.accumulate((len(s)+1 for s in stringlist), initial=0),
             use_memoryview = True
         )
 
@@ -411,7 +446,7 @@ class InternedString:
 
     def __bytes__(self) -> bytes:
         start : int = self.db.starts[self.index]
-        nextstart : int = self.db.starts[self.index+1]
+        nextstart : int = self.db.starts[self.index+1] - 1
         return self.db.strings[start:nextstart]
 
     def __str__(self):
@@ -461,8 +496,8 @@ class DiskStringArray(Sequence):
     def raw(self) -> DiskIntArray:
         return self._array
 
-    def intern(self, x:bytes) -> InternedString:
-        return self.strings.intern(x)
+    def intern(self, x:bytes, is_prefix = False) -> List[InternedString]:
+        return self.strings.intern(x, is_prefix)
 
     def __len__(self):
         return len(self._array)

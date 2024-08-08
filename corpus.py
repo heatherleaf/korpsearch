@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import logging
+import re
 from typing import BinaryIO, List, Set, Dict, Iterator, Sequence, Union
 from types import TracebackType
 
@@ -53,8 +54,8 @@ class Corpus:
     def strings(self, feature:str) -> StringCollection:
         return self.tokens[feature].strings
 
-    def intern(self, feature:str, value:bytes) -> InternedString:
-        return self.tokens[feature].intern(value)
+    def intern(self, feature:str, value:bytes, is_prefix = False) -> List[InternedString]:
+        return self.tokens[feature].intern(value, is_prefix)
 
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
@@ -117,6 +118,40 @@ class Corpus:
         for sa in self.tokens.values(): sa.close()
         self.sentence_pointers.close()
 
+    def get_matches(self, feature:str, match_regex:str) -> List[InternedString]:
+        contains = False
+        string_collection = self.strings(feature)
+        strings = string_collection.strings
+        positions = string_collection.starts
+        # if match_regex.startswith(".*") and match_regex.endswith(".*"):
+        #     match_regex = match_regex.strip(".*")
+        #     contains = True
+        binary_match_regex = bytes(match_regex, "utf-8")
+        matches = (value.span() for value in re.finditer(binary_match_regex, strings, re.MULTILINE))
+        real_matches = []
+        # Can be optimized
+        for match in matches:
+            start, end = 0, len(positions)-2
+            while start <= end:
+                mid = (start + end) // 2
+                key = positions[mid]
+                if key < match[0]:
+                    start = mid + 1
+                elif key > match[0]:
+                    end = mid - 1
+                else:
+                    start = mid
+                    break
+            start_of_word = min(start, end)
+            start_of_this_word = positions[start_of_word]
+            start_of_next_word = positions[start_of_word+1]
+            # Range is until
+            # if contains and (match[1] - 1) < start_of_next_word:
+            #     real_matches.append(InternedString(string_collection, start_of_word))
+            if not contains and match[0] == start_of_this_word and match[1] == (start_of_next_word-1):
+                real_matches.append(InternedString(string_collection, start_of_word))
+        return real_matches
+
     @staticmethod
     def build_from_csv(basedir:Path, csv_corpusfile:Path):
         logging.debug(f"Building corpus index")
@@ -125,7 +160,9 @@ class Corpus:
 
         # the first line in the CSV should be a header with the names of each column (=features)
         corpus.reader.seek(0)
-        features : List[str] = corpus.reader.readline().decode().split()
+        base_features : List[str] = corpus.reader.readline().decode().split()
+        rev_features = [feature + "_rev" for feature in base_features]
+        features = base_features + rev_features
         assert Corpus.sentence_feature not in features
         features.insert(0, Corpus.sentence_feature)
 
@@ -147,6 +184,7 @@ class Corpus:
                             sentence = []
                     elif line:
                         token : List[bytes] = line.split(b'\t')
+                        token = token + [value.decode()[::-1].encode() for value in token]
                         token.insert(0, Corpus.empty_value if sentence else Corpus.sentence_start_value)
                         if len(token) < len(features):
                             token += [Corpus.empty_value] * (len(features) - len(token))

@@ -5,7 +5,7 @@ import math
 import logging
 import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, Literal, Iterable, Optional, BinaryIO, Union
+from typing import Any, Literal, List, Iterable, Optional, BinaryIO, Union
 
 ByteOrder = Literal['little', 'big']
 
@@ -16,6 +16,11 @@ def add_suffix(path:Path, suffix:str):
         path = Path(str(path) + suffix)
         # Alternatively: Path(path).with_suffix(path.suffix + suffix)
     return path
+
+
+def clean_up(path:Path, suffixes:List[str]):
+    for suffix in suffixes:
+        add_suffix(path, suffix).unlink()
 
 
 def min_bytes_to_store_values(max_value:int) -> int:

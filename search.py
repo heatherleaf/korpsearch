@@ -7,11 +7,12 @@ import time
 from argparse import Namespace
 from typing import List, Tuple
 
-from disk import DiskIntArray
-from index import Index
+from disk import DiskIntArray, DiskIntArrayBuilder
+from index import Index, collect_and_sort_positions
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
+from util import clean_up
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -41,6 +42,32 @@ def hash_query(corpus:Corpus, query:Query, **extra_args) -> Path:
     return query_dir / query_hash
 
 
+def collect_and_sort_prefix(index_view:IndexSet, tmpfile:Path, offset:int=0, bytesize:int=4, sorter:str="tmpfile") -> IndexSet:
+    values = index_view.values[index_view.start:(index_view.start+index_view.size)]
+    def collector(collect):
+        for val in values: collect(val.to_bytes(bytesize, 'big'))
+    collect_and_sort_positions(collector, tmpfile, 0, bytesize, bytesize, False, sorter)
+    return IndexSet(DiskIntArray(tmpfile), offset = offset)
+
+def run_outer(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
+    tmp_results = Path("tmp_results")
+    union = None
+    for disjunct in query.expand():
+        partial_query = Query(query.corpus, disjunct)
+        partial_results = run_query(partial_query, tmp_results, use_internal)
+        if union:
+            union.merge_update(
+                partial_results,
+                None, use_internal=use_internal,
+                merge_type=MergeType.UNION
+            )
+            try: partial_results.values.close()
+            except AttributeError: pass
+        else: union = partial_results
+        try: clean_up(tmp_results, [".ia", ".ia-cfg"])
+        except FileNotFoundError: pass
+    return union
+
 def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexSet:
     search_results : List[Tuple[Query, IndexSet]]= []
     subqueries : List[Tuple[Query, Index]] = []
@@ -55,20 +82,28 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
     for subq, index in subqueries:
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"     -- subsumed: {subq}")
+            index.close()
             continue
         try:
             results = index.search(subq.instance(), offset=subq.offset())
         except KeyError:
             logging.debug(f"     -- {subq.instance()} not found: {subq}")
+            index.close()
             continue
         search_results.append((subq, results))
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
     search_results.sort(key=lambda r: len(r[-1]))
-    if search_results[0][0].is_negative():
-        first_positive = [q.is_negative() for q,_ in search_results].index(False)
-        first_result = search_results[first_positive]
-        del search_results[first_positive]
+    prefix_tmp = Path("prefix_tmp")
+    if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
+        try:
+            first_ok = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
+            first_result = search_results[first_ok]
+        except ValueError:
+            first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
+            first_result = search_results[first_ok]
+            first_result = (first_result[0],collect_and_sort_prefix(first_result[1], prefix_tmp, first_result[1].offset))
+        del search_results[first_ok]
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
     for i, (subq, results) in enumerate(search_results, 1):
@@ -83,6 +118,13 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         if subq.subsumed_by(used_queries):
             logging.debug(f"     -- subsumed: {subq}")
             continue
+        if any(lit.is_prefix() for lit in subq.literals):
+            lengths = sorted([len(res[1]) for res in search_results])
+            if len(results) > 0.1 * lengths[1]:
+                logging.debug(f"     -- skipping prefix: {subq}")
+                continue
+            results = collect_and_sort_prefix(results, prefix_tmp, results.offset)
+            
         intersection_type = intersection.merge_update(
             results,
             results_file, use_internal=use_internal,
@@ -90,9 +132,13 @@ def run_query(query:Query, results_file:Path, use_internal:bool=False) -> IndexS
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
+        try: clean_up(prefix_tmp, [".ia", ".ia-cfg"])
+        except FileNotFoundError: pass
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
+    for _, results in search_results[1:]:
+        results.values.close()
     return intersection
 
 
@@ -114,12 +160,12 @@ def search_corpus(corpus:Corpus, query:Query, filter_results:bool,
                 results = IndexSet(DiskIntArray(unfiltered_results_file))
                 logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
             except (FileNotFoundError, AssertionError):
-                results = run_query(query, unfiltered_results_file, internal_intersection)
+                results = run_outer(query, unfiltered_results_file, internal_intersection)
             logging.debug(f"Unfiltered results: {results}")
             results.filter_update(query.check_position, final_results_file)
 
         else:
-            results = run_query(query, final_results_file, internal_intersection)
+            results = run_outer(query, final_results_file, internal_intersection)
 
     return results
 
@@ -144,7 +190,8 @@ def main_search(args:Namespace) -> dict:
             features_to_show = [
                 feat for feat in corpus.features 
                 if feat in query.features 
-                if args.no_sentence_breaks or feat != corpus.sentence_feature  # don't show the sentence feature
+                if args.no_sentence_breaks or feat != corpus.sentence_feature # don't show the sentence feature
+                if not feat.endswith("_rev") # don't show reversed features
             ]
 
         # Always include the 'word' feature, and put it first

@@ -24,10 +24,22 @@ class Literal(NamedTuple):
     negative : bool
     offset : int
     feature : str
-    value : InternedString
+    first_value : InternedString
+    last_value : InternedString
 
     def __str__(self):
-        return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.value}"
+        if self.is_prefix():
+            return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.first_value}-{self.last_value}"
+        else:
+            return f"{self.feature}:{self.offset}{'#' if self.negative else '='}{self.first_value}"
+
+    def is_prefix(self):
+        return self.first_value != self.last_value
+
+    # unoptimized version for use with Query.check_position
+    def check_position(self, corpus_tokens, pos):
+        value = corpus_tokens[self.feature][pos + self.offset]
+        return (value >= self.first_value and value <= self.last_value) != self.negative
 
     @staticmethod
     def parse(corpus:Corpus, litstr:str) -> 'Literal':
@@ -36,12 +48,38 @@ class Literal(NamedTuple):
             assert feature.replace('_','').isalnum()
             try:
                 offset, value = rest.split('=')
-                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                return Literal(False, int(offset), feature.lower(), corpus.intern(feature, value.encode()), corpus.intern(feature, value.encode()))
             except ValueError:
                 offset, value = rest.split('#')
-                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()))
+                return Literal(True, int(offset), feature.lower(), corpus.intern(feature, value.encode()), corpus.intern(feature, value.encode()))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
+
+
+class DisjunctiveGroup(NamedTuple):
+    negative : bool
+    offset : int
+    features : Tuple[str]
+    literals : Tuple[Literal]
+
+    def __str__(self):
+        string = ""
+        for elem in self.literals: string += str(elem) + "|"
+        return string[:-1]
+
+    # unoptimized version for use with Query.check_position
+    def check_position(self, corpus_tokens, pos):
+        return any(lit.check_position(corpus_tokens, pos) for lit in self.literals)
+
+    def is_prefix(self):
+        return any(lit.is_prefix() for lit in self.literals)
+
+    @staticmethod
+    def create(literals:Tuple[Literal]):
+        negative = any(lit.negative for lit in literals)
+        offset = min(lit.offset for lit in literals)
+        features = tuple(lit.feature for lit in literals)
+        return DisjunctiveGroup(negative, offset, features, literals)
 
 
 class TemplateLiteral(NamedTuple):
@@ -139,7 +177,7 @@ class Template:
 class Instance:
     values : Tuple[InternedString,...]
 
-    def __init__(self, values : Sequence[InternedString]):
+    def __init__(self, values : Sequence[Sequence[InternedString]]):
         assert len(values) > 0
         self.values = tuple(values)
 
@@ -216,29 +254,33 @@ class Index:
         search_key = self.search_key
         instance_key = instance.values
         if len(instance_key) == 1: instance_key = instance_key[0]
+        else: instance_key = tuple(zip(*instance_key))
 
         start, end = 0, len(self)-1
+        instance_key_first = instance_key[0]
         while start <= end:
             mid = (start + end) // 2
             key = search_key(mid)
-            if key < instance_key:  # type: ignore
+            if key < instance_key_first:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
         first_index = start
-        if search_key(first_index) != instance_key:
+        if search_key(first_index) != instance_key_first:
             raise KeyError(f'Instance "{instance}" not found')
 
         end = len(self) - 1
+        instance_key_last = instance_key[1]
         while start <= end:
             mid = (start + end) // 2
             key = search_key(mid)
-            if key <= instance_key:  # type: ignore
+            if key <= instance_key_last:  # type: ignore
                 start = mid + 1
             else:
                 end = mid - 1
         last_index = end
-        assert search_key(last_index) == instance_key
+        if search_key(last_index) != instance_key_last:
+            raise KeyError(f'Instance "{instance}" not found')
 
         return first_index, last_index
 
@@ -325,10 +367,10 @@ def build_general_index(corpus:Corpus, index_path:Path, template:Template, min_f
     if len(template.literals) == 0:
         test_literals = lambda pos: True
     elif len(template.literals) == 1:
-        [(_neg1, off1, feat1, val1)] = template.literals
+        [(_neg1, off1, feat1, val1, _)] = template.literals
         test_literals = lambda pos: corpus.tokens[feat1][pos+off1] != val1
     elif len(template.literals) == 2:
-        [(_neg1, off1, feat1, val1), (_neg2, off2, feat2, val2)] = template.literals
+        [(_neg1, off1, feat1, val1, _), (_neg2, off2, feat2, val2, _)] = template.literals
         test_literals = lambda pos: \
             corpus.tokens[feat1][pos+off1] != val1 and corpus.tokens[feat2][pos+off2] != val2
     else:
