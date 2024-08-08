@@ -64,7 +64,7 @@ class Corpus:
         sents = self.sentence_pointers.array
         start = sents[n]
         nsents = len(sents)
-        end = sents[n+1] if n+1 < nsents else nsents
+        end = sents[n+1] if n+1 < nsents else len(self)
         return range(start, end)
 
     def render_sentence(self, sent: int, pos: int = -1, offset: int = -1, 
