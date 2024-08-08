@@ -18,7 +18,7 @@ Instance = NewType('Instance', tuple[InternedString, ...])
 
 
 @dataclass(frozen=True, order=True)
-class Literal:
+class KnownLiteral:
     negative: bool
     offset: int
     feature: Feature
@@ -35,7 +35,7 @@ class Literal:
         return (value == self.value) != self.negative
 
     @staticmethod
-    def parse(corpus: Corpus, litstr: str) -> 'Literal':
+    def parse(corpus: Corpus, litstr: str) -> 'KnownLiteral':
         try:
             featstr, rest = litstr.split(':')
             feature = Feature(featstr.lower().encode())
@@ -47,7 +47,7 @@ class Literal:
                 offset, valstr = rest.split('#')
                 negative = True
             value = FValue(valstr.encode())
-            return Literal(negative, int(offset), feature, corpus.intern(feature, value))
+            return KnownLiteral(negative, int(offset), feature, corpus.intern(feature, value))
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -78,9 +78,9 @@ class TemplateLiteral:
 class Template:
     size: int  # Having 'size' first means shorter templates are ordered before longer
     template: tuple[TemplateLiteral,...]
-    literals: tuple[Literal,...] = ()
+    literals: tuple[KnownLiteral,...] = ()
 
-    def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[Literal] = []) -> None:
+    def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[KnownLiteral] = []) -> None:
         # We need to use __setattr__ because the class is frozen:
         object.__setattr__(self, 'template', tuple(template))
         object.__setattr__(self, 'literals', tuple(sorted(set(literals))))
@@ -132,11 +132,11 @@ class Template:
     @staticmethod
     def parse(corpus: Corpus, template_str: str) -> 'Template':
         try:
-            literals: list[Literal] = []
+            literals: list[KnownLiteral] = []
             template: list[TemplateLiteral] = []
             for litstr in template_str.split('+'):
                 try:
-                    literals.append(Literal.parse(corpus, litstr))
+                    literals.append(KnownLiteral.parse(corpus, litstr))
                 except ValueError:
                     template.append(TemplateLiteral.parse(litstr))
             return Template(template, literals)

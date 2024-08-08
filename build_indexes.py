@@ -5,7 +5,7 @@ from pathlib import Path
 from collections.abc import Iterator
 import logging
 
-from index import Literal, TemplateLiteral, Template, Index
+from index import KnownLiteral, TemplateLiteral, Template, Index
 from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
 from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
@@ -87,7 +87,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             else:
                 dist = tmpl.maxdelta()
                 literals = set(tmpl.literals) | {
-                    Literal(True, offset, SENTENCE, svalue)
+                    KnownLiteral(True, offset, SENTENCE, svalue)
                     for offset in range(1, dist+1)
                 }
                 yield Template(tmpl.template, literals)
@@ -107,7 +107,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                         yield Template(template)
                     else:
                         literals = {
-                            Literal(True, offset, SENTENCE, svalue)
+                            KnownLiteral(True, offset, SENTENCE, svalue)
                             for offset in range(1, dist+1)
                         }
                         yield Template(template, literals)

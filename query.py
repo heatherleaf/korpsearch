@@ -3,7 +3,7 @@ import re
 import itertools
 from collections.abc import Iterator, Sequence
 
-from index import Literal, TemplateLiteral, Template, Instance, Index
+from index import KnownLiteral, TemplateLiteral, Template, Instance, Index
 from corpus import Corpus
 from util import Feature, FValue, SENTENCE, START
 from disk import InternedString
@@ -17,12 +17,12 @@ class Query:
     token_regex = re.compile(r'       ([\w_]+) (!?) = "([^"]+)"          ', re.X)
 
     corpus: Corpus
-    literals: list[Literal]
+    literals: list[KnownLiteral]
     features: set[Feature]
     featured_query: dict[Feature, list[tuple[bool, int, InternedString]]]
     template: Template
 
-    def __init__(self, corpus: Corpus, literals: Sequence[Literal]) -> None:
+    def __init__(self, corpus: Corpus, literals: Sequence[KnownLiteral]) -> None:
         self.corpus = corpus
         self.literals = sorted(set(literals))
         self.features = {lit.feature for lit in self.literals}
@@ -47,7 +47,7 @@ class Query:
         else:
             self.template = Template(
                 [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
-                [Literal(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
+                [KnownLiteral(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
             )
 
 
@@ -75,10 +75,10 @@ class Query:
     def is_negative(self) -> bool:
         return not self.positive_literals()
 
-    def positive_literals(self) -> list[Literal]:
+    def positive_literals(self) -> list[KnownLiteral]:
         return [lit for lit in self.literals if not lit.negative]
 
-    def negative_literals(self) -> list[Literal]:
+    def negative_literals(self) -> list[KnownLiteral]:
         return [lit for lit in self.literals if lit.negative]
 
     def instance(self) -> Instance:
@@ -130,16 +130,16 @@ class Query:
         if not Query.query_regex.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
         tokens = querystr.split('][')
-        query: list[Literal] = []
+        query: list[KnownLiteral] = []
         for offset, token in enumerate(tokens):
             for match in Query.token_regex.finditer(token):
                 featstr, negated, valstr = match.groups()
                 feature = Feature(featstr.lower().encode())
                 value = FValue(valstr.encode())
                 negative = (negated == '!')
-                query.append(Literal(negative, offset, feature, corpus.intern(feature, value)))
+                query.append(KnownLiteral(negative, offset, feature, corpus.intern(feature, value)))
         if not no_sentence_breaks:
             svalue = corpus.intern(SENTENCE, START)
             for offset in range(1, len(tokens)):
-                query.append(Literal(True, offset, SENTENCE, svalue))
+                query.append(KnownLiteral(True, offset, SENTENCE, svalue))
         return Query(corpus, query)
