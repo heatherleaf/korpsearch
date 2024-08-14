@@ -50,7 +50,7 @@ class KnownLiteral:
         return (value == self.value) != self.negative
 
     @staticmethod
-    def parse(corpus: Corpus, litstr: str) -> 'KnownLiteral':
+    def parse(corpus: Corpus, litstr: str, interned: bool = False) -> 'KnownLiteral':
         try:
             featstr, rest = litstr.split(':')
             feature = Feature(featstr.lower().encode())
@@ -62,8 +62,11 @@ class KnownLiteral:
                 offset, valstr = rest.split('#')
                 negative = True
             value = FValue(valstr.encode())
-            interned = corpus.intern(feature, value)
-            return KnownLiteral(negative, int(offset), feature, interned, interned)
+            interned_value: InternedString = (
+                InternedString(int(value)) if interned
+                else corpus.intern(feature, value)
+            )
+            return KnownLiteral(negative, int(offset), feature, interned_value, interned_value)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -171,13 +174,13 @@ class Template:
         return mkInstance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
     @staticmethod
-    def parse(corpus: Corpus, template_str: str) -> 'Template':
+    def parse(corpus: Corpus, template_str: str, interned: bool = False) -> 'Template':
         try:
             literals: list[KnownLiteral] = []
             template: list[TemplateLiteral] = []
             for litstr in template_str.split('+'):
                 try:
-                    literals.append(KnownLiteral.parse(corpus, litstr))
+                    literals.append(KnownLiteral.parse(corpus, litstr, interned))
                 except ValueError:
                     template.append(TemplateLiteral.parse(litstr))
             return Template(template, literals)

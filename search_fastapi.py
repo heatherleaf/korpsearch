@@ -64,7 +64,7 @@ def get_corpus_info(corpus_path: Path) -> APIResult:
     with Corpus(corpus_path) as corpus:
         indexes: list[str] = []
         for index_path in corpus_path.with_suffix('.indexes').glob('*:*'):
-            templ = Template.parse(corpus, index_path.name)
+            templ = Template.parse(corpus, index_path.name, interned=True)
             indexes.append(templ.querystr())
         features = [feat.decode() for feat in corpus.features]
         return {
