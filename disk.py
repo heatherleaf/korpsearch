@@ -123,7 +123,7 @@ class StringCollection:
         with open(path, 'r+b') as file:
             self.strings = mmap(file.fileno(), 0)
         self.starts = DiskIntArray(path)
-        assert self.starts.array[0] == self.starts.array[1]
+        assert self.starts.array[0]+1 == self.starts.array[1]
         self._intern = {}
         if preload:
             self.preload()
@@ -134,7 +134,7 @@ class StringCollection:
     def from_index(self, index: int) -> bytes:
         arr = self.starts.array
         start, nextstart = arr[index], arr[index + 1]
-        return self.strings[start : nextstart]
+        return self.strings[start : nextstart-1]
 
     def preload(self) -> None:
         if not self._intern:
@@ -165,7 +165,7 @@ class StringCollection:
 
     def sanity_check(self) -> None:
         starts = self.starts.array
-        assert starts[0] == starts[1] == 0
+        assert starts[0] == 0 and starts[1] == 1
         old = b''
         for start, end in zip(starts[1:], starts[2:]):
             assert start < end, f"StringCollection position error: {start} >= {end}"
@@ -185,12 +185,13 @@ class StringCollection:
         with open(path, 'wb') as stringsfile:
             for string in stringlist: 
                 stringsfile.write(string)
+                stringsfile.write(b'\n')
 
-        starts = list(itertools.accumulate((len(s) for s in stringlist), initial=0))
+        starts = list(itertools.accumulate((len(s)+1 for s in stringlist), initial=0))
         with DiskIntArray.create(len(starts), path, max_value=starts[-1]) as arr:
             for i, start in enumerate(starts):
                 arr[i] = start
-            assert arr[0] == arr[1] == 0
+            assert arr[0] == 0 and arr[1] == 1
 
     @classmethod
     def getpath(cls, path: Path) -> Path:

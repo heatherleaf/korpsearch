@@ -143,7 +143,7 @@ class Corpus:
         #     match_regex = match_regex.strip(".*")
         #     contains = True
         binary_match_regex = bytes(match_regex, "utf-8")
-        matches = (value.span() for value in re.finditer(binary_match_regex, strings, re.MULTILINE))
+        matches = (value.span() for value in re.finditer(binary_match_regex, strings))
         real_matches: list[InternedString] = []
         # Can be optimized
         for match in matches:
@@ -164,7 +164,7 @@ class Corpus:
             # Range is until
             # if contains and (match[1] - 1) < start_of_next_word:
             #     real_matches.append(InternedString(string_collection, start_of_word))
-            if not contains and match[0] == start_of_this_word and match[1] == start_of_next_word:
+            if not contains and match[0] == start_of_this_word and match[1] == start_of_next_word-1:
                 real_matches.append(InternedString(start_of_word))
         return real_matches
 
