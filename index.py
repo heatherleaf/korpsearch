@@ -92,26 +92,26 @@ class Template:
             assert self.template == tuple(sorted(set(self.template))), f"Unsorted template"
             assert self.literals == tuple(sorted(self.literals)),      f"Duplicate literal(s)"
             assert len(self.template) > 0,                             f"Empty template"
-            assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0"
-            if self.literals:
-                assert all(lit.negative for lit in self.literals),     f"Positive template literal(s)"
-                assert all(0 <= lit.offset <= self.maxdelta() 
-                           for lit in self.literals),                  f"Literal offset must be within 0...{self.maxdelta()}"
+            assert self.min_offset() == 0,                             f"Minimum offset must be 0"
+            assert all(lit.negative for lit in self.literals),         f"Positive template literal(s)"
         except AssertionError:
             raise ValueError(f"Invalid template: {self}")
 
-    def maxdelta(self) -> int:
-        return max(t.offset for t in self.template)
+    def offsets(self) -> set[int]:
+        return {lit.offset for lit in self.template + self.literals}
+
+    def min_offset(self) -> int:
+        return min(self.offsets())
+
+    def max_offset(self) -> int:
+        return max(self.offsets())
 
     def __str__(self) -> str:
         return '+'.join(map(str, self.template + self.literals))
 
     def querystr(self) -> str:
-        offsets = [lit.offset for lit in self.template] + [lit.offset for lit in self.literals]
-        min_offset = min(offsets)
-        max_offset = max(offsets)
         tokens: list[str] = []
-        for offset in range(min_offset, max_offset+1):
+        for offset in range(self.min_offset(), self.max_offset()+1):
             tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
             lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{l.value}"' 
                            for l in self.literals if l.offset == offset)

@@ -42,12 +42,12 @@ class Query:
         # We precompute the associated query template. It raises a ValueError if it's not valid.
         if self.is_negative():
             self.template = Template(
-                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.negative_literals()],
+                [TemplateLiteral(lit.offset-self.min_offset(), lit.feature) for lit in self.negative_literals()],
             )
         else:
             self.template = Template(
-                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
-                [KnownLiteral(True, lit.offset-self.offset(), lit.feature, lit.value, corpus) for lit in self.negative_literals()],
+                [TemplateLiteral(lit.offset-self.min_offset(), lit.feature) for lit in self.positive_literals()],
+                [KnownLiteral(True, lit.offset-self.min_offset(), lit.feature, lit.value, corpus) for lit in self.negative_literals()],
             )
 
 
@@ -59,12 +59,6 @@ class Query:
 
     def __len__(self) -> int:
         return len(self.literals)
-
-    def offset(self) -> int:
-        if self.is_negative():
-            return min(lit.offset for lit in self.negative_literals())
-        else:
-            return min(lit.offset for lit in self.positive_literals())
 
     def min_offset(self) -> int:
         return min(lit.offset for lit in self.literals)
