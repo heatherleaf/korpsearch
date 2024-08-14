@@ -56,12 +56,12 @@ class Query:
             self.template = None
         elif self.is_negative():
             self.template = Template(
-                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.negative_literals()],
+                [TemplateLiteral(lit.offset-self.min_offset(), lit.feature) for lit in self.negative_literals()],
             )
         else:
             self.template = Template(
-                [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
-                [KnownLiteral(True, lit.offset-self.offset(), lit.feature, lit.value, lit.value2) for lit in self.negative_literals()],
+                [TemplateLiteral(lit.offset-self.min_offset(), lit.feature) for lit in self.positive_literals()],
+                [KnownLiteral(True, lit.offset-self.min_offset(), lit.feature, lit.value, lit.value2, corpus) for lit in self.negative_literals()],
             )
 
 
@@ -73,12 +73,6 @@ class Query:
 
     def __len__(self) -> int:
         return len(self.literals)
-
-    def offset(self) -> int:
-        if self.is_negative():
-            return min(lit.offset for lit in self.negative_literals())
-        else:
-            return min(lit.offset for lit in self.positive_literals())
 
     def min_offset(self) -> int:
         return min(lit.offset for lit in self.literals)
@@ -185,21 +179,21 @@ class Query:
                     case 'normal':
                         value = FValue(valstr.encode())
                         interned = corpus.intern(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned, interned))
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned, interned, corpus))
                     case 'prefix':
                         valstr = valstr.split('.*')[0]
                         value = FValue(valstr.encode())
                         interned = corpus.interned_range(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, *interned))
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned[0], interned[1], corpus))
                     case 'suffix':
                         valstr = valstr.split('.*')[-1][::-1]
                         value = FValue(valstr.encode())
                         feature = Feature(feature + b'_rev')
                         interned = corpus.interned_range(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, *interned))
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned[0], interned[1], corpus))
                     case 'regex':
                         regex_matches = corpus.get_matches(feature, valstr)
-                        regexed_literals = [KnownLiteral(negative, offset, feature, match, match) for match in regex_matches]
+                        regexed_literals = [KnownLiteral(negative, offset, feature, match, match, corpus) for match in regex_matches]
                         last_group = query_list.pop()
                         query_list.extend(last_group + [lit] for lit in regexed_literals)
             if len(query_list) > 1:
@@ -209,5 +203,5 @@ class Query:
         if not no_sentence_breaks:
             svalue = corpus.intern(SENTENCE, START)
             for offset in range(1, len(tokens)):
-                query.append(KnownLiteral(True, offset, SENTENCE, svalue, svalue))
+                query.append(KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus))
         return Query(corpus, query)

@@ -1,7 +1,7 @@
 
 from typing import Optional, Any, NewType
 from collections.abc import Iterator, Callable, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import logging
 
@@ -27,15 +27,18 @@ class KnownLiteral:
     feature: Feature
     value: InternedString
     value2: InternedString
+    corpus: Corpus = field(compare=False)
 
     def __post_init__(self) -> None:
         check_feature(self.feature)
 
     def __str__(self) -> str:
+        value = self.corpus.lookup_value(self.feature, self.value).decode()
+        value2 = self.corpus.lookup_value(self.feature, self.value2).decode()
         if self.is_prefix():
-            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{self.value}-{self.value2}"
+            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}-{value2}"
         else:
-            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{self.value}"
+            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
 
     def is_prefix(self):
         return self.value != self.value2
@@ -45,12 +48,12 @@ class KnownLiteral:
         value = corpus.tokens[self.feature][pos + self.offset]
         return (value >= self.value and value <= self.value2) != self.negative
 
-    def test(self, corpus: Corpus, pos: int) -> bool:
-        value = corpus.tokens[self.feature][pos + self.offset]
+    def test(self, pos: int) -> bool:
+        value = self.corpus.tokens[self.feature][pos + self.offset]
         return (value == self.value) != self.negative
 
     @staticmethod
-    def parse(corpus: Corpus, litstr: str, interned: bool = False) -> 'KnownLiteral':
+    def parse(corpus: Corpus, litstr: str) -> 'KnownLiteral':
         try:
             featstr, rest = litstr.split(':')
             feature = Feature(featstr.lower().encode())
@@ -62,11 +65,8 @@ class KnownLiteral:
                 offset, valstr = rest.split('#')
                 negative = True
             value = FValue(valstr.encode())
-            interned_value: InternedString = (
-                InternedString(int(value)) if interned
-                else corpus.intern(feature, value)
-            )
-            return KnownLiteral(negative, int(offset), feature, interned_value, interned_value)
+            interned_value = corpus.intern(feature, value)
+            return KnownLiteral(negative, int(offset), feature, interned_value, interned_value, corpus)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -133,29 +133,30 @@ class Template:
             assert self.template == tuple(sorted(set(self.template))), f"Unsorted template"
             assert self.literals == tuple(sorted(self.literals)),      f"Duplicate literal(s)"
             assert len(self.template) > 0,                             f"Empty template"
-            assert min(t.offset for t in self.template) == 0,          f"Minimum offset must be 0"
-            if self.literals:
-                assert all(lit.negative for lit in self.literals),     f"Positive template literal(s)"
-                assert all(0 <= lit.offset <= self.maxdelta() 
-                           for lit in self.literals),                  f"Literal offset must be within 0...{self.maxdelta()}"
+            assert self.min_offset() == 0,                             f"Minimum offset must be 0"
+            assert all(lit.negative for lit in self.literals),         f"Positive template literal(s)"
         except AssertionError:
             raise ValueError(f"Invalid template: {self}")
 
-    def maxdelta(self) -> int:
-        return max(t.offset for t in self.template)
+    def offsets(self) -> set[int]:
+        return {lit.offset for lit in self.template + self.literals}
+
+    def min_offset(self) -> int:
+        return min(self.offsets())
+
+    def max_offset(self) -> int:
+        return max(self.offsets())
 
     def __str__(self) -> str:
         return '+'.join(map(str, self.template + self.literals))
 
     def querystr(self) -> str:
-        offsets = [lit.offset for lit in self.template] + [lit.offset for lit in self.literals]
-        min_offset = min(offsets)
-        max_offset = max(offsets)
         tokens: list[str] = []
-        for offset in range(min_offset, max_offset+1):
+        for offset in range(self.min_offset(), self.max_offset()+1):
             tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
-            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{l.value}"' 
-                           for l in self.literals if l.offset == offset)
+            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{val}"' 
+                           for l in self.literals if l.offset == offset
+                           for val in [l.corpus.lookup_value(l.feature, l.value).decode()])
             if lit:
                 tokens.append(tok + '|' + lit)
             else:
@@ -169,18 +170,18 @@ class Template:
         return self.size
 
     def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
-        if not all(lit.test(corpus, pos) for lit in self.literals):
+        if not all(lit.test(pos) for lit in self.literals):
             return None
         return mkInstance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
     @staticmethod
-    def parse(corpus: Corpus, template_str: str, interned: bool = False) -> 'Template':
+    def parse(corpus: Corpus, template_str: str) -> 'Template':
         try:
             literals: list[KnownLiteral] = []
             template: list[TemplateLiteral] = []
             for litstr in template_str.split('+'):
                 try:
-                    literals.append(KnownLiteral.parse(corpus, litstr, interned))
+                    literals.append(KnownLiteral.parse(corpus, litstr))
                 except ValueError:
                     template.append(TemplateLiteral.parse(litstr))
             return Template(template, literals)

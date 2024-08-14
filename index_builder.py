@@ -46,7 +46,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
     assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
 
     tmpl = template.template[0]
-    assert tmpl.offset == 0
+    assert tmpl.offset == template.min_offset() == template.max_offset() == 0
     features = corpus.tokens[tmpl.feature].raw()
 
     collector: Collector
@@ -72,8 +72,8 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     assert all(lit.negative for lit in template.literals), f"Cannot handle positive template literals: {template}"
 
     tmpl1, tmpl2 = template.template
-    assert tmpl1.offset == 0
-    assert tmpl2.offset == template.maxdelta()
+    assert tmpl1.offset == template.min_offset() == 0
+    assert tmpl2.offset == template.max_offset()
     features1 = corpus.tokens[tmpl1.feature].raw()
     features2 = corpus.tokens[tmpl2.feature].raw()
     min_freq = args.min_frequency
@@ -106,7 +106,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value) for lit in template.literals]
 
     skipped_instances = 0
-    for pos in progress_bar(range(len(corpus) - template.maxdelta()), desc="Collecting positions"):
+    for pos in progress_bar(range(len(corpus) - template.max_offset()), desc="Collecting positions"):
         val1, val2 = features1[pos], features2[pos + tmpl2.offset]
         if val1 and val2 and all(lfeat[pos + loffset] != lval for (lfeat, loffset, lval) in test_literals):
             if min_freq and not (
