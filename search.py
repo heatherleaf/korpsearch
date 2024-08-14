@@ -164,7 +164,11 @@ def main_search(args: Namespace) -> dict[str, Any]:
                 sentence = corpus.get_sentence_from_position(match_pos)
                 match_start = match_pos - corpus.sentence_pointers.array[sentence]
                 tokens = [
-                    {feat.decode(): corpus.tokens[feat].get_string(p) for feat in features_to_show}
+                    {
+                        feat.decode(): strings.interned_string(strings[p])
+                        for feat in features_to_show
+                        for strings in [corpus.tokens[feat]]
+                    }
                     for p in corpus.sentence_positions(sentence)
                 ]
 

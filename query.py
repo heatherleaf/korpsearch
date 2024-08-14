@@ -47,7 +47,7 @@ class Query:
         else:
             self.template = Template(
                 [TemplateLiteral(lit.offset-self.offset(), lit.feature) for lit in self.positive_literals()],
-                [KnownLiteral(True, lit.offset-self.offset(), lit.feature, lit.value) for lit in self.negative_literals()],
+                [KnownLiteral(True, lit.offset-self.offset(), lit.feature, lit.value, corpus) for lit in self.negative_literals()],
             )
 
 
@@ -137,9 +137,9 @@ class Query:
                 feature = Feature(featstr.lower().encode())
                 value = FValue(valstr.encode())
                 negative = (negated == '!')
-                query.append(KnownLiteral(negative, offset, feature, corpus.intern(feature, value)))
+                query.append(KnownLiteral(negative, offset, feature, corpus.intern(feature, value), corpus))
         if not no_sentence_breaks:
             svalue = corpus.intern(SENTENCE, START)
             for offset in range(1, len(tokens)):
-                query.append(KnownLiteral(True, offset, SENTENCE, svalue))
+                query.append(KnownLiteral(True, offset, SENTENCE, svalue, corpus))
         return Query(corpus, query)

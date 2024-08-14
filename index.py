@@ -1,7 +1,7 @@
 
 from typing import Optional, Any, NewType
 from collections.abc import Iterator, Callable, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import logging
 
@@ -23,19 +23,21 @@ class KnownLiteral:
     offset: int
     feature: Feature
     value: InternedString
+    corpus: Corpus = field(compare=False)
 
     def __post_init__(self) -> None:
         check_feature(self.feature)
 
     def __str__(self) -> str:
-        return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{self.value}"
+        value = self.corpus.lookup_value(self.feature, self.value).decode()
+        return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
 
     def test(self, corpus: Corpus, pos: int) -> bool:
         value = corpus.tokens[self.feature][pos + self.offset]
         return (value == self.value) != self.negative
 
     @staticmethod
-    def parse(corpus: Corpus, litstr: str, interned: bool = False) -> 'KnownLiteral':
+    def parse(corpus: Corpus, litstr: str) -> 'KnownLiteral':
         try:
             featstr, rest = litstr.split(':')
             feature = Feature(featstr.lower().encode())
@@ -47,11 +49,8 @@ class KnownLiteral:
                 offset, valstr = rest.split('#')
                 negative = True
             value = FValue(valstr.encode())
-            interned_value: InternedString = (
-                InternedString(int(value)) if interned
-                else corpus.intern(feature, value)
-            )
-            return KnownLiteral(negative, int(offset), feature, interned_value)
+            interned_value = corpus.intern(feature, value)
+            return KnownLiteral(negative, int(offset), feature, interned_value, corpus)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -134,13 +133,13 @@ class Template:
         return Instance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
     @staticmethod
-    def parse(corpus: Corpus, template_str: str, interned: bool = False) -> 'Template':
+    def parse(corpus: Corpus, template_str: str) -> 'Template':
         try:
             literals: list[KnownLiteral] = []
             template: list[TemplateLiteral] = []
             for litstr in template_str.split('+'):
                 try:
-                    literals.append(KnownLiteral.parse(corpus, litstr, interned))
+                    literals.append(KnownLiteral.parse(corpus, litstr))
                 except ValueError:
                     template.append(TemplateLiteral.parse(litstr))
             return Template(template, literals)

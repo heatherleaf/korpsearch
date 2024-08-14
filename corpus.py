@@ -51,6 +51,9 @@ class Corpus:
     def intern(self, feature: Feature, value: FValue) -> InternedString:
         return self.tokens[feature].intern(value)
 
+    def lookup_value(self, feature: Feature, i: InternedString) -> FValue:
+        return FValue(self.tokens[feature].interned_bytes(i))
+
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
 
@@ -83,7 +86,11 @@ class Corpus:
                     tokens.append('...')
             if p == pos:
                 tokens.append('[')
-            tokens.append('/'.join(self.tokens[feat].get_string(p) for feat in features))
+            tokens.append('/'.join(
+                strings.interned_string(strings[p])
+                for feat in features 
+                for strings in [self.tokens[feat]]
+            ))
             if p == pos+offset:
                 tokens.append(']')
             if context >= 0:

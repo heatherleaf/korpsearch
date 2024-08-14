@@ -214,11 +214,11 @@ class DiskStringArray:
     def __getitem__(self, i: int) -> InternedString:
         return InternedString(self._array.array[i])
 
-    def get_bytes(self, i: int) -> bytes:
-        return self._strings.from_index(self[i])
+    def interned_bytes(self, s: InternedString) -> bytes:
+        return self._strings.from_index(s)
 
-    def get_string(self, i: int) -> str:
-        return self.get_bytes(i).decode()
+    def interned_string(self, s: InternedString) -> str:
+        return self.interned_bytes(s).decode()
 
     def __setitem__(self, i: int, value: InternedString) -> None:
         self._array.array[i] = value
