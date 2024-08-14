@@ -93,7 +93,7 @@ async def search(
         no_diskarray: bool = False, 
         no_binary: bool = False, 
         no_sentence_breaks: bool = False,
-        internal_intersection: bool = False,
+        internal_merge: bool = False,
     ) -> APIResult:
     return api_call(
         main_search,
@@ -109,7 +109,7 @@ async def search(
             no_diskarray = no_diskarray,
             no_binary = no_binary,
             no_sentence_breaks = no_sentence_breaks,
-            internal_intersection = internal_intersection,
+            internal_merge = internal_merge,
         )
     )
 
