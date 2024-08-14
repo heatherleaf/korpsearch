@@ -32,8 +32,8 @@ class KnownLiteral:
         value = self.corpus.lookup_value(self.feature, self.value).decode()
         return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
 
-    def test(self, corpus: Corpus, pos: int) -> bool:
-        value = corpus.tokens[self.feature][pos + self.offset]
+    def test(self, pos: int) -> bool:
+        value = self.corpus.tokens[self.feature][pos + self.offset]
         return (value == self.value) != self.negative
 
     @staticmethod
@@ -128,7 +128,7 @@ class Template:
         return self.size
 
     def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
-        if not all(lit.test(corpus, pos) for lit in self.literals):
+        if not all(lit.test(pos) for lit in self.literals):
             return None
         return Instance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
