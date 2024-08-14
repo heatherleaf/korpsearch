@@ -8,7 +8,7 @@ import logging
 from disk import InternedString, InternedRange, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
-from util import progress_bar, binsearch_range, check_feature, Feature, FValue
+from util import progress_bar, binsearch_first, binsearch_last, binsearch_range, check_feature, Feature, FValue
 
 
 ################################################################################
@@ -278,7 +278,9 @@ class UnaryIndex(Index):
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        return binsearch_range(0, len(self)-1, instance[0][0], self.search_key())
+        start = binsearch_first(0, len(self)-1, instance[0][0], self.search_key())
+        end = binsearch_last(0, len(self)-1, instance[0][1], self.search_key())
+        return start, end
 
 
 class BinaryIndex(Index):
