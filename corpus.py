@@ -164,7 +164,7 @@ class Corpus:
             # Range is until
             # if contains and (match[1] - 1) < start_of_next_word:
             #     real_matches.append(InternedString(string_collection, start_of_word))
-            if not contains and match[0] == start_of_this_word and match[1] == (start_of_next_word-1):
+            if not contains and match[0] == start_of_this_word and match[1] == start_of_next_word:
                 real_matches.append(InternedString(start_of_word))
         return real_matches
 
