@@ -71,7 +71,7 @@ def run_outer(query: Query, results_file: Optional[Path], args: Namespace) -> In
             clean_up(tmp_results, [".ia", ".ia.cfg"])
         except FileNotFoundError: 
             pass
-    assert union
+    assert union is not None
     return union
 
 
