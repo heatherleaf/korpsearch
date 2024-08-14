@@ -93,7 +93,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
             logging.debug(f"     -- subsumed: {subq}")
             continue
         try:
-            results = index.search(subq.instance(), offset=subq.offset())
+            results = index.search(subq.instance(), offset=subq.min_offset())
         except KeyError:
             logging.debug(f"     -- {subq.instance()} not found: {subq}")
             continue
@@ -187,7 +187,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
         start_time = time.time()
 
         query = Query.parse(corpus, args.query, args.no_sentence_breaks)
-        logging.info(f"Query: {query}, {query.offset()}")
+        logging.info(f"Query: {query}, {query.min_offset()}")
 
         if args.show:
             features_to_show = args.show.encode().split(b',')
@@ -218,7 +218,11 @@ def main_search(args: Namespace) -> dict[str, Any]:
                 sentence = corpus.get_sentence_from_position(match_pos)
                 match_start = match_pos - corpus.sentence_pointers.array[sentence]
                 tokens = [
-                    {feat.decode(): corpus.tokens[feat].get_string(p) for feat in features_to_show}
+                    {
+                        feat.decode(): strings.interned_string(strings[p])
+                        for feat in features_to_show
+                        for strings in [corpus.tokens[feat]]
+                    }
                     for p in corpus.sentence_positions(sentence)
                 ]
 
