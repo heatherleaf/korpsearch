@@ -113,8 +113,9 @@ class Template:
         tokens: list[str] = []
         for offset in range(self.min_offset(), self.max_offset()+1):
             tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
-            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{l.value}"' 
-                           for l in self.literals if l.offset == offset)
+            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{val}"' 
+                           for l in self.literals if l.offset == offset
+                           for val in [l.corpus.lookup_value(l.feature, l.value).decode()])
             if lit:
                 tokens.append(tok + '|' + lit)
             else:
