@@ -55,7 +55,7 @@ class Corpus:
     def intern(self, feature: Feature, value: FValue) -> InternedString:
         return self.tokens[feature].intern(value)
 
-    def interned_rage(self, feature: Feature, value: FValue) -> InternedRange:
+    def interned_range(self, feature: Feature, value: FValue) -> InternedRange:
         return self.tokens[feature].interned_range(value)
 
     def num_sentences(self) -> int:

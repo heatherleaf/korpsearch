@@ -189,13 +189,13 @@ class Query:
                     case 'prefix':
                         valstr = valstr.split('.*')[0]
                         value = FValue(valstr.encode())
-                        interned = corpus.interned_rage(feature, value)
+                        interned = corpus.interned_range(feature, value)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, *interned))
                     case 'suffix':
                         valstr = valstr.split('.*')[-1][::-1]
                         value = FValue(valstr.encode())
                         feature = Feature(feature + b'_rev')
-                        interned = corpus.interned_rage(feature, value)
+                        interned = corpus.interned_range(feature, value)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, *interned))
                     case 'regex':
                         regex_matches = corpus.get_matches(feature, valstr)
