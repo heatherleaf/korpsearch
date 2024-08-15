@@ -50,7 +50,7 @@ def collect_and_sort_prefix(index_view: IndexSet, tmpfile: Path) -> IndexSet:
 
 
 def run_outer(query: Query, results_file: Optional[Path], args: Namespace) -> IndexSet:
-    tmp_results = Path("tmp_results")
+    tmp_results = CACHE_DIR / "tmp_results"
     union = None
     for disjunct in query.expand():
         partial_query = Query(query.corpus, disjunct)
@@ -101,7 +101,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
     search_results.sort(key=lambda r: len(r[-1]))
-    prefix_tmp = CACHE_DIR / "prefix_tmp"
+    tmp_prefix = CACHE_DIR / "tmp_prefix"
     if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
         try:
             first_ok = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
@@ -109,7 +109,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         except ValueError:
             first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
             first_result = search_results[first_ok]
-            first_result = (first_result[0], collect_and_sort_prefix(first_result[1], prefix_tmp))
+            first_result = (first_result[0], collect_and_sort_prefix(first_result[1], tmp_prefix))
         del search_results[first_ok]
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
@@ -130,7 +130,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
             if len(results) > 0.1 * lengths[1]:
                 logging.debug(f"     -- skipping prefix: {subq}")
                 continue
-            results = collect_and_sort_prefix(results, prefix_tmp)
+            results = collect_and_sort_prefix(results, tmp_prefix)
             
         intersection_type = intersection.merge_update(
             results,
@@ -141,7 +141,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
         try: 
-            clean_up(prefix_tmp, [".ia", ".ia.cfg"])
+            clean_up(tmp_prefix, [".ia", ".ia.cfg"])
         except FileNotFoundError: 
             pass
         if len(intersection) == 0:
