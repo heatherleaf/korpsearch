@@ -101,7 +101,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
     search_results.sort(key=lambda r: len(r[-1]))
-    prefix_tmp = Path("prefix_tmp")
+    prefix_tmp = CACHE_DIR / "prefix_tmp"
     if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
         try:
             first_ok = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
