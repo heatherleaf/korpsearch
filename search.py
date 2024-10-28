@@ -67,10 +67,7 @@ def run_outer(query: Query, results_file: Optional[Path], args: Namespace) -> In
                 pass
         else: 
             union = partial_results
-        try: 
-            clean_up(tmp_results, [".ia", ".ia.cfg"])
-        except FileNotFoundError: 
-            pass
+        clean_up(tmp_results, [".ia", ".ia.cfg"])
     assert union is not None
     return union
 
@@ -138,10 +135,8 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
-        try: 
-        except FileNotFoundError: 
-            pass
         clean_up(temporary_results_file, [".ia", ".ia.cfg"])
+
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
