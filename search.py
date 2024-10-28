@@ -126,10 +126,6 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
             logging.debug(f"     -- subsumed: {subq}")
             continue
         if any(lit.is_prefix() for lit in subq.literals):
-            lengths = sorted([len(res[1]) for res in search_results])
-            if len(results) > 0.1 * lengths[1]:
-                logging.debug(f"     -- skipping prefix: {subq}")
-                continue
             results = collect_and_sort_prefix(results, tmp_prefix)
             
         intersection_type = intersection.merge_update(
