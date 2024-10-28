@@ -145,11 +145,12 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
-    for _, results in search_results[1:]:
-        results.values.close()
 
     if intersection != search_results[0][1]:
         clean_up(initial_results_file, [".ia", ".ia.cfg"])
+    for _, results in search_results:
+        if results != intersection:
+            results.values.close()
     return intersection
 
 
