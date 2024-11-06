@@ -1,3 +1,5 @@
+import unittest
+
 from tests.corpus_test import CorpusTest
 
 
@@ -71,3 +73,6 @@ class MyTestCase(CorpusTest):
             '[w="needle"] [w="needle"] [w="needle"] [w="needle"]',
             needle
         )
+
+if __name__ == '__main__':
+    unittest.main()

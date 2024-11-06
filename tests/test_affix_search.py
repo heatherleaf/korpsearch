@@ -1,3 +1,5 @@
+import unittest
+
 from tests.corpus_test import CorpusTest
 from unittest import skip
 
@@ -69,3 +71,6 @@ class MyTestCase(CorpusTest):
             '[word="d.*"] [word="a.*"]',
             2, 5
         )
+
+if __name__ == '__main__':
+    unittest.main()
