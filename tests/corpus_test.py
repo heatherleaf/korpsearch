@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import MagicMock
 from pathlib import Path
@@ -17,6 +18,7 @@ class CorpusTest(unittest.TestCase):
     declared_corpus_data: List[List[str]]
 
     root_dir: TemporaryDirectory[str]
+    corpus_source_file: NamedTemporaryFile
     corpus_ready: bool
 
     corpus_name: str = 'corpus'
@@ -31,11 +33,13 @@ class CorpusTest(unittest.TestCase):
         self.declared_corpus_features = []
         self.declared_corpus_data = []
         self.root_dir = TemporaryDirectory()
+        self.corpus_source_file = NamedTemporaryFile(suffix='.csv', delete=False)
         self.corpus_ready = False
 
     def tearDown(self):
         super().tearDown()
         self.root_dir.cleanup()
+        os.remove(self.corpus_source_file.name)
 
     def corpus_features(self, *features: str):
         """
@@ -83,7 +87,7 @@ class CorpusTest(unittest.TestCase):
         self.args.no_sentence_breaks = True
         self.args.max_dist = 0
 
-        with NamedTemporaryFile(suffix='.csv', delete_on_close=False) as source_file:
+        with self.corpus_source_file as source_file:
             self._write_source_file(source_file)
 
             dir_corpus = Path(self.root_dir.name) / (CorpusTest.corpus_name + Corpus.dir_suffix)
