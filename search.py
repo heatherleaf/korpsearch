@@ -67,10 +67,7 @@ def run_outer(query: Query, results_file: Optional[Path], args: Namespace) -> In
                 pass
         else: 
             union = partial_results
-        try: 
-            clean_up(tmp_results, [".ia", ".ia.cfg"])
-        except FileNotFoundError: 
-            pass
+        clean_up(tmp_results, [".ia", ".ia.cfg"])
     assert union is not None
     return union
 
@@ -100,8 +97,10 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         search_results.append((subq, results))
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
+    initial_results_file = CACHE_DIR / 'initial_sorted_results'
+    temporary_results_file = CACHE_DIR / 'sorted_results'
+
     search_results.sort(key=lambda r: len(r[-1]))
-    tmp_prefix = CACHE_DIR / "tmp_prefix"
     if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
         try:
             first_ok = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
@@ -109,7 +108,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         except ValueError:
             first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
             first_result = search_results[first_ok]
-            first_result = (first_result[0], collect_and_sort_prefix(first_result[1], tmp_prefix))
+            first_result = (first_result[0], collect_and_sort_prefix(first_result[1], initial_results_file))
         del search_results[first_ok]
         search_results.insert(0, first_result)
     logging.debug("Intersection order:")
@@ -126,11 +125,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
             logging.debug(f"     -- subsumed: {subq}")
             continue
         if any(lit.is_prefix() for lit in subq.literals):
-            lengths = sorted([len(res[1]) for res in search_results])
-            if len(results) > 0.1 * lengths[1]:
-                logging.debug(f"     -- skipping prefix: {subq}")
-                continue
-            results = collect_and_sort_prefix(results, tmp_prefix)
+            results = collect_and_sort_prefix(results, temporary_results_file)
             
         intersection_type = intersection.merge_update(
             results,
@@ -140,15 +135,17 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         )
         logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
         used_queries.append(subq)
-        try: 
-            clean_up(tmp_prefix, [".ia", ".ia.cfg"])
-        except FileNotFoundError: 
-            pass
+        clean_up(temporary_results_file, [".ia", ".ia.cfg"])
+
         if len(intersection) == 0:
             logging.debug(f"Empty intersection, quitting early")
             break
-    for _, results in search_results[1:]:
-        results.values.close()
+
+    if intersection != search_results[0][1]:
+        clean_up(initial_results_file, [".ia", ".ia.cfg"])
+    for _, results in search_results:
+        if results != intersection:
+            results.values.close()
     return intersection
 
 

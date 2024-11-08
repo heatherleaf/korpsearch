@@ -63,8 +63,12 @@ def uncompressed_suffix(path: Path) -> str:
         return path.suffix
 
 def clean_up(path: Path, suffixes: list[str]):
+    """For every given suffix, the given path with the suffix appended is removed from the file system."""
     for suffix in suffixes:
-        add_suffix(path, suffix).unlink()
+        try:
+            add_suffix(path, suffix).unlink()
+        except FileNotFoundError:
+            pass
 
 
 ###############################################################################
