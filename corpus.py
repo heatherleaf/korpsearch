@@ -185,17 +185,19 @@ class Corpus:
     def build(basedir: Path, corpusfile: Path) -> None:
         logging.debug(f"Building corpus index from file: {str(corpusfile)}")
 
-        features, sentence_iterator = corpus_reader(corpusfile, "Collecting strings")
-        with open(basedir / Corpus.features_file, 'w') as OUT:
-            json.dump([feat.decode() for feat in features], OUT)
-        stringsets: list[set[FValue]] = [set() for _feature in features]
-        n_sentences = n_tokens = 0
-        for sentence in sentence_iterator:
-            n_sentences += 1
-            for token in sentence:
-                n_tokens += 1
-                for strings, value in zip(stringsets, token):
-                    strings.add(value)
+        with corpus_reader(corpusfile, "Collecting strings") as corpus:
+            with open(basedir / Corpus.features_file, 'w') as OUT:
+                json.dump([feat.decode() for feat in corpus.header], OUT)
+
+            features = corpus.header
+            stringsets: list[set[FValue]] = [set() for _feature in corpus.header]
+            n_sentences = n_tokens = 0
+            for sentence in corpus.sentences():
+                n_sentences += 1
+                for token in sentence:
+                    n_tokens += 1
+                    for strings, value in zip(stringsets, token):
+                        strings.add(value)
         logging.debug(f" --> read {sum(map(len, stringsets))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
 
         path = basedir / Corpus.sentences_path
@@ -210,9 +212,9 @@ class Corpus:
                     str_array = stack.enter_context(DiskStringArray.create(path, strings, n_tokens))
                     feature_builders.append(str_array)
 
-                _features, sentence_iterator = corpus_reader(corpusfile, "Building indexes")
+                corpus = stack.enter_context(corpus_reader(corpusfile, "Building indexes"))
                 ctr = 0
-                for n, sentence in enumerate(sentence_iterator, 1):
+                for n, sentence in enumerate(corpus.sentences(), 1):
                     sentence_array[n] = ctr
                     for token in sentence:
                         for builder, value in zip(feature_builders, token):
