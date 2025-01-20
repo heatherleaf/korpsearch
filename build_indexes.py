@@ -9,16 +9,17 @@ from index import KnownLiteral, TemplateLiteral, Template, Index
 from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
 from corpus import Corpus
 from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
+from corpus_reader import CORPUS_READERS
 
-
-CSV_SUFFIXES = ".csv .tsv .txt .gz .bz2 .xz".split()
+# All supported file suffixes.
+FILE_SUFFIXES = set(CompressedFileReader.compressors.keys()) | set(CORPUS_READERS.keys())
 
 ################################################################################
 ## Building the corpus index and the query indexes
 
 def main(args: argparse.Namespace) -> None:
     base = corpusfile = Path(args.corpus)
-    while base.suffix in CSV_SUFFIXES: 
+    while base.suffix in FILE_SUFFIXES:
         base = base.with_suffix('')
     corpusdir = add_suffix(base, Corpus.dir_suffix)
     indexdir = add_suffix(base, Index.dir_suffix)
@@ -26,7 +27,7 @@ def main(args: argparse.Namespace) -> None:
     if not corpusfile.is_file():
         # If this is not the path to the corpus file, 
         # try to infer which is the actual file.
-        candidates = list(file for suffix in CSV_SUFFIXES
+        candidates = list(file for suffix in FILE_SUFFIXES
                           for file in corpusfile.parent.glob(corpusfile.name + suffix + "*"))
         if len(candidates) > 1:
             raise ValueError(f"Too many possible source files: {', '.join(f.name for f in candidates)}")
