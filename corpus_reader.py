@@ -1,11 +1,12 @@
-from pathlib import Path
-from collections.abc import Iterator, Callable
+import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterator, Callable
+from pathlib import Path
 from typing import Iterable
 
-from util import Feature, FValue, EMPTY, SENTENCE, START, check_feature
 from util import CompressedFileReader, uncompressed_suffix
-from util import progress_bar, ProgressBar
+from util import Feature, FValue, EMPTY, SENTENCE, START, check_feature
+from util import progress_bar
 
 Header = list[Feature]
 Token = list[FValue]
@@ -13,6 +14,7 @@ Sentence = list[Token]
 
 
 class CorpusReader(ABC):
+
     @property
     @abstractmethod
     def header(self) -> Header:
@@ -84,10 +86,11 @@ class CSVReader(CorpusReader):
     _corpus: CompressedFileReader
     _header: Header
     _description: str
+    _n_feats: int
 
     def __init__(self, path: Path, description: str):
-        self._corpus = CompressedFileReader(path)
         self._description = description
+        self._corpus = CompressedFileReader(path)
 
         header_line = self._corpus.reader.readline()
         self._header = [Feature(f) for f in CSVReader.split_line(header_line.strip())]
@@ -103,7 +106,6 @@ class CSVReader(CorpusReader):
         return self._header
 
     def sentences(self) -> Iterator[Sentence]:
-        pbar: ProgressBar[None]
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
             sentence: Sentence = []
             for n, line in enumerate(self._corpus.reader, 2):
@@ -127,8 +129,94 @@ class CSVReader(CorpusReader):
         self._corpus.close()
 
 
-CORPUS_READERS: dict[str, Callable[[Path, str], CorpusReader]] = {}
+class CoNLLReader(CorpusReader):
+    DEFAULT_COLUMN_HEADERS = [
+        'ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'ID', 'DEPREL', 'DEPS', 'MISC'
+    ]
 
-csv_reader = lambda path, description: CSVReader(path, description)
-CORPUS_READERS['.csv'] = csv_reader
-CORPUS_READERS['.tsv'] = csv_reader
+    _corpus: CompressedFileReader
+    _description: str
+    _header: Header
+
+    _n_feats: int
+    _id_column: int | None
+    _next_line: bytes | None
+
+    def __init__(self, path: Path, description: str):
+        self._description = description
+        self._corpus = CompressedFileReader(path)
+
+        self._next_line = self._corpus.reader.readline()
+        # Try and autodetect CoNLL-U Plus with custom columns
+        if match := re.match('^# global\\.columns = ([A-Z:]+(?: [A-Z:]+)+)$', self._next_line.decode()):
+            header = match.group(1).split(' ')
+        else:
+            header = CoNLLReader.DEFAULT_COLUMN_HEADERS
+
+        def encode(s: str) -> Feature:
+            s = s.lower().replace(':', '_')
+            return Feature(str.encode(s))
+
+        self._header = [encode(s) for s in header]
+
+        self._id_column = header.index("ID") if "ID" in header else None
+        self._n_feats = len(header)
+
+    def wordlines(self) -> Iterator[list[bytes] | None]:
+        def next_wordline() -> list[bytes] | None:
+            if self._next_line is None:
+                self._next_line = self._corpus.reader.readline()
+
+            if len(self._next_line) == 0:
+                return None  # Reached end of file
+
+            while self._next_line.startswith(b'#'):
+                # skip comments and sentence metadata.
+                self._next_line = self._corpus.reader.readline()
+
+            # Strip linebreak and reset self._next_line so next call reads another line.
+            line, self._next_line = self._next_line.rstrip(), None
+            if not line:
+                return []
+
+            columns = list(CSVReader.split_line(line))
+            if self._id_column is not None and not columns[self._id_column].isalnum():
+                # ID might be of form X.Y (empty node) or X-Y (multiword)
+                # These are not supported, so they are skipped
+                return next_wordline()
+            return columns
+
+        while (wl := next_wordline()) is not None:
+            yield wl
+
+    @property
+    def header(self) -> Header:
+        return self._header
+
+    def sentences(self) -> Iterator[Sentence]:
+        with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
+            sentence: Sentence = []
+
+            for line in self.wordlines():
+                if line:
+                    tokens = [FValue(v) for v in line]
+                    sentence.append(tokens)
+                elif sentence:
+                    pbar.update(self._corpus.file_position() - pbar.n)
+                    yield sentence
+                    sentence = []
+
+            pbar.update(self._corpus.file_position() - pbar.n)
+            if sentence:
+                yield sentence
+
+    def close(self):
+        self._corpus.close()
+
+
+CORPUS_READERS: dict[str, Callable[[Path, str], CorpusReader]] = {
+    '.csv': CSVReader,
+    '.tsv': CSVReader,
+    '.conllu': CoNLLReader,
+    '.conllup': CoNLLReader,
+}
