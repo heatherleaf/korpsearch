@@ -131,7 +131,7 @@ class CSVReader(CorpusReader):
 
 class CoNLLReader(CorpusReader):
     DEFAULT_COLUMN_HEADERS = [
-        'ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'ID', 'DEPREL', 'DEPS', 'MISC'
+        'ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'DEPREL', 'DEPS', 'MISC'
     ]
 
     _corpus: CompressedFileReader
@@ -141,12 +141,15 @@ class CoNLLReader(CorpusReader):
     _n_feats: int
     _id_column: int | None
     _next_line: bytes | None
+    _line_num: int
 
     def __init__(self, path: Path, description: str):
         self._description = description
         self._corpus = CompressedFileReader(path)
 
         self._next_line = self._corpus.reader.readline()
+        self._line_num = 1
+
         # Try and autodetect CoNLL-U Plus with custom columns
         if match := re.match('^# global\\.columns = ([A-Z:]+(?: [A-Z:]+)+)$', self._next_line.decode()):
             header = match.group(1).split(' ')
@@ -165,6 +168,7 @@ class CoNLLReader(CorpusReader):
     def wordlines(self) -> Iterator[list[bytes] | None]:
         def next_wordline() -> list[bytes] | None:
             if self._next_line is None:
+                self._line_num += 1
                 self._next_line = self._corpus.reader.readline()
 
             if len(self._next_line) == 0:
@@ -172,6 +176,7 @@ class CoNLLReader(CorpusReader):
 
             while self._next_line.startswith(b'#'):
                 # skip comments and sentence metadata.
+                self._line_num += 1
                 self._next_line = self._corpus.reader.readline()
 
             # Strip linebreak and reset self._next_line so next call reads another line.
@@ -184,6 +189,8 @@ class CoNLLReader(CorpusReader):
                 # ID might be of form X.Y (empty node) or X-Y (multiword)
                 # These are not supported, so they are skipped
                 return next_wordline()
+            assert len(columns) == self._n_feats, \
+                f'Line {self._line_num} has {len(columns)} columns in {self._n_feats} column file.'
             return columns
 
         while (wl := next_wordline()) is not None:
