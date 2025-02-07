@@ -67,7 +67,7 @@ function initialize() {
     ELEMS.search.string.addEventListener('keypress', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault(); // Cancel the default action, if needed
-            ELEMS.search.button.click(); 
+            ELEMS.search.button.click();
         }
     });
 }
@@ -82,13 +82,17 @@ function select_corpus() {
     clear_output();
     let corpus = ELEMS.corpus.list.value;
     call_api('corpus_info', {corpus: corpus}, (response) => {
-        let info = response.info;
-        ELEMS.corpus.info.innerHTML = `
-            Name: <em>${info.name}</em>. &nbsp;
-            Size: ${info.sentences} sentences, ${info.size} tokens. &nbsp;
-            Features: <em>${info.features.join('</em>, <em>')}</em>. &nbsp;
-            Indexes: <code>${info.indexes.join('</code>, <code>')}</code>.
-        `;
+        let html = "";
+        for (const corpus of Object.values(response.corpora)) {
+            html += `<p>
+                <strong>${corpus.info.Name}</strong>:
+                ${corpus.info.Size} tokens,
+                ${corpus.info.Sentences} sentences,
+                ${corpus.info.Indexes.length} compiled indexes,
+                ${corpus.attrs.p.length} features: <em>${corpus.attrs.p.join('</em>, <em>')}</em>.
+            </p>`;
+        }
+        ELEMS.corpus.info.innerHTML = html;
     });
 }
 
@@ -107,11 +111,11 @@ const NUM_HITS = 20;
 
 function search_corpus() {
     let params = {
-        corpus: ELEMS.corpus.list.value, 
+        corpus: ELEMS.corpus.list.value,
         cqp: ELEMS.search.string.value,
         num: NUM_HITS,
     };
-    call_api('search', params, show_search_results);
+    call_api('query', params, show_search_results);
 }
 
 
@@ -130,7 +134,7 @@ function navigate(nav) {
             start = STATE.start - NUM_HITS;
     }
     if (nav === 'next') {
-        if (STATE.start < STATE.hits - NUM_HITS) 
+        if (STATE.start < STATE.hits - NUM_HITS)
             start = STATE.start + NUM_HITS;
         else
             start = STATE.start;
@@ -145,7 +149,7 @@ function navigate(nav) {
         start: start,
         num: NUM_HITS,
     };
-    call_api('search', params, show_search_results);
+    call_api('query', params, show_search_results);
 }
 
 
@@ -156,13 +160,13 @@ function show_search_results(response) {
     ELEMS.search.results.innerHTML = '';
     let n = response.start;
     for (let line of response.kwic) {
-        ELEMS.search.results.innerHTML += 
+        ELEMS.search.results.innerHTML +=
             '<tr><td class="prefix">' +
-            line.tokens.map((token, i) => 
-                (i===line.match.start ? '</td><td class="match">' : '') + 
+            line.tokens.map((token, i) =>
+                (i===line.match.start ? '</td><td class="match">' : '') +
                 show_token(token) +
-                (i===line.match.end ? '</td><td class="suffix">' : '')
-            ).join(' ') + 
+                (i+1===line.match.end ? '</td><td class="suffix">' : '')
+            ).join(' ') +
             '</td></tr>';
         n++;
     }

@@ -87,7 +87,7 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
             continue
         intersection_type = intersection.merge_update(
             results,
-            results_file, 
+            results_file,
             use_internal = args.internal_merge,
             merge_type = MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
         )
@@ -129,66 +129,80 @@ def search_corpus(corpus: Corpus, query: Query, args: Namespace) -> IndexSet:
 def main_search(args: Namespace) -> dict[str, Any]:
     if not (args.end and args.end >= 0):
         args.end = args.start + args.num - 1
+    start, end = args.start, args.end
+    start_time = time.time()
 
-    with Corpus(args.corpus) as corpus:
-        start_time = time.time()
+    corpora: list[str] = args.corpus
+    if isinstance(corpora, (str, Path)):
+        corpora = [cid.strip() for cid in str(corpora).split(",")]
 
-        query = Query.parse(corpus, args.query, args.no_sentence_breaks)
-        logging.info(f"Query: {query}, {query.min_offset()}")
+    corpus_hits: dict[str, int] = {}
+    matches: list[dict[str, Any]] = []
+    for corpus_id in corpora:
+        with Corpus(corpus_id) as corpus:
+            query = Query.parse(corpus, args.query, args.no_sentence_breaks)
+            logging.info(f"Query: {query}, {query.min_offset()}")
 
-        if args.show:
-            features_to_show = args.show.encode().split(b',')
-            for f in features_to_show:
-                if f not in corpus.features:
-                    raise ValueError(f"Unknown feature: {f}")
-        else:
-            features_to_show = [
-                feat for feat in corpus.features 
-                if feat in query.features 
-                if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
-            ]
-
-        # Always include the 'word' feature, and put it first
-        if WORD in corpus.features:
-            if WORD in features_to_show:
-                features_to_show.remove(WORD)
-            features_to_show.insert(0, WORD)
-
-        results = search_corpus(corpus, query, args)
-        logging.info(f"Results: {results}")
-
-        query_offset = query.max_offset()
-        matches: list[dict[str, Any]] = []
-        try:
-            for match_pos in results.slice(args.start, args.end+1):
-                sentence = corpus.get_sentence_from_position(match_pos)
-                match_start = match_pos - corpus.sentence_pointers.array[sentence]
-                tokens = [
-                    {
-                        feat.decode(): strings.interned_string(strings[p])
-                        for feat in features_to_show
-                        for strings in [corpus.tokens[feat]]
-                    }
-                    for p in corpus.sentence_positions(sentence)
+            if args.show:
+                features_to_show = args.show.encode().split(b',')
+                for f in features_to_show:
+                    if f not in corpus.features:
+                        raise ValueError(f"Unknown feature: {f}")
+            else:
+                features_to_show = [
+                    feat for feat in corpus.features
+                    if feat in query.features
+                    if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
                 ]
 
-                matches.append({
-                    'match': {
-                        'start': match_start,
-                        'end': match_start + query_offset,
-                        'pos': match_pos,
-                    },
-                    'sentence': sentence,
-                    'tokens': tokens,
-                })
-        except IndexError:
-            pass
+            # Always include the 'word' feature, and put it first
+            if WORD in corpus.features:
+                if WORD in features_to_show:
+                    features_to_show.remove(WORD)
+                features_to_show.insert(0, WORD)
 
-        return {
-            'time': time.time() - start_time,
-            'hits': len(results),
-            'start': args.start,
-            'end': args.start + len(matches) - 1,
-            'kwic': matches,
-        }
+            results = search_corpus(corpus, query, args)
+            corpus_hits[corpus.id] = len(results)
+            logging.info(f"Results: {results}")
+
+            if  start < len(results) or end >= 0:
+                query_offset = query.max_offset() + 1
+                try:
+                    for match_pos in results.slice(max(0, start), end+1):
+                        sentence = corpus.get_sentence_from_position(match_pos)
+                        match_start = match_pos - corpus.sentence_pointers.array[sentence]
+                        tokens = [
+                            {
+                                feat.decode(): strings.interned_string(strings[p])
+                                for feat in features_to_show
+                                for strings in [corpus.tokens[feat]]
+                            }
+                            for p in corpus.sentence_positions(sentence)
+                        ]
+
+                        matches.append({
+                            'corpus': corpus.id,
+                            'match': {
+                                'start': match_start,
+                                'end': match_start + query_offset,
+                                'position': match_pos,
+                            },
+                            'sentence': sentence,
+                            'tokens': tokens,
+                        })
+                except IndexError:
+                    pass
+
+            start -= len(results)
+            end -= len(results)
+
+    return {
+        'time': time.time() - start_time,
+        'hits': sum(corpus_hits.values()),
+        'corpus_hits': corpus_hits,
+        'corpus_order': list(corpus_hits),
+        'start': args.start,
+        'end': args.start + len(matches),
+        'kwic': matches,
+    }
 
