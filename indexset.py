@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     print("Module 'fast_merge' not found. "
           "To install, run: 'make fast-merge'. "
-          "Defaulting to an internal implementation.\n", 
+          "Defaulting to an internal implementation.\n",
           file=sys.stderr)
 
 
@@ -60,7 +60,7 @@ class IndexSet:
     values: DiskIntArray
     path: Optional[Path]
 
-    def __init__(self, values: DiskIntArray, path: Optional[Path] = None, 
+    def __init__(self, values: DiskIntArray, path: Optional[Path] = None,
                  start: int = 0, size: int = -1, offset: int = 0) -> None:
         assert values.array.itemsize == 4, "IndexSets must contain 4-byte integer arrays."
         if size < 0:
@@ -88,7 +88,7 @@ class IndexSet:
         if len(self) > MAX:
             s += f", ... (N={len(self)})"
         if self.path:
-            s += f" @ {self.path}"
+            s += f" @ {self.path.name}"
         return "{" + s + "}"
 
     def __iter__(self) -> Iterator[int]:
@@ -118,14 +118,14 @@ class IndexSet:
         for val in self.values.array[start : end]:
             yield val - offset
 
-    def merge_update(self, other: 'IndexSet', resultpath: Optional[Path] = None, 
+    def merge_update(self, other: 'IndexSet', resultpath: Optional[Path] = None,
                      use_internal: bool = False, merge_type: MergeType = MergeType.INTERSECTION) -> str:
         # The returned string is ONLY for debugging purposes, and can safely be ignored
 
         take_first, take_second, take_common = merge_type.which_to_take()
 
         if take_common and (take_first != take_second or len(self) == 0 or len(other) == 0):
-            if take_second or len(self) == 0:
+            if take_second and not (take_first and len(self) > 0):
                 self.values = other.values
                 self.path = other.path
                 self.start = other.start
@@ -161,7 +161,7 @@ class IndexSet:
                 i += 1
         self._finalise_result(result, i)
 
-    def _init_result(self, resultpath: Optional[Path], other: Optional['IndexSet'] = None, 
+    def _init_result(self, resultpath: Optional[Path], other: Optional['IndexSet'] = None,
                      merge_type: MergeType = MergeType.INTERSECTION) -> DiskIntArray:
         max_size = merge_type.max_merge_size(len(self), len(other)) if other else len(self)
         if not resultpath:
@@ -169,7 +169,7 @@ class IndexSet:
         if self.path and DiskIntArray.getpath(self.path) == DiskIntArray.getpath(resultpath):
             assert max_size <= len(self), "Indexset: cannot update unions in-place"
             return self.values
-        if other and other.path: 
+        if other and other.path:
             assert DiskIntArray.getpath(other.path) != DiskIntArray.getpath(resultpath)
         return DiskIntArray.create(max_size, resultpath)
 

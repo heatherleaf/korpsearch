@@ -4,14 +4,14 @@ from pathlib import Path
 import logging
 import json
 import time
-from typing import Any, Optional
+from typing import Any
 from argparse import Namespace
 
 from index import Index
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
-from util import SENTENCE, WORD, clean_up
+from util import SENTENCE, WORD
 from disk import DiskIntArray
 
 CACHE_DIR = Path('cache')
@@ -20,59 +20,93 @@ CACHE_DIR.mkdir(exist_ok=True)
 INFO_FILE = Path('__info__')
 
 
-def hash_repr(*objs: object, size: int = 16) -> str:
+def hash_repr(*objs: object, size: int = 32) -> str:
     hasher = hashlib.md5()
     for obj in objs:
         hasher.update(repr(obj).encode())
     return hasher.hexdigest() [:size]
 
 
-def hash_query(corpus: Corpus, query: Query, **extra_args: object) -> Path:
-    corpus_hash = hash_repr(corpus, size=8)
-    query_dir = CACHE_DIR / (corpus.path.stem + '.' + corpus_hash)
+def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path | None:
+    if args.no_diskarray:
+        return None
+    corpus_hash = hash_repr(query.corpus, size=16)
+    query_dir = CACHE_DIR / f"{query.corpus.path.stem}.{corpus_hash}"
     if not query_dir.is_dir():
         query_dir.mkdir()
     info_file = query_dir / INFO_FILE
     if not info_file.is_file():
         with open(info_file, 'w') as INFO:
             json.dump({
-                'corpus': str(corpus.path),
+                'corpus': query.corpus.id,
             }, INFO)
-    query_hash = hash_repr(query, extra_args)
-    return query_dir / query_hash
+    query_hash = hash_repr(query, extra_args, size=32)
+    return DiskIntArray.getpath(query_dir / query_hash)
 
 
-def collect_and_sort_prefix(index_view: IndexSet, tmpfile: Path) -> IndexSet:
+def is_cache_file(cache_file: Path|None) -> bool:
+    return isinstance(cache_file, Path) and cache_file.is_relative_to(CACHE_DIR)
+
+
+def try_open_cache(cache_file: Path|None, args: Namespace) -> IndexSet | None:
+    try:
+        assert cache_file and not args.no_cache
+        result = IndexSet.open(cache_file)
+        cache_file.touch()
+        DiskIntArray.getconfig(cache_file).touch()
+        return result
+    except (FileNotFoundError, AssertionError):
+        return None
+
+
+def collect_and_sort_prefix(index_view: IndexSet, sorted_file: Path|None) -> IndexSet:
     from merge import sort
-    result = DiskIntArray.create(index_view.size, tmpfile)
+    result = DiskIntArray.create(index_view.size, sorted_file)
     sort(index_view.values.array, index_view.start, index_view.size, result.array)
-    return IndexSet(result, offset = index_view.offset)
+    return IndexSet(result, path = sorted_file, offset = index_view.offset)
 
 
-def run_outer(query: Query, results_file: Optional[Path], args: Namespace) -> IndexSet:
-    tmp_results = CACHE_DIR / "tmp_results"
+def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSet:
+    partial_queries = list(query.expand())
+    if len(partial_queries) <= 1:
+        return run_inner_query(query, results_file, args)
+
+    union_files = [get_cache_file(args, q, num=n, outer=query) for n, q in enumerate(partial_queries)]
+    union_files[-1] = results_file
     union = None
-    for disjunct in query.expand():
-        partial_query = Query(query.corpus, disjunct)
-        partial_results = run_query(partial_query, tmp_results, args)
-        if union:
-            union.merge_update(
-                partial_results, None,
+    for partial_query, union_file in zip(partial_queries, union_files):
+        cached_union = try_open_cache(union_file, args)
+        if cached_union is not None:
+            union = cached_union
+            logging.debug(f"Using cached union: {union}")
+            continue
+
+        partial_results_file = get_cache_file(args, partial_query)
+        partial_results = try_open_cache(partial_results_file, args)
+        if partial_results is not None:
+            logging.debug(f"Using cached partial results: {partial_results}")
+        else:
+            partial_results = run_inner_query(partial_query, partial_results_file, args)
+
+        if union is None:
+            union = partial_results
+        else:
+            logging.info(f"Union: {union} \\/ {partial_results}")
+            union_type = union.merge_update(
+                partial_results,
+                union_file,
                 use_internal = args.internal_merge,
                 merge_type = MergeType.UNION,
             )
-            try:
+            logging.info(f"  \\/{union_type[0].upper()}  = {union}")
+            if partial_results.path != union.path:
                 partial_results.values.close()
-            except AttributeError:
-                pass
-        else:
-            union = partial_results
-        clean_up(tmp_results, [".ia", ".ia.cfg"])
+
     assert union is not None
     return union
 
 
-def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> IndexSet:
+def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSet:
     search_results: list[tuple[Query, IndexSet]] = []
     subqueries: list[tuple[Query, Index]] = []
     for subq in query.subqueries():
@@ -97,83 +131,94 @@ def run_query(query: Query, results_file: Optional[Path], args: Namespace) -> In
         search_results.append((subq, results))
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
 
-    initial_results_file = CACHE_DIR / 'initial_sorted_results'
-    temporary_results_file = CACHE_DIR / 'sorted_results'
-
     search_results.sort(key=lambda r: len(r[-1]))
-    if search_results[0][0].is_negative() or any(lit.is_prefix() for lit in search_results[0][0].literals):
+    first_query = search_results[0][0]
+    if first_query.is_negative() or first_query.contains_prefix():
         try:
-            first_ok = [q.is_negative() or any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(False)
-            first_result = search_results[first_ok]
+            first_ok = [q.is_negative() or q.contains_prefix() for q,_ in search_results].index(False)
         except ValueError:
-            first_ok = [any(lit.is_prefix() for lit in q.literals) for q,_ in search_results].index(True)
-            first_result = search_results[first_ok]
-            first_result = (first_result[0], collect_and_sort_prefix(first_result[1], initial_results_file))
+            first_ok = [q.contains_prefix() for q,_ in search_results].index(True)
+        first_result = search_results[first_ok]
         del search_results[first_ok]
         search_results.insert(0, first_result)
+    assert not search_results[0][0].is_negative()
     logging.debug("Intersection order:")
     for i, (subq, results) in enumerate(search_results, 1):
         logging.debug(f"{i}     {subq!s:{maxwidth}} : {len(results)} elements")
 
-    subq, intersection = search_results[0]
-    assert not subq.is_negative()
     logging.info(f"Intersecting {len(search_results)} search results:")
-    logging.info(f"     {subq!s:{maxwidth}} = {intersection}")
-    used_queries = [subq]
-    for subq, results in search_results[1:]:
+    used_queries: list[Query] = []
+    intersection = None
+    for subq, results in search_results:
         if subq.subsumed_by(used_queries):
             logging.debug(f"     -- subsumed: {subq}")
             continue
-        if any(lit.is_prefix() for lit in subq.literals):
-            results = collect_and_sort_prefix(results, temporary_results_file)
+        if subq.contains_prefix():
+            sorted_file = get_cache_file(args, subq, sorted_prefix=True)
+            sorted_results = try_open_cache(sorted_file, args)
+            if sorted_results is not None:
+                spec = "cached sorted"
+            else:
+                sorted_results = collect_and_sort_prefix(results, sorted_file)
+                spec = "sorted"
+            results = sorted_results
+            logging.debug(f"     -- {spec} prefix query: {subq} = {results}")
 
-        intersection_type = intersection.merge_update(
-            results,
-            results_file,
-            use_internal = args.internal_merge,
-            merge_type = MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
-        )
-        logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
+        if intersection is None:
+            intersection = results
+            logging.info(f"     {subq!s:{maxwidth}} = {intersection}")
+        else:
+            intersection_type = intersection.merge_update(
+                results,
+                results_file,
+                use_internal = args.internal_merge,
+                merge_type = MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
+            )
+            logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
+
         used_queries.append(subq)
-        clean_up(temporary_results_file, [".ia", ".ia.cfg"])
-
         if len(intersection) == 0:
-            logging.debug(f"Empty intersection, quitting early")
+            logging.debug(f"Empty intersection, quitting early {intersection}")
             break
 
-    if intersection != search_results[0][1]:
-        clean_up(initial_results_file, [".ia", ".ia.cfg"])
+    assert intersection is not None
     for _, results in search_results:
-        if results != intersection:
+        if results.path != intersection.path:
             results.values.close()
     return intersection
 
 
-def search_corpus(corpus: Corpus, query: Query, args: Namespace) -> IndexSet:
-    final_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=args.filter)
-    try:
-        assert final_results_file and not args.no_cache
-        results = IndexSet.open(final_results_file)
+def run_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSet:
+    result = run_outer_query(query, results_file, args)
+    if is_cache_file(result.path) and result.path != results_file:
+        assert result.path is not None and results_file is not None
+        DiskIntArray.getconfig(result.path).replace(DiskIntArray.getconfig(results_file))
+        result.path.replace(results_file)
+        result.path = results_file
+    return result
+
+
+def search_corpus(query: Query, args: Namespace) -> IndexSet:
+    final_results_file = get_cache_file(args, query, filtered=args.filter)
+    cached_results = try_open_cache(final_results_file, args)
+    if cached_results is not None:
         logging.debug(f"Using cached results file: {final_results_file}")
-        return results
-    except (FileNotFoundError, AssertionError):
-        pass
+        return cached_results
 
     if not args.filter:
-        return run_outer(query, final_results_file, args)
+        return run_query(query, final_results_file, args)
 
-    unfiltered_results_file = None if args.no_diskarray else hash_query(corpus, query, filtered=False)
+    unfiltered_results_file = get_cache_file(args, query, filtered=False)
     assert unfiltered_results_file != final_results_file
-    try:
-        assert unfiltered_results_file and not args.no_cache
-        results = IndexSet.open(unfiltered_results_file)
+    unfiltered_results = try_open_cache(unfiltered_results_file, args)
+    if unfiltered_results is not None:
         logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
-    except (FileNotFoundError, AssertionError):
-        results = run_outer(query, unfiltered_results_file, args)
-        logging.debug(f"Unfiltered results: {results}")
+    else:
+        unfiltered_results = run_query(query, unfiltered_results_file, args)
+        logging.debug(f"Unfiltered results: {unfiltered_results}")
 
-    results.filter_update(query.check_position, final_results_file)
-    return results
+    unfiltered_results.filter_update(query.check_position, final_results_file)
+    return unfiltered_results
 
 
 def main_search(args: Namespace) -> dict[str, Any]:
@@ -213,7 +258,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                     features_to_show.remove(WORD)
                 features_to_show.insert(0, WORD)
 
-            results = search_corpus(corpus, query, args)
+            results = search_corpus(query, args)
             corpus_hits[corpus.id] = len(results)
             logging.info(f"Results: {results}")
 

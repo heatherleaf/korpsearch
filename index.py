@@ -75,7 +75,6 @@ class KnownLiteral:
 class DisjunctiveGroup:
     negative: bool
     offset: int
-    features: tuple[Feature, ...]
     literals: tuple[KnownLiteral, ...]
 
     def __str__(self) -> str:
@@ -92,8 +91,7 @@ class DisjunctiveGroup:
     def create(literals: tuple[KnownLiteral, ...]) -> 'DisjunctiveGroup':
         negative = any(lit.negative for lit in literals)
         offset = min(lit.offset for lit in literals)
-        features = tuple(lit.feature for lit in literals)
-        return DisjunctiveGroup(negative, offset, features, literals)
+        return DisjunctiveGroup(negative, offset, literals)
 
 
 @dataclass(frozen=True, order=True)
@@ -154,7 +152,7 @@ class Template:
         tokens: list[str] = []
         for offset in range(self.min_offset(), self.max_offset()+1):
             tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
-            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{val}"' 
+            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{val}"'
                            for l in self.literals if l.offset == offset
                            for val in [l.corpus.lookup_value(l.feature, l.value).decode()])
             if lit:
@@ -210,7 +208,7 @@ class Index:
         self.index = DiskIntArray(self.path)
 
     def __str__(self) -> str:
-        return self.__class__.__name__ + ':' + str(self.template) 
+        return self.__class__.__name__ + ':' + str(self.template)
 
     def __len__(self) -> int:
         return len(self.index)
@@ -241,7 +239,7 @@ class Index:
             pos = self.index.array[i]
             instance = self.template.instantiate(self.corpus, pos)
             assert instance is not None
-            if prev_instance is not None: 
+            if prev_instance is not None:
                 assert prev_instance <= instance, f"Index position {i}: {prev_instance} > {instance}"
                 if prev_instance == instance:
                     assert prev_pos < pos, f"Index position {i}: {prev_instance} == {instance} but {prev_pos} >= {pos}"
@@ -258,7 +256,7 @@ class Index:
     def get(corpus: Corpus, template: Template) -> 'Index':
         if len(template) == 1:
             return UnaryIndex(corpus, template)
-        elif len(template) == 2: 
+        elif len(template) == 2:
             return BinaryIndex(corpus, template)
         else:
             raise ValueError(f"Cannot handle indexes of length {len(template)}: {template}")

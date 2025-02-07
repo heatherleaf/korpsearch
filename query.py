@@ -15,7 +15,7 @@ from util import Feature, FValue, SENTENCE, START
 QueryElement = KnownLiteral | DisjunctiveGroup
 
 def get_query_literals(query_element: QueryElement) -> tuple[KnownLiteral, ...]:
-    if isinstance(query_element, KnownLiteral): 
+    if isinstance(query_element, KnownLiteral):
         return (query_element,)
     else: # isinstance(query_element, DisjunctiveGroup):
         return query_element.literals
@@ -102,17 +102,20 @@ class Query:
     def contains_disjunction(self) -> bool:
         return any(isinstance(lit, DisjunctiveGroup) for lit in self.literals)
 
-    def expand(self) -> Iterator[list[KnownLiteral]]:
+    def contains_prefix(self) -> bool:
+        return any(lit.is_prefix() for lit in self.literals)
+
+    def expand(self) -> Iterator['Query']:
         groups = [group.literals for group in self.literals if isinstance(group, DisjunctiveGroup)]
         singles = [lit for lit in self.literals if isinstance(lit, KnownLiteral)]
         for group in itertools.product(*groups):
-            yield singles + list(group)
+            yield Query(self.corpus, singles + list(group))
 
     def subqueries(self) -> Iterator['Query']:
         # Subqueries are generated in decreasing order of complexity
         for n in reversed(range(len(self))):
             for literals in itertools.combinations(self.literals, n+1):
-                if (any([literal.is_prefix() for literal in literals]) and len(literals) > 1):
+                if (any(literal.is_prefix() for literal in literals) and len(literals) > 1):
                     continue
                 try:
                     yield Query(self.corpus, literals)
