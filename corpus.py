@@ -23,9 +23,11 @@ class Corpus:
     features: list[Feature]
     tokens: dict[Feature, DiskStringArray]
     sentence_pointers: DiskIntArray
+    id: str
     path: Path
 
-    def __init__(self, corpus: Path) -> None:
+    def __init__(self, corpus: Path|str) -> None:
+        self.id = str(corpus)
         self.path = Path(corpus)
         if self.path.suffix != self.dir_suffix:
             self.path = add_suffix(self.path, self.dir_suffix)
@@ -39,7 +41,7 @@ class Corpus:
         assert all(
             len(self) == len(arr) for arr in self.tokens.values()
         )
-        
+
     def __str__(self) -> str:
         return f"[Corpus: {self.path.stem}]"
 
@@ -77,7 +79,7 @@ class Corpus:
         end = sents[n+1] if n+1 < nsents else len(self)
         return range(start, end)
 
-    def render_sentence(self, sent: int, pos: int = -1, offset: int = -1, 
+    def render_sentence(self, sent: int, pos: int = -1, offset: int = -1,
                         features: Sequence[Feature] = (), context: int = -1) -> str:
         if not features:
             features = self.features[:1]
@@ -95,7 +97,7 @@ class Corpus:
                 tokens.append('[')
             tokens.append('/'.join(
                 strings.interned_string(strings[p])
-                for feat in features 
+                for feat in features
                 for strings in [self.tokens[feat]]
             ))
             if p == pos+offset:
