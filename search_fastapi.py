@@ -2,7 +2,8 @@
 import logging
 from time import time
 from pathlib import Path
-from argparse import Namespace
+from argparse import Namespace, ArgumentParser
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from typing import Any
@@ -13,12 +14,35 @@ from index import Template
 from util import setup_logger
 from search import main_search
 
-VERSION = '0.3'
+SETTINGS = Namespace(
+    version = '0.3',
+    corpus_dir = Path('corpora'),
+    charset = 'utf8',
+    loglevel = 'info',
+    filter = False,
+    no_cache = False,
+    no_diskarray = False,
+    no_binary = False,
+    no_sentence_breaks = False,
+    internal_merge = False,
+)
 
-CORPUS_DIR = Path('corpora')
-CHARSET = 'utf8'
+setup_logger(
+    '{relativeCreated:8.2f} s {warningname}| {message}',
+    timedivider = 1000,
+    loglevel = getattr(logging, SETTINGS.loglevel.upper()),
+)
 
-setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=logging.DEBUG)
+
+def get_corpora() -> list[str]:
+    return [corpus.stem for corpus in SETTINGS.corpus_dir.glob('*.corpus')]
+
+def get_corpus_path(corpus: str) -> Path:
+    return SETTINGS.corpus_dir / corpus.strip()
+
+
+################################################################################
+## API
 
 app = FastAPI()
 app.mount("/webdemo", StaticFiles(directory="webdemo"), name="webdemo")
@@ -47,11 +71,8 @@ async def info() -> APIResult:
 
 def get_info() -> APIResult:
     return {
-        'corpora': [
-            corpus.with_suffix('')
-            for corpus in CORPUS_DIR.glob('**/*.corpus')
-        ],
-        'version': VERSION,
+        'corpora': get_corpora(),
+        'version': SETTINGS.version,
     }
 
 
@@ -59,11 +80,10 @@ def get_info() -> APIResult:
 async def corpus_info(corpus: str) -> APIResult:
     return api_call(get_corpus_info, corpus.split(','))
 
-def get_corpus_info(corpus_paths: list[str]) -> APIResult:
+def get_corpus_info(corpora: list[str]) -> APIResult:
     result: APIResult = {}
-    for path in corpus_paths:
-        corpus_path = Path(path.strip())
-        with Corpus(corpus_path) as corpus:
+    for cid in corpora:
+        with Corpus(get_corpus_path(cid)) as corpus:
             indexes: list[str] = []
             for index_path in corpus.path.with_suffix('.indexes').glob('*:*'):
                 templ = Template.parse(corpus, index_path.name)
@@ -79,7 +99,7 @@ def get_corpus_info(corpus_paths: list[str]) -> APIResult:
                 },
                 'info': {
                     'Name': corpus.path.stem,
-                    'Charset': CHARSET,
+                    'Charset': SETTINGS.charset,
                     'Size': tokens,
                     'Sentences': sentences,
                     'Indexes': indexes,
@@ -100,28 +120,54 @@ async def query(
         num: int = 10,
         end: int = -1,
         show: str = "",
-        filter: bool = False,
-        no_cache: bool = False,
-        no_diskarray: bool = False,
-        no_binary: bool = False,
-        no_sentence_breaks: bool = False,
-        internal_merge: bool = False,
+        filter: bool|None = None,
+        no_cache: bool|None = None,
+        no_diskarray: bool|None = None,
+        no_binary: bool|None = None,
+        no_sentence_breaks: bool|None = None,
+        internal_merge: bool|None = None,
     ) -> APIResult:
     return api_call(
-        main_search,
-        Namespace(
-            corpus = corpus,
-            query = cqp,
-            start = start,
-            num = num,
-            end = end,
-            show = show,
-            filter = filter,
-            no_cache = no_cache,
-            no_diskarray = no_diskarray,
-            no_binary = no_binary,
-            no_sentence_breaks = no_sentence_breaks,
-            internal_merge = internal_merge,
-        )
+        run_query,
+        corpus,
+        query = cqp,
+        start = start,
+        num = num,
+        end = end,
+        show = show,
+        filter = filter,
+        no_cache = no_cache,
+        no_diskarray = no_diskarray,
+        no_binary = no_binary,
+        no_sentence_breaks = no_sentence_breaks,
+        internal_merge = internal_merge,
     )
 
+def run_query(corpus: str, **xargs: Any) -> APIResult:
+    args = SETTINGS.__dict__
+    args['corpus'] = [get_corpus_path(c) for c in corpus.split(',')]
+    for k, v in xargs.items():
+        if v is not None: args[k] = v
+    return main_search(Namespace(**args))
+
+
+################################################################################
+## Main
+
+parser = ArgumentParser(description='Search API')
+parser.add_argument('--corpus-dir', '-c', type=Path, help='path to compiled corpus')
+
+parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
+parser.add_argument('--no-diskarray', action="store_true", help="don't use on-disk arrays")
+parser.add_argument('--no-binary', action="store_true", help="don't use binary indexes")
+parser.add_argument('--internal-merge', action='store_true', help='use the internal (slow) merge')
+parser.add_argument('--no-sentence-breaks', action='store_true', help="don't care about sentence breaks")
+parser.add_argument('--filter', action='store_true', help='filter the final results (should not be necessary)')
+
+parser.add_argument('--quiet', action="store_const", dest="loglevel", const='warning', help='quiet mode')
+parser.add_argument('--debug', action="store_const", dest="loglevel", const='debug', help='debugging mode')
+
+if __name__ == "__main__":
+    args = parser.parse_args(namespace=SETTINGS)
+    logging.getLogger().setLevel(getattr(logging, SETTINGS.loglevel.upper()))
+    uvicorn.run(app, log_level=SETTINGS.loglevel)

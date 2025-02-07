@@ -139,6 +139,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
     corpus_hits: dict[str, int] = {}
     matches: list[dict[str, Any]] = []
     for corpus_id in corpora:
+        logging.info(f"Searching in corpus: {corpus_id}")
         with Corpus(corpus_id) as corpus:
             query = Query.parse(corpus, args.query, args.no_sentence_breaks)
             logging.info(f"Query: {query}, {query.min_offset()}")
