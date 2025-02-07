@@ -154,7 +154,6 @@ function navigate(nav) {
 
 
 function show_search_results(response) {
-    console.log(response);
     STATE.hits = response.hits; STATE.start = response.start; STATE.end = response.end;
     ELEMS.search.info.innerHTML = `Total hits: ${response.hits}, showing n:o ${response.start}&ndash;${response.end}`;
     ELEMS.search.results.innerHTML = '';
