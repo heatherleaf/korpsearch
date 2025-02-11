@@ -2,7 +2,6 @@
 # type: ignore
 
 from libc.stdint cimport uint8_t, uint32_t
-from libc.stdio cimport FILE
 
 from pathlib import Path
 from mmap import mmap
@@ -26,7 +25,7 @@ def finalise(tmppath: Path, nr_rows: int, rowsize: int, index_path: Path):
 
 cdef void sort_index(
             uint8_t[::1] sorted_view,
-            size_t nr_rows, 
+            size_t nr_rows,
             size_t rowsize,
         ):
     global sorting_itemsize
@@ -49,7 +48,7 @@ cdef void create_index_array(
 
 
 ###############################################################################
-# Lowlevel functions for sorting
+# Lowlevel functions for sorting and conversion
 
 cdef size_t sorting_itemsize
 
@@ -66,21 +65,6 @@ cdef extern from "stdlib.h":
         int(*compare)(const void*, const void*)
     )
 
-
-###############################################################################
-# Lowlevel functions for binary file handling
-
-cdef inline void fwrite_value(uint32_t val, FILE* file):
-    cdef uint32_t nval = htonl(val)
-    fwrite(&nval, sizeof(uint32_t), 1, file)
-
-cdef extern from "stdio.h":
-    size_t fwrite(const void* buffer, size_t size, size_t count, FILE* stream)
-    FILE* fopen(const char* filename, const char* mode)
-    int fclose(FILE* stream)
-    long ftell(FILE* stream)
-
 cdef extern from "arpa/inet.h":
     uint32_t ntohl(uint32_t netlong)
-    uint32_t htonl(uint32_t netlong)
 
