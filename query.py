@@ -115,8 +115,6 @@ class Query:
         # Subqueries are generated in decreasing order of complexity
         for n in reversed(range(len(self))):
             for literals in itertools.combinations(self.literals, n+1):
-                if (any(literal.is_prefix() for literal in literals) and len(literals) > 1):
-                    continue
                 try:
                     yield Query(self.corpus, literals)
                 except ValueError:
@@ -201,10 +199,13 @@ class Query:
                         query_list.extend(last_group + [lit] for lit in regexed_literals)
             if len(query_list) > 1:
                 query.extend(DisjunctiveGroup.create(literals) for literals in itertools.product(*query_list))
-            else:
+            elif query_list:
                 query.extend(*query_list)
         if not no_sentence_breaks:
             svalue = corpus.intern(SENTENCE, START)
             for offset in range(1, len(tokens)):
                 query.append(KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus))
+        if not query:
+            raise ValueError(f"Found no matching query literals")
+        assert not all(lit.negative for lit in query), "Cannot handle queries with only negative literals"
         return Query(corpus, query)

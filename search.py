@@ -131,7 +131,7 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> I
         try:
             results = index.search(subq.instance(), offset=subq.min_offset())
         except KeyError:
-            logging.debug(f"     -- {subq.instance()} not found: {subq}")
+            logging.debug(f"     -- not found: {subq}")
             continue
         search_results.append((subq, results))
         logging.info(f"     {subq!s:{maxwidth}} = {results}")
@@ -147,11 +147,13 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> I
         del search_results[first_ok]
         search_results.insert(0, first_result)
     assert not search_results[0][0].is_negative()
-    logging.debug("Intersection order:")
-    for i, (subq, results) in enumerate(search_results, 1):
-        logging.debug(f"{i}     {subq!s:{maxwidth}} : {len(results)} elements")
 
-    logging.info(f"Intersecting {len(search_results)} search results:")
+    if len(search_results) > 1:
+        logging.debug("Intersection order:")
+        for i, (subq, results) in enumerate(search_results, 1):
+            logging.debug(f"{i}     {subq!s:{maxwidth}} : {len(results)} elements")
+        logging.info(f"Intersecting {len(search_results)} search results:")
+
     used_queries: list[Query] = []
     intersection = None
     for subq, results in search_results:
@@ -227,7 +229,7 @@ def search_corpus(query: Query, args: Namespace) -> IndexSet:
 
 
 def main_search(args: Namespace) -> dict[str, Any]:
-    if not (args.end and args.end >= 0):
+    if not (args.end and args.end > 0):
         args.end = args.start + args.num - 1
     start, end = args.start, args.end
     start_time = time.time()
@@ -241,8 +243,12 @@ def main_search(args: Namespace) -> dict[str, Any]:
     for corpus_id in corpora:
         logging.info(f"Searching in corpus: {corpus_id}")
         with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
-            query = Query.parse(corpus, args.query, args.no_sentence_breaks)
-            logging.info(f"Query: {query}, {query.min_offset()}")
+            try:
+                query = Query.parse(corpus, args.query, args.no_sentence_breaks)
+            except ValueError as err:
+                logging.info(f"Couldn't parse query {args.query}: {err}")
+                continue
+            logging.info(f"Query: {query}")
 
             if args.show:
                 features_to_show = args.show.encode().split(b',')
@@ -267,7 +273,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
             corpus_hits[corpus.name] = len(results)
             logging.info(f"Results: {results}")
 
-            if  start < len(results) or end >= 0:
+            if start < len(results) and end >= 0:
                 query_offset = query.max_offset() + 1
                 try:
                     for match_pos in results.slice(max(0, start), end+1):

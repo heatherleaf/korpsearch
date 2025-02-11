@@ -8,7 +8,7 @@ import logging
 from disk import InternedString, InternedRange, DiskIntArray
 from corpus import Corpus
 from indexset import IndexSet
-from util import progress_bar, binsearch_first, binsearch_last, binsearch_range, check_feature, Feature, FValue
+from util import progress_bar, binsearch_range, check_feature, Feature, FValue
 
 
 ################################################################################
@@ -276,9 +276,9 @@ class UnaryIndex(Index):
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        start = binsearch_first(0, len(self)-1, instance[0][0], self.search_key())
-        end = binsearch_last(0, len(self)-1, instance[0][1], self.search_key())
-        return start, end
+        ((value1, value2),) = instance
+        error = (value1 == value2)
+        return binsearch_range(0, len(self)-1, value1, value2, self.search_key(), error=error)
 
 
 class BinaryIndex(Index):
@@ -288,12 +288,16 @@ class BinaryIndex(Index):
 
     def lookup_instance(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
+        ((left1, left2), (right1, right2)) = instance
+        if left1 != left2:
+            raise KeyError("BinaryIndex cannot have a range as left value")
         tmpl1, tmpl2 = self.template.template
         offset1, offset2 = tmpl1.offset, tmpl2.offset
         features1 = self.corpus.tokens[tmpl1.feature]
         features2 = self.corpus.tokens[tmpl2.feature]
         index = self.index.array
-        def search_key(k: int) -> Instance:
-            return mkInstance((features1[index[k] + offset1], features2[index[k] + offset2]))
-        return binsearch_range(0, len(self)-1, instance, search_key)
+        def search_key(k: int) -> InternedRange:
+            return (features1[index[k] + offset1], features2[index[k] + offset2])
+        error = (right1 == right2)
+        return binsearch_range(0, len(self)-1, (left1, right1), (left2, right2), search_key, error=error)
 

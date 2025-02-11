@@ -77,7 +77,7 @@ class DiskIntArray:
     @staticmethod
     def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0) -> 'DiskIntArray':
         assert not (max_value and itemsize), "Only one of 'max_value' and 'itemsize' should be provided."
-        if max_value > 0: 
+        if max_value > 0:
             itemsize = get_integer_size(max_value)
         if not itemsize:
             itemsize = DiskIntArray.default_itemsize
@@ -143,15 +143,21 @@ class StringCollection:
                 self._intern[self.from_index(i)] = InternedString(i)
 
     def intern(self, string: bytes) -> InternedString:
-        if self._intern:
-            return self._intern[string]
-        else:
-            return InternedString(binsearch(0, len(self)-1, string, lambda i: self.from_index(i)))
+        try:
+            if self._intern:
+                return self._intern[string]
+            else:
+                return InternedString(binsearch(0, len(self)-1, string, lambda i: self.from_index(i)))
+        except (KeyError, IndexError, ValueError):
+            raise ValueError(f"Interned string doesn't exist: {string.decode(errors='ignore')}")
 
     def interned_range(self, string: bytes) -> InternedRange:
-        n = len(string)
-        start, end = binsearch_range(0, len(self)-1, string, lambda i: self.from_index(i)[:n])
-        return (InternedString(start), InternedString(end))
+        try:
+            n = len(string)
+            start, end = binsearch_range(0, len(self)-1, string, string, lambda i: self.from_index(i)[:n])
+            return (InternedString(start), InternedString(end))
+        except (KeyError, IndexError, ValueError):
+            raise ValueError(f"Interned prefix doesn't exist: {string.decode(errors='ignore')}")
 
     def __enter__(self) -> 'StringCollection':
         return self
@@ -183,7 +189,7 @@ class StringCollection:
 
         path = StringCollection.getpath(path)
         with open(path, 'wb') as stringsfile:
-            for string in stringlist: 
+            for string in stringlist:
                 stringsfile.write(string)
                 stringsfile.write(b'\n')
 
