@@ -121,6 +121,7 @@ def sort(arr: memoryview, start: int, length: int, result: memoryview):
     Sort an array of unsigned (4-byte = 32-bit) integers.
     The result array must have enough space for all elements.
     """
+    if length == 0: return
     assert arr.itemsize == 4, "I can only handle 4-byte integer arrays."
     cdef uint32_t[::1] in_buffer = arr
     cdef uint32_t[::1] out_buffer = result
