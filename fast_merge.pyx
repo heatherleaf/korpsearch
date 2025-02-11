@@ -1,9 +1,11 @@
 # cython: language_level=3
 # type: ignore
 
+from libc.stdint cimport uint32_t
+
 def merge(
-        arr1: memoryview, start1: int, length1: int, offset1: int, 
-        arr2: memoryview, start2: int, length2: int, offset2: int, 
+        arr1: memoryview, start1: int, length1: int, offset1: int,
+        arr2: memoryview, start2: int, length2: int, offset2: int,
         result: memoryview, take_first: bool, take_second: bool, take_common: bool,
     ) -> int:
     """
@@ -25,16 +27,16 @@ def merge(
 
     assert arr1.itemsize == arr2.itemsize == 4, "I can only handle 4-byte integer arrays."
 
-    cdef unsigned int[::1] in1buffer = arr1
-    cdef unsigned int[::1] in2buffer = arr2
-    cdef unsigned int[::1] outbuffer = result
+    cdef uint32_t[::1] in1buffer = arr1
+    cdef uint32_t[::1] in2buffer = arr2
+    cdef uint32_t[::1] outbuffer = result
 
-    cdef unsigned int* in1 = <unsigned int*> &in1buffer[0]
-    cdef unsigned int* in2 = <unsigned int*> &in2buffer[0]
-    cdef unsigned int* out = <unsigned int*> &outbuffer[0]
+    cdef uint32_t* in1 = <uint32_t*> &in1buffer[0]
+    cdef uint32_t* in2 = <uint32_t*> &in2buffer[0]
+    cdef uint32_t* out = <uint32_t*> &outbuffer[0]
 
     return fast_merge(
-        out, 
+        out,
         in1, start1, length1, offset1,
         in2, start2, length2, offset2,
         take_first, take_second, take_common,
@@ -42,9 +44,9 @@ def merge(
 
 
 cdef size_t fast_merge(
-        unsigned int* out, 
-        unsigned int* in1, size_t start1, size_t length1, size_t offset1, 
-        unsigned int* in2, size_t start2, size_t length2, size_t offset2, 
+        uint32_t* out,
+        uint32_t* in1, size_t start1, size_t length1, size_t offset1,
+        uint32_t* in2, size_t start2, size_t length2, size_t offset2,
         size_t take_first, size_t take_second, size_t take_common,
     ):
 
@@ -58,21 +60,21 @@ cdef size_t fast_merge(
     x = in1[i] - offset1
     y = in2[j] - offset2
     while True:
-        if x < y: 
+        if x < y:
             if take_first:
                 out[k] = x
                 k += 1
             i += 1
-            if i >= length1: 
+            if i >= length1:
                 break
             x = in1[i] - offset1
 
-        elif x > y: 
+        elif x > y:
             if take_second:
                 out[k] = y
                 k += 1
             j += 1
-            if j >= length2: 
+            if j >= length2:
                 break
             y = in2[j] - offset2
 
@@ -81,10 +83,10 @@ cdef size_t fast_merge(
                 out[k] = x
                 k += 1
             i += 1
-            if i >= length1: 
+            if i >= length1:
                 break
             j += 1
-            if j >= length2: 
+            if j >= length2:
                 break
             x = in1[i] - offset1
             y = in2[j] - offset2
