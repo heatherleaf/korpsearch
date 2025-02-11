@@ -32,10 +32,15 @@ def main(args: argparse.Namespace) -> None:
 ## Main
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--corpus', '-c', type=Path, required=True,
-    help='path to compiled corpus')
+parser.add_argument('--corpus', '-c', type=str, required=True,
+    help='name of compiled corpus')
 parser.add_argument('--query', '-q', type=str, required=True,
     help='the query (e.g., \'[pos="ART"] [lemma="small"] [pos="SUBST"]\')')
+
+parser.add_argument('--base-dir', '-d', type=Path, metavar='DIR', default=Path('corpora'),
+    help='directory where to find the corpus (default: ./corpora/)')
+parser.add_argument('--cache-dir', type=Path, metavar='DIR', default=Path('cache'),
+    help='directory where to store cache files (default: ./cache/)')
 
 parser.add_argument('--print', '-p', choices=['kwic','json'], default='kwic',
     help='output format for search results (default: kwic = keywords in context)')

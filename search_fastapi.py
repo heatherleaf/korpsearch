@@ -16,7 +16,11 @@ from search import main_search
 
 SETTINGS = Namespace(
     version = '0.3',
-    corpus_dir = Path('corpora'),
+    base_dir = Path('corpora'),
+    cache_dir = Path('cache'),
+    demo_dir = Path('webdemo'),
+    host = '127.0.0.1',
+    port = 8000,
     charset = 'utf8',
     loglevel = 'info',
     filter = False,
@@ -28,24 +32,21 @@ SETTINGS = Namespace(
 )
 
 setup_logger(
-    '{relativeCreated:8.2f} s {warningname}| {message}',
+    '{warningname}  {message}',
     timedivider = 1000,
     loglevel = getattr(logging, SETTINGS.loglevel.upper()),
 )
 
 
 def get_corpora() -> list[str]:
-    return [corpus.stem for corpus in SETTINGS.corpus_dir.glob('*.corpus')]
-
-def get_corpus_path(corpus: str) -> Path:
-    return SETTINGS.corpus_dir / corpus.strip()
+    return [corpus.stem for corpus in SETTINGS.base_dir.glob('*' + Corpus.dir_suffix)]
 
 
 ################################################################################
 ## API
 
 app = FastAPI()
-app.mount("/webdemo", StaticFiles(directory="webdemo"), name="webdemo")
+app.mount(f"/{SETTINGS.demo_dir}", StaticFiles(directory=SETTINGS.demo_dir), name=str(SETTINGS.demo_dir))
 
 APIResult = dict[str, Any]
 
@@ -55,6 +56,8 @@ def api_call(call: Callable[..., dict[str, Any]], *args: Any, **xargs: Any) -> A
     try:
         result = call(*args, **xargs)
         result['time'] = time() - start_time
+        callargs = [f"{a!r}" for a in args] + [f"{k}={v!r}" for k,v in xargs.items()]
+        logging.info(f"Completed in {result['time']:.3f} s: {call.__name__}({', '.join(callargs)})")
         return result
     except FileNotFoundError as e:
         error_code = 404
@@ -78,12 +81,12 @@ def get_info() -> APIResult:
 
 @app.get("/corpus_info")
 async def corpus_info(corpus: str) -> APIResult:
-    return api_call(get_corpus_info, corpus.split(','))
+    return api_call(get_corpus_info, corpus)
 
-def get_corpus_info(corpora: list[str]) -> APIResult:
+def get_corpus_info(corpora: str) -> APIResult:
     result: APIResult = {}
-    for cid in corpora:
-        with Corpus(get_corpus_path(cid)) as corpus:
+    for cid in corpora.split(','):
+        with Corpus(cid, base_dir=SETTINGS.base_dir) as corpus:
             indexes: list[str] = []
             for index_path in corpus.path.with_suffix('.indexes').glob('*:*'):
                 templ = Template.parse(corpus, index_path.name)
@@ -91,7 +94,7 @@ def get_corpus_info(corpora: list[str]) -> APIResult:
             features = [feat.decode() for feat in corpus.features]
             tokens = len(corpus)
             sentences = corpus.num_sentences()
-            result[corpus.id] = {
+            result[corpus.name] = {
                 'attrs': {
                     'p': features,  # positional attributes
                     's': [],        # structural attributes
@@ -145,7 +148,7 @@ async def query(
 
 def run_query(corpus: str, **xargs: Any) -> APIResult:
     args = SETTINGS.__dict__
-    args['corpus'] = [get_corpus_path(c) for c in corpus.split(',')]
+    args['corpus'] = corpus.split(',')
     for k, v in xargs.items():
         if v is not None: args[k] = v
     return main_search(Namespace(**args))
@@ -155,7 +158,10 @@ def run_query(corpus: str, **xargs: Any) -> APIResult:
 ## Main
 
 parser = ArgumentParser(description='Search API')
-parser.add_argument('--corpus-dir', '-c', type=Path, help='path to compiled corpus')
+parser.add_argument('--base-dir', '-d', type=Path, help=f'directory where to find the corpora (default: {SETTINGS.base_dir})')
+parser.add_argument('--cache-dir', type=Path, help=f'directory where to store cache files (default: {SETTINGS.cache_dir})')
+parser.add_argument('--host', type=str, help=f'host name to use (default: {SETTINGS.host})')
+parser.add_argument('--port', type=int, help=f'port number to use (default: {SETTINGS.port})')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
 parser.add_argument('--no-diskarray', action="store_true", help="don't use on-disk arrays")
@@ -168,6 +174,7 @@ parser.add_argument('--quiet', action="store_const", dest="loglevel", const='war
 parser.add_argument('--debug', action="store_const", dest="loglevel", const='debug', help='debugging mode')
 
 if __name__ == "__main__":
-    args = parser.parse_args(namespace=SETTINGS)
+    parser.parse_args(namespace=SETTINGS)
     logging.getLogger().setLevel(getattr(logging, SETTINGS.loglevel.upper()))
-    uvicorn.run(app, log_level=SETTINGS.loglevel)
+    print(f"Open web demo here: http://{SETTINGS.host}:{SETTINGS.port}/{SETTINGS.demo_dir}/index.html")
+    uvicorn.run(app, host=SETTINGS.host, port=SETTINGS.port, log_level=SETTINGS.loglevel)

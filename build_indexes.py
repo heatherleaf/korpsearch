@@ -18,46 +18,49 @@ FILE_SUFFIXES = set(CompressedFileReader.compressors.keys()) | set(CORPUS_READER
 ## Building the corpus index and the query indexes
 
 def main(args: argparse.Namespace) -> None:
-    base = corpusfile = Path(args.corpus)
-    while base.suffix in FILE_SUFFIXES:
-        base = base.with_suffix('')
-    corpusdir = add_suffix(base, Corpus.dir_suffix)
-    indexdir = add_suffix(base, Index.dir_suffix)
+    corpus_id = Path(args.corpus)
+    while corpus_id.suffix in FILE_SUFFIXES:
+        corpus_id = corpus_id.with_suffix('')
+    corpus_id = str(corpus_id)
 
-    if not corpusfile.is_file():
-        # If this is not the path to the corpus file, 
+    corpus_dir = add_suffix(args.base_dir / corpus_id, Corpus.dir_suffix)
+    index_dir = add_suffix(args.base_dir / corpus_id, Index.dir_suffix)
+
+    corpus_file = args.base_dir / args.corpus
+    if not corpus_file.is_file():
+        # If this is not the path to the corpus file,
         # try to infer which is the actual file.
         candidates = list(file for suffix in FILE_SUFFIXES
-                          for file in corpusfile.parent.glob(corpusfile.name + suffix + "*"))
+                          for file in corpus_file.parent.glob(corpus_file.name + suffix + "*"))
         if len(candidates) > 1:
             raise ValueError(f"Too many possible source files: {', '.join(f.name for f in candidates)}")
         if candidates:
-            corpusfile = candidates[0]
+            corpus_file = candidates[0]
 
     if args.clean:
-        shutil.rmtree(corpusdir, ignore_errors=True)
-        shutil.rmtree(indexdir, ignore_errors=True)
+        shutil.rmtree(corpus_dir, ignore_errors=True)
+        shutil.rmtree(index_dir, ignore_errors=True)
         logging.info(f"Removed all indexes")
 
     if args.corpus_index:
-        with CompressedFileReader(corpusfile) as _: 
+        with CompressedFileReader(corpus_file) as _:
             # This is just to test that the corpus file actually exists
             pass
-        corpusdir.mkdir(exist_ok=True)
+        corpus_dir.mkdir(exist_ok=True)
         try:
-            with Corpus(base) as _corpus:
+            with Corpus(corpus_id, base_dir=args.base_dir) as _corpus:
                 assert not args.force
             logging.info(f"Corpus index already exists")
         except (FileNotFoundError, AssertionError):
-            Corpus.build(corpusdir, corpusfile)
+            Corpus.build(corpus_dir, corpus_file)
             logging.info(f"Created the corpus index")
         if args.sanity_check:
-            with Corpus(base) as corpus:
+            with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
                 corpus.sanity_check()
 
     if args.features or args.templates:
-        with Corpus(base) as corpus:
-            indexdir.mkdir(exist_ok=True)
+        with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
+            index_dir.mkdir(exist_ok=True)
             templates = list(yield_templates(corpus, args))
             logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, templates))}")
             built = 0
@@ -119,43 +122,47 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
 ################################################################################
 ## Main
 
-parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--corpus', '-c', type=Path, metavar='PATH', required=True, 
-    help='corpus base name (i.e. without suffix)')
-parser.add_argument('--clean', action='store_true', 
+parser = argparse.ArgumentParser(description='Build search index(es) for a given corpus')
+
+parser.add_argument('--corpus', '-c', type=str, required=True,
+    help='name of corpus (i.e., without any file suffixes)')
+parser.add_argument('--clean', action='store_true',
     help='remove the corpus index and all query indexes')
-parser.add_argument('--force', action='store_true', 
+parser.add_argument('--force', action='store_true',
     help='build indexes even if they exist')
-parser.add_argument('--corpus-index', '-i', action='store_true', 
+parser.add_argument('--corpus-index', '-i', action='store_true',
     help='build the corpus index')
 parser.add_argument('--features', '-f', nargs='+', default=[], metavar='FEAT',
     help='build all possible (unary and binary) query indexes for the given features')
 parser.add_argument('--templates', '-t', nargs='+', default=[], metavar='TMPL',
     help='build query indexes for the given templates: e.g., pos:0 (unary index), or word:0+pos:2 (binary index)')
 
+parser.add_argument('--base-dir', '-d', type=Path, metavar='DIR', default=Path('corpora'),
+    help='directory where to find the corpus (default: ./corpora/)')
+
 parser.add_argument('--max-dist', type=int, default=2, metavar='DIST',
     help='[only with the --features option] max distance between token pairs (default: 2)')
 parser.add_argument('--min-frequency', type=int, default=0, metavar='FREQ',
     help='[only for binary indexes] min unary frequency for all values in a binary instance (default: 0)')
-parser.add_argument('--no-sentence-breaks', action='store_true', 
+parser.add_argument('--no-sentence-breaks', action='store_true',
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 
 parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
     help='verbose output')
 parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
     help='silent (no output)')
-parser.add_argument('--sanity-check', action='store_true', 
+parser.add_argument('--sanity-check', action='store_true',
     help="check that the created indexes are correct (default: don't check)")
 
 parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
     help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]})')
-parser.add_argument('--cutoff', type=int, default=1_000_000, 
-    help="[only for sorters 'tmpfile' and 'java'] " 
+parser.add_argument('--cutoff', type=int, default=1_000_000,
+    help="[only for sorters 'tmpfile' and 'java'] "
          "the cutoff when to use the builtin sorting implementation (default: 1 million)")
-parser.add_argument('--pivot-selector', choices=PIVOT_SELECTORS, default=next(iter(PIVOT_SELECTORS)), 
+parser.add_argument('--pivot-selector', choices=PIVOT_SELECTORS, default=next(iter(PIVOT_SELECTORS)),
     help="[only for sorters 'tmpfile' and 'java'] "
          f"pivot selector: one of {', '.join(PIVOT_SELECTORS)} (default: {next(iter(PIVOT_SELECTORS))})")
-parser.add_argument('--keep-tmpfiles', action='store_true', 
+parser.add_argument('--keep-tmpfiles', action='store_true',
     help="keep temporary files (default: don't keep)")
 
 

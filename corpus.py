@@ -24,11 +24,15 @@ class Corpus:
     tokens: dict[Feature, DiskStringArray]
     sentence_pointers: DiskIntArray
     id: str
+    name: str
     path: Path
+    base_dir: Path
 
-    def __init__(self, corpus: Path|str) -> None:
-        self.id = str(corpus)
-        self.path = Path(corpus)
+    def __init__(self, corpus: str, base_dir: Path = Path()) -> None:
+        self.name = corpus
+        self.base_dir = Path(base_dir)
+        self.path = self.base_dir / corpus
+        self.id = str(self.path)
         if self.path.suffix != self.dir_suffix:
             self.path = add_suffix(self.path, self.dir_suffix)
         with open(self.path / self.features_file, 'r') as IN:
@@ -43,10 +47,10 @@ class Corpus:
         )
 
     def __str__(self) -> str:
-        return f"[Corpus: {self.path.stem}]"
+        return f"[Corpus: {self.name}]"
 
     def __repr__(self) -> str:
-        return f"Corpus({self.path})"
+        return f"Corpus({self.name}, base={self.base_dir})"
 
     def __len__(self) -> int:
         return len(self.tokens[self.features[0]])

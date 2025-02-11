@@ -38,7 +38,8 @@ def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path 
     if not info_file.is_file():
         with open(info_file, 'w') as INFO:
             json.dump({
-                'corpus': query.corpus.id,
+                'name': query.corpus.name,
+                'id': query.corpus.id,
             }, INFO)
     query_hash = hash_repr(query, extra_args, size=32)
     return DiskIntArray.getpath(query_dir / query_hash)
@@ -235,7 +236,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     for corpus_id in corpora:
         logging.info(f"Searching in corpus: {corpus_id}")
-        with Corpus(corpus_id) as corpus:
+        with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
             query = Query.parse(corpus, args.query, args.no_sentence_breaks)
             logging.info(f"Query: {query}, {query.min_offset()}")
 
@@ -259,7 +260,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                 features_to_show.insert(0, WORD)
 
             results = search_corpus(query, args)
-            corpus_hits[corpus.id] = len(results)
+            corpus_hits[corpus.name] = len(results)
             logging.info(f"Results: {results}")
 
             if  start < len(results) or end >= 0:
@@ -278,7 +279,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                         ]
 
                         matches.append({
-                            'corpus': corpus.id,
+                            'corpus': corpus.name,
                             'match': {
                                 'start': match_start,
                                 'end': match_start + query_offset,
