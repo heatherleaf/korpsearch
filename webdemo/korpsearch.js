@@ -1,5 +1,6 @@
 
 const API_DOMAIN = "http://127.0.0.1:8000/";
+const LOCALE = "en-US";
 
 const ELEMS = {
     corpus: null,
@@ -86,10 +87,10 @@ function select_corpus() {
         for (const corpus of Object.values(response.corpora)) {
             html += `<p>
                 <strong>${corpus.info.Name}</strong>:
-                ${corpus.info.Size} tokens,
-                ${corpus.info.Sentences} sentences,
-                ${corpus.info.Indexes.length} compiled indexes,
-                ${corpus.attrs.p.length} features: <em>${corpus.attrs.p.join('</em>, <em>')}</em>.
+                ${corpus.info.Size.toLocaleString(LOCALE)} tokens;
+                ${corpus.info.Sentences.toLocaleString(LOCALE)} sentences;
+                ${corpus.info.Indexes.length.toLocaleString(LOCALE)} compiled indexes;
+                ${corpus.attrs.p.length.toLocaleString(LOCALE)} features (<em>${corpus.attrs.p.join('</em>, <em>')}</em>).
             </p>`;
         }
         ELEMS.corpus.info.innerHTML = html;
@@ -155,7 +156,11 @@ function navigate(nav) {
 
 function show_search_results(response) {
     STATE.hits = response.hits; STATE.start = response.start; STATE.end = response.end;
-    ELEMS.search.info.innerHTML = `Total hits: ${response.hits}, showing n:o ${response.start}&ndash;${response.end}`;
+    ELEMS.search.info.innerHTML = `
+        Found ${response.hits.toLocaleString(LOCALE)} matches,
+        showing n:o ${response.start.toLocaleString(LOCALE)}&ndash;${response.end.toLocaleString(LOCALE)}
+        (completed in ${response.time.toLocaleString(LOCALE,{maximumFractionDigits:2})} s)
+    `;
     ELEMS.search.results.innerHTML = '';
     let n = response.start;
     for (let line of response.kwic) {
