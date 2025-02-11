@@ -60,8 +60,12 @@ def try_open_cache(cache_file: Path|None, args: Namespace) -> IndexSet | None:
         return None
 
 
-def collect_and_sort_prefix(index_view: IndexSet, sorted_file: Path|None) -> IndexSet:
-    from merge import sort
+def collect_and_sort_prefix(index_view: IndexSet, sorted_file: Path|None, args: Namespace) -> IndexSet:
+    try:
+        assert not args.internal_merge
+        from fast_merge import sort  # type: ignore
+    except (ModuleNotFoundError, AssertionError):
+        from merge import sort
     result = DiskIntArray.create(index_view.size, sorted_file)
     sort(index_view.values.array, index_view.start, index_view.size, result.array)
     return IndexSet(result, path = sorted_file, offset = index_view.offset)
@@ -160,7 +164,7 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> I
             if sorted_results is not None:
                 spec = "cached sorted"
             else:
-                sorted_results = collect_and_sort_prefix(results, sorted_file)
+                sorted_results = collect_and_sort_prefix(results, sorted_file, args)
                 spec = "sorted"
             results = sorted_results
             logging.debug(f"     -- {spec} prefix query: {subq} = {results}")
