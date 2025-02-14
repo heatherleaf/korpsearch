@@ -8,6 +8,11 @@ The indexes are modifications of [suffix arrays](https://en.wikipedia.org/wiki/S
 We build two kinds of indexes -- unary (for looking up one single feature), and binary (for looking up a pair of adjacent features).
 A complex search query is then translated to a conjunction of simple queries which use unary or binary indexes.
 Then we calculate the intersection of all query results.
+You can read more about the underlying technology in this paper:
+
+Peter Ljunglöf, Nicholas Smallbone, Mijo Thoresson, and Victor Salomonsson (2024).
+[Binary indexes for optimising corpus queries](https://aclanthology.org/2024.konvens-main.17/).
+In *KONVENS 2024, 20th Conference on Natural Language Processing*, pages 149–158, Vienna, Austria.
 
 ## Dependencies
 
