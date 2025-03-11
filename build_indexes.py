@@ -52,7 +52,7 @@ def main(args: argparse.Namespace) -> None:
                 assert not args.force
             logging.info(f"Corpus index already exists")
         except (FileNotFoundError, AssertionError):
-            Corpus.build(corpus_dir, corpus_file)
+            Corpus.build(corpus_dir, corpus_file, args)
             logging.info(f"Created the corpus index")
         if args.sanity_check:
             with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
@@ -146,6 +146,10 @@ parser.add_argument('--min-frequency', type=int, default=0, metavar='FREQ',
     help='[only for binary indexes] min unary frequency for all values in a binary instance (default: 0)')
 parser.add_argument('--no-sentence-breaks', action='store_true',
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
+parser.add_argument('--no-sentence-feature', action='store_true',
+    help="don't build the 's' feature for sentence breaks (default: do build it)")
+parser.add_argument('--no-reversed-features', action='store_true',
+    help="don't build reversed features for suffix search (default: do build them)")
 
 parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
     help='verbose output')

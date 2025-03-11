@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator, Callable
 from pathlib import Path
 from typing import Iterable
+from argparse import Namespace
 
 from util import CompressedFileReader, uncompressed_suffix
 from util import Feature, FValue, EMPTY, SENTENCE, START, check_feature
@@ -35,32 +36,29 @@ class CorpusReader(ABC):
         self.close()
 
 
-def corpus_reader(path: Path, description: str, sentence_feature: bool = True,
-                  reversed_features: bool = True) -> CorpusReader:
+def corpus_reader(path: Path, description: str, args: Namespace = Namespace()) -> CorpusReader:
     suffix = uncompressed_suffix(path)
     try:
         reader = CORPUS_READERS[suffix]
     except KeyError:
         raise ValueError(f"Cannot find a corpus reader for file type: {suffix}")
     reader_instance = reader(path, description)
-    return AugmentedReader(reader_instance, sentence_feature, reversed_features)
+    return AugmentedReader(reader_instance, args)
 
 
 class AugmentedReader(CorpusReader):
     wrapped: CorpusReader
-    sentence_feature: bool
-    reversed_features: bool
+    args: Namespace
 
-    def __init__(self, reader: CorpusReader, sentence_feature: bool, reversed_features: bool):
+    def __init__(self, reader: CorpusReader, args: Namespace):
         self.wrapped = reader
-        self.sentence_feature = sentence_feature
-        self.reversed_features = reversed_features
+        self.args = args
 
         self._header = reader.header
-        if self.reversed_features:
+        if not self.args.no_reversed_features:
             revd = [Feature(feature + b'_rev') for feature in self._header]
             self._header.extend(revd)
-        if self.sentence_feature:
+        if not self.args.no_sentence_feature:
             self._header.append(SENTENCE)
 
     @property
@@ -70,11 +68,11 @@ class AugmentedReader(CorpusReader):
     def sentences(self) -> Iterator[Sentence]:
         for sentence in self.wrapped.sentences():
             for token in sentence:
-                if self.reversed_features:
+                if not self.args.no_reversed_features:
                     token += [FValue(val.decode()[::-1].encode()) for val in token]
-                if self.sentence_feature:
+                if not self.args.no_sentence_feature:
                     token.append(EMPTY)
-            if self.sentence_feature:
+            if not self.args.no_sentence_feature:
                 sentence[0][-1] = START
             yield sentence
 

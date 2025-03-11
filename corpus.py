@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import logging
 from typing import Any
+from argparse import Namespace
 from contextlib import ExitStack
 from collections.abc import Iterator, Sequence
 
@@ -188,10 +189,10 @@ class Corpus:
 
 
     @staticmethod
-    def build(basedir: Path, corpusfile: Path) -> None:
+    def build(basedir: Path, corpusfile: Path, args: Namespace = Namespace()) -> None:
         logging.debug(f"Building corpus index from file: {str(corpusfile)}")
 
-        with corpus_reader(corpusfile, "Collecting strings") as corpus:
+        with corpus_reader(corpusfile, "Collecting strings", args) as corpus:
             with open(basedir / Corpus.features_file, 'w') as OUT:
                 json.dump([feat.decode() for feat in corpus.header], OUT)
 
@@ -218,7 +219,7 @@ class Corpus:
                     str_array = stack.enter_context(DiskStringArray.create(path, strings, n_tokens))
                     feature_builders.append(str_array)
 
-                corpus = stack.enter_context(corpus_reader(corpusfile, "Building indexes"))
+                corpus = stack.enter_context(corpus_reader(corpusfile, "Building indexes", args))
                 ctr = 0
                 for n, sentence in enumerate(corpus.sentences(), 1):
                     sentence_array[n] = ctr
