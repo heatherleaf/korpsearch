@@ -1,5 +1,5 @@
 
-const API_DOMAIN = "http://127.0.0.1:8000/";
+const API_DOMAIN = "http://korpsearch.cse.chalmers.se:8000/";
 const LOCALE = "en-US";
 
 const ELEMS = {
@@ -58,10 +58,15 @@ function initialize() {
     let opt = document.createElement('option');
     opt.text = '(try an example search)'
     ELEMS.search.examples.add(opt);
-    for (let ex of search_examples) {
-        let opt = document.createElement('option');
-        opt.text = opt.value = ex;
-        ELEMS.search.examples.add(opt);
+    for (let corpus in search_examples) {
+        let group = document.createElement('optgroup');
+        group.label = corpus;
+        for (let example of search_examples[corpus]){
+            let opt = document.createElement('option');
+            opt.text = opt.value = example;
+            group.appendChild(opt);
+        }
+        ELEMS.search.examples.add(group);
     }
 
     ELEMS.corpus.list.addEventListener('change', select_corpus);

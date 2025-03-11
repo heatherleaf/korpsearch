@@ -99,9 +99,17 @@ Then you can compile the `fast_merge` module:
     make fast-merge
 
 
-## Using the web demo
+## Using the web demo locally
 
-To use the web demo you need to install [FastAPI](https://pypi.org/project/fastapi/).
+You can open the file `webdemo/index.html` in your favourite browser to try out a very basic search interface.
+This will use an API backend that is running on the domain `korpsearch.cse.chalmers.se`.
+
+To run the web demo on your local builds you can change the first line in the file `webdemo/korpsearch.js` to:
+```
+const API_DOMAIN = "http://127.0.0.1:8000/";
+```
+
+To use the web demo locally you need to install [FastAPI](https://pypi.org/project/fastapi/).
 Before running the demo you also have to build search indexes for the corpora you want to play with.
 Then you can run the following to start the webserver:
 
