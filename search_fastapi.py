@@ -6,6 +6,7 @@ from argparse import Namespace, ArgumentParser
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Any
 from collections.abc import Callable
 
@@ -46,6 +47,14 @@ def get_corpora() -> list[str]:
 ## API
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins = ["*"],
+    allow_credentials = True,
+    allow_methods = ["*"],
+    allow_headers = ["*"],
+)
+
 app.mount(f"/{SETTINGS.demo_dir}", StaticFiles(directory=SETTINGS.demo_dir), name=str(SETTINGS.demo_dir))
 
 APIResult = dict[str, Any]
