@@ -101,10 +101,10 @@ Then you can compile the `fast_merge` module:
 
 ## Using the web demo locally
 
-You can open the file `webdemo/index.html` in your favourite browser to try out a very basic search interface.
+You can open the file `docs/webdemo.html` in your favourite browser to try out a very basic search interface.
 This will use an API backend that is running on the domain `korpsearch.cse.chalmers.se`.
 
-To run the web demo on your local builds you can change the first line in the file `webdemo/korpsearch.js` to:
+To run the web demo on your local builds you can change the first line in the file `docs/korpsearch.js` to:
 ```
 const API_DOMAIN = "http://127.0.0.1:8000/";
 ```
@@ -115,6 +115,6 @@ Then you can run the following to start the webserver:
 
     python search_fastapi.py [--corpus-dir DIR]
 
-When the server has started you can open the URL <http://127.0.0.1:8000/webdemo/index.html> to play around with the web demo.
+When the server has started you can open the URL <http://127.0.0.1:8000/docs/webdemo.html> to play around with the web demo.
 
 There are some additional settings which you can see if you run `python search_fastapi.py --help`.
