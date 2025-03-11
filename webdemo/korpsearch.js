@@ -7,13 +7,20 @@ const ELEMS = {
     search: null,
     navigate: null,
     error: null,
-}
+};
 
-const search_examples = [
-    '[pos="ART"] [lemma="big"] [pos="SUBST"]',
-    '[lemma="be"] [pos="ART"] [pos="ADJ"] [pos="SUBST"]',
-    '[pos="ADJ"] [lemma="cut" pos="VERB"]',
-]
+const search_examples = {
+    'English (BNC)': [
+        '[pos="ART"] [lemma="big"] [pos="SUBST"]',
+        '[lemma="be"] [pos="ART"] [pos="ADJ"] [pos="SUBST"]',
+        '[pos="ADJ"] [lemma="cut" pos="VERB"]',
+    ],
+    'Swedish': [
+        '[pos="DT"] [word="stort"] [pos="NN"]',
+        '[word="är"] [pos="DT"] [pos="JJ"] [pos="NN"]',
+        '[pos="NN"] [word="händer" pos!="NN"]',
+    ],
+};
 
 window.addEventListener('DOMContentLoaded', initialize);
 
