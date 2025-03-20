@@ -21,14 +21,15 @@ class DiskIntArray:
 
     array: memoryview
     path: Optional[Path] = None
+    config: dict[str, Any]
 
     def __init__(self, source: Union[Path, mmap, bytearray], itemsize: int = default_itemsize) -> None:
         assert not isinstance(source, bytes), "bytes is not mutable - use bytearray instead"
         if isinstance(source, Path):
             with open(self.getconfig(source)) as configfile:
-                config = json.load(configfile)
-            assert config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {config['byteorder']}"
-            itemsize = config['itemsize']
+                self.config = json.load(configfile)
+            assert self.config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {self.config['byteorder']}"
+            itemsize = self.config['itemsize']
             self.path = self.getpath(source)
             with open(self.path, 'r+b') as file:
                 try:
@@ -75,7 +76,7 @@ class DiskIntArray:
         self.array = memoryview(obj).cast(get_typecode(itemsize))
 
     @staticmethod
-    def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0) -> 'DiskIntArray':
+    def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'DiskIntArray':
         assert not (max_value and itemsize), "Only one of 'max_value' and 'itemsize' should be provided."
         if max_value > 0:
             itemsize = get_integer_size(max_value)
@@ -86,6 +87,8 @@ class DiskIntArray:
                 json.dump({
                     'itemsize': itemsize,
                     'byteorder': sys.byteorder,
+                    'size': size,
+                    **config,
                 }, configfile)
             with open(DiskIntArray.getpath(path), 'wb') as file:
                 file.truncate(size * itemsize)

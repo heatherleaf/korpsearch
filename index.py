@@ -219,6 +219,9 @@ class Index:
     def __exit__(self, *_: Any) -> None:
         self.close()
 
+    def getconfig(self) -> dict[str, Any]:
+        return self.index.config
+
     def close(self) -> None:
         self.index.close()
 

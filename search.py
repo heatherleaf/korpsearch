@@ -7,7 +7,7 @@ import time
 from typing import Any
 from argparse import Namespace
 
-from index import Index
+from index import Index, BinaryIndex
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
@@ -128,6 +128,10 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> I
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"     -- subsumed: {subq}")
             continue
+        if isinstance(index, BinaryIndex) and subq.contains_prefix():
+            if index.getconfig().get("min_frequency", 0) > 0:
+                logging.debug(f"     -- skipping: {subq}, because prefix query and min-frequency binary index")
+                continue
         try:
             results = index.search(subq.instance(), offset=subq.min_offset())
         except KeyError:

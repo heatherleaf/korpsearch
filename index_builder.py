@@ -1,7 +1,7 @@
 
 from pathlib import Path
 from argparse import Namespace
-from typing import BinaryIO
+from typing import BinaryIO, Any
 from mmap import mmap
 from abc import abstractmethod
 import logging
@@ -119,7 +119,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     if skipped_instances:
         logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
-    collector.finalise(index_path)
+    collector.finalise(index_path, min_frequency = min_freq, skipped_instances = skipped_instances)
 
 
 ###############################################################################
@@ -155,14 +155,14 @@ class ListCollector(Collector):
         value = ((a << 32) + b << 32) + c
         self.rows.append(value)
 
-    def finalise(self, index_path: Path) -> None:
+    def finalise(self, index_path: Path, **config: Any) -> None:
         nr_rows = len(self.rows)
 
         logging.debug(f"Sorting {nr_rows} rows")
         self.rows.sort()
 
         logging.debug(f"Creating index file")
-        with DiskIntArray.create(nr_rows, index_path) as suffix_array:
+        with DiskIntArray.create(nr_rows, index_path, **config) as suffix_array:
             for i, row in enumerate(self.rows):
                 # Keep the least significant 4 bytes (32-bits)
                 suffix_array[i] = row & 0xFFFFFFFF
@@ -190,7 +190,7 @@ class TmpfileCollector(Collector):
         value = ((a << 32) + b << 32) + c
         self.file.write(value.to_bytes(12, 'big'))
 
-    def finalise(self, index_path: Path) -> None:
+    def finalise(self, index_path: Path, **config: Any) -> None:
         rowbytes = self.rowsize * 4
         nr_rows = self.file.tell() // rowbytes
         self.file.close()
@@ -206,7 +206,7 @@ class TmpfileCollector(Collector):
                 )
 
         logging.debug(f"Creating index file")
-        with DiskIntArray.create(nr_rows, index_path) as suffix_array:
+        with DiskIntArray.create(nr_rows, index_path, **config) as suffix_array:
             with open(self.path, 'rb') as file:
                 for i in range(nr_rows):
                     row = file.read(rowbytes)
@@ -217,12 +217,12 @@ class TmpfileCollector(Collector):
 
 
 class CythonCollector(TmpfileCollector):
-    def finalise(self, index_path: Path) -> None:
+    def finalise(self, index_path: Path, **config: Any) -> None:
         nr_rows = self.file.tell() // (self.rowsize * 4)
         self.file.close()
 
         from faster_index_builder import finalise  # type: ignore
-        finalise(self.path, nr_rows, self.rowsize, index_path)
+        finalise(self.path, nr_rows, self.rowsize, index_path, **config)
 
         if not self.args.keep_tmpfiles:
             self.path.unlink()
