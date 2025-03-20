@@ -11,7 +11,7 @@ from index import Index, BinaryIndex
 from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
-from util import SENTENCE, WORD
+from util import Feature, SENTENCE, WORD
 from disk import DiskIntArray
 
 CACHE_DIR = Path('cache')
@@ -255,7 +255,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
             logging.info(f"Query: {query}")
 
             if args.show:
-                features_to_show = args.show.encode().split(b',')
+                features_to_show = [Feature(f) for f in args.show.encode().split(b',')]
                 for f in features_to_show:
                     if f not in corpus.features:
                         raise ValueError(f"Unknown feature: {f}")

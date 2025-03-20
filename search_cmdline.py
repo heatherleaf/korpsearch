@@ -32,8 +32,8 @@ def main(args: argparse.Namespace) -> None:
 ## Main
 
 parser = argparse.ArgumentParser(description='Test things')
-parser.add_argument('--corpus', '-c', type=str, required=True,
-    help='name of compiled corpus')
+parser.add_argument('--corpus', '-c', nargs='+', required=True,
+    help='name(s) of compiled corpora to search in')
 parser.add_argument('--query', '-q', type=str, required=True,
     help='the query (e.g., \'[pos="ART"] [lemma="small"] [pos="SUBST"]\')')
 

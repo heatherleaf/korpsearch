@@ -30,7 +30,7 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     index_path.parent.mkdir(exist_ok=True)
     if len(template) == 1:
         build_unary_index(corpus, index_path, template, args)
-    elif len(template) == 2: 
+    elif len(template) == 2:
         build_binary_index(corpus, index_path, template, args)
     else:
         raise ValueError(f"Cannot build indexes of length {len(template)}: {template}")
@@ -81,7 +81,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     unary1 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl1.feature)]))
     unary2 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl2.feature)]))
 
-    # Optimisation: cache index lookups, because the size of the vocabulary 
+    # Optimisation: cache index lookups, because the size of the vocabulary
     # is much smaller than the corpus size.
     cache1: dict[int, bool] = {}
     cache2: dict[int, bool] = {}
@@ -97,11 +97,11 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     if args.sorter == 'internal':
         collector = ListCollector(3)
     elif args.sorter == 'cython':
-        collector = CythonCollector(3, index_path.parent / 'cindex.tmp', args) 
+        collector = CythonCollector(3, index_path.parent / 'cindex.tmp', args)
     else:
         collector = TmpfileCollector(3, index_path.parent / 'index.tmp', args)
 
-    # Optimisation: use the underlying memoryview for each DiskStringArray, 
+    # Optimisation: use the underlying memoryview for each DiskStringArray,
     # and don't bother with looking up InternedStrings - use the ints directly instead.
     test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value) for lit in template.literals]
 
@@ -127,7 +127,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
 #  - ListCollector collects the intermediate result in a Python list
 #  - TmpfileCollector stores the intermediate result in a temporary binary file
 #  - FasterCollector calls C functions (via Cython) for the sorting
-# 
+#
 # Note for the constants 4 and 32 below: we assume 32-bit (4-byte) unsigned integers
 
 class Collector:
@@ -201,7 +201,7 @@ class TmpfileCollector(Collector):
                 sort.quicksort(
                     bytes_mmap,
                     rowbytes,
-                    pivotselector = PIVOT_SELECTORS.get(self.args.pivot_selector, sort.random_pivot), 
+                    pivotselector = PIVOT_SELECTORS.get(self.args.pivot_selector, sort.random_pivot),
                     cutoff = self.args.cutoff or 1_000_000,
                 )
 

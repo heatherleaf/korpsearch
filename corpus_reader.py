@@ -7,7 +7,7 @@ from argparse import Namespace
 
 from util import CompressedFileReader, uncompressed_suffix
 from util import Feature, FValue, EMPTY, SENTENCE, START, check_feature
-from util import progress_bar
+from util import progress_bar, ProgressBar
 
 Header = list[Feature]
 Token = list[FValue]
@@ -32,7 +32,7 @@ class CorpusReader(ABC):
     def __enter__(self):
         return self
 
-    def __exit__(self, exception_type, exception_value, exception_traceback):
+    def __exit__(self, *_):
         self.close()
 
 
@@ -105,6 +105,7 @@ class CSVReader(CorpusReader):
 
     def sentences(self) -> Iterator[Sentence]:
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
+            pbar: ProgressBar[None]
             sentence: Sentence = []
             for n, line in enumerate(self._corpus.reader, 2):
                 line = line.strip()
@@ -200,6 +201,7 @@ class CoNLLReader(CorpusReader):
 
     def sentences(self) -> Iterator[Sentence]:
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
+            pbar: ProgressBar[None]
             sentence: Sentence = []
 
             for line in self.wordlines():
