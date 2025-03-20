@@ -25,7 +25,8 @@ SETTINGS = Namespace(
     ssl_keyfile = None,
     ssl_certfile = None,
     charset = 'utf8',
-    loglevel = 'info',
+    log_level = 'info',
+    log_config = None,
     filter = False,
     no_cache = False,
     no_diskarray = False,
@@ -37,7 +38,7 @@ SETTINGS = Namespace(
 setup_logger(
     '{warningname}  {message}',
     timedivider = 1000,
-    loglevel = getattr(logging, SETTINGS.loglevel.upper()),
+    loglevel = getattr(logging, SETTINGS.log_level.upper()),
 )
 
 
@@ -173,6 +174,8 @@ parser.add_argument('--base-dir', '-d', type=Path, help=f'directory where to fin
 parser.add_argument('--cache-dir', type=Path, help=f'directory where to store cache files (default: {SETTINGS.cache_dir})')
 parser.add_argument('--host', type=str, help=f'host name to use (default: {SETTINGS.host})')
 parser.add_argument('--port', type=int, help=f'port number to use (default: {SETTINGS.port})')
+parser.add_argument('--log-level', type=str, help=f'Log-level (default: {SETTINGS.log_level})')
+parser.add_argument('--log-config', type=str, help=f'Log config file')
 parser.add_argument('--ssl-keyfile', type=str, help=f'SSL key file')
 parser.add_argument('--ssl-certfile', type=str, help=f'SS certificate file')
 
@@ -183,12 +186,13 @@ parser.add_argument('--internal-merge', action='store_true', help='use the inter
 parser.add_argument('--no-sentence-breaks', action='store_true', help="don't care about sentence breaks")
 parser.add_argument('--filter', action='store_true', help='filter the final results (should not be necessary)')
 
-parser.add_argument('--quiet', action="store_const", dest="loglevel", const='warning', help='quiet mode')
-parser.add_argument('--debug', action="store_const", dest="loglevel", const='debug', help='debugging mode')
+parser.add_argument('--quiet', action="store_const", dest="log_level", const='warning', help='quiet mode')
+parser.add_argument('--debug', action="store_const", dest="log_level", const='debug', help='debugging mode')
 
 if __name__ == "__main__":
     parser.parse_args(namespace=SETTINGS)
-    logging.getLogger().setLevel(getattr(logging, SETTINGS.loglevel.upper()))
+    logging.getLogger().setLevel(getattr(logging, SETTINGS.log_level.upper()))
     print(f"Open web demo here: http://{SETTINGS.host}:{SETTINGS.port}/{SETTINGS.demo_dir}/index.html")
-    uvicorn.run(app, host=SETTINGS.host, port=SETTINGS.port, log_level=SETTINGS.loglevel,
+    uvicorn.run(app, host=SETTINGS.host, port=SETTINGS.port,
+                log_level=SETTINGS.log_level, log_config=SETTINGS.log_config,
                 ssl_keyfile=SETTINGS.ssl_keyfile, ssl_certfile=SETTINGS.ssl_certfile)
