@@ -14,6 +14,8 @@ from corpus import Corpus
 from index import Template
 from util import setup_logger
 from search import main_search
+from search_statistics import main_count
+
 
 SETTINGS = Namespace(
     version = '0.3',
@@ -164,6 +166,43 @@ def run_query(corpus: str, **xargs: Any) -> APIResult:
     for k, v in xargs.items():
         if v is not None: args[k] = v
     return main_search(Namespace(**args))
+
+
+@app.get("/count")
+async def count(
+        corpus: str,
+        cqp: str,
+        group_by: str,
+        num: int = 10,
+        sampling: int = 100_000,
+        filter: bool|None = None,
+        no_cache: bool|None = None,
+        no_diskarray: bool|None = None,
+        no_binary: bool|None = None,
+        no_sentence_breaks: bool|None = None,
+        internal_merge: bool|None = None,
+    ) -> APIResult:
+    return api_call(
+        run_count,
+        corpus,
+        query = cqp,
+        group_by = group_by,
+        num = num,
+        sampling = sampling,
+        filter = filter,
+        no_cache = no_cache,
+        no_diskarray = no_diskarray,
+        no_binary = no_binary,
+        no_sentence_breaks = no_sentence_breaks,
+        internal_merge = internal_merge,
+    )
+
+def run_count(corpus: str, **xargs: Any) -> APIResult:
+    args = SETTINGS.__dict__
+    args['corpus'] = corpus.split(',')
+    for k, v in xargs.items():
+        if v is not None: args[k] = v
+    return main_count(Namespace(**args))
 
 
 ################################################################################
