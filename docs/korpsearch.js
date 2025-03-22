@@ -22,6 +22,15 @@ const search_examples = {
     ],
 };
 
+const NUM_HITS = 20;       // N:o hits to show
+const GROUP_BY = 'word';   // Feature to group by for statistics
+const SAMPLING = 10_000;   // Max n:o results to sample from, for statistics
+
+function showNum(num, digits = 0) {
+    return num.toLocaleString(LOCALE, {minimumFractionDigits: digits, maximumFractionDigits: digits})
+}
+
+
 window.addEventListener('DOMContentLoaded', initialize);
 
 function initialize() {
@@ -29,23 +38,27 @@ function initialize() {
         list: document.getElementById('corpus-list'),
         info: document.getElementById('corpus-info'),
     };
-    ELEMS.search = {
+    ELEMS.query = {
         string: document.getElementById('search-string'),
         examples: document.getElementById('search-examples'),
-        button: document.getElementById('search-button'),
+        search: document.getElementById('search-button'),
+        count: document.getElementById('count-button'),
         info: document.getElementById('search-info'),
-        results: document.getElementById('search-results'),
-        container: document.getElementById('search-results-container'),
+        results: document.getElementById('results-container'),
     },
     ELEMS.navigate = {
-        first: document.getElementById('navigate-first'),
-        prev: document.getElementById('navigate-prev'),
-        next: document.getElementById('navigate-next'),
-        last: document.getElementById('navigate-last'),
+        container: document.getElementById('navigation-container'),
+        buttons: {
+            first: document.getElementById('navigate-first'),
+            prev: document.getElementById('navigate-prev'),
+            next: document.getElementById('navigate-next'),
+            last: document.getElementById('navigate-last'),
+        },
     }
     ELEMS.error = document.getElementById('error');
 
     call_api('info', {}, (response) => {
+        ELEMS.navigate.container.classList.add("hidden");
         ELEMS.corpus.list.innerHTML = "";
         for (let corpus of response.corpora) {
             let opt = document.createElement('option');
@@ -57,7 +70,7 @@ function initialize() {
 
     let opt = document.createElement('option');
     opt.text = '(try an example search)'
-    ELEMS.search.examples.add(opt);
+    ELEMS.query.examples.add(opt);
     for (let corpus in search_examples) {
         let group = document.createElement('optgroup');
         group.label = corpus;
@@ -66,28 +79,29 @@ function initialize() {
             opt.text = opt.value = example;
             group.appendChild(opt);
         }
-        ELEMS.search.examples.add(group);
+        ELEMS.query.examples.add(group);
     }
 
     ELEMS.corpus.list.addEventListener('change', select_corpus);
-    ELEMS.search.examples.addEventListener('change', select_example);
-    ELEMS.search.button.addEventListener('click', search_corpus);
+    ELEMS.query.examples.addEventListener('change', select_example);
+    ELEMS.query.search.addEventListener('click', search_corpus);
+    ELEMS.query.count.addEventListener('click', count_corpus);
 
-    for (let nav in ELEMS.navigate) {
-        ELEMS.navigate[nav].addEventListener('click', () => navigate(nav));
+    for (let nav in ELEMS.navigate.buttons) {
+        ELEMS.navigate.buttons[nav].addEventListener('click', () => navigate(nav));
     }
 
-    ELEMS.search.string.addEventListener('keypress', function(event) {
+    ELEMS.query.string.addEventListener('keypress', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault(); // Cancel the default action, if needed
-            ELEMS.search.button.click();
+            ELEMS.query.search.click();
         }
     });
 }
 
 
 function clear_output() {
-    ELEMS.corpus.info.innerHTML = ELEMS.search.info.innerHTML = ELEMS.search.results.innerHTML = ELEMS.error.innerHTML = '';
+    ELEMS.corpus.info.innerHTML = ELEMS.query.info.innerHTML = ELEMS.query.results.innerHTML = ELEMS.error.innerHTML = '';
 }
 
 
@@ -95,14 +109,15 @@ function select_corpus() {
     clear_output();
     let corpus = ELEMS.corpus.list.value;
     call_api('corpus_info', {corpus: corpus}, (response) => {
+        ELEMS.navigate.container.classList.add("hidden");
         let html = "";
         for (const corpus of Object.values(response.corpora)) {
             html += `<p>
                 <strong>${corpus.info.Name}</strong>:
-                ${corpus.info.Size.toLocaleString(LOCALE)} tokens;
-                ${corpus.info.Sentences.toLocaleString(LOCALE)} sentences;
-                ${corpus.info.Indexes.length.toLocaleString(LOCALE)} compiled indexes;
-                ${corpus.attrs.p.length.toLocaleString(LOCALE)} features (<em>${corpus.attrs.p.join('</em>, <em>')}</em>).
+                ${showNum(corpus.info.Size)} tokens;
+                ${showNum(corpus.info.Sentences)} sentences;
+                ${showNum(corpus.info.Indexes.length)} compiled indexes;
+                ${showNum(corpus.attrs.p.length)} features (<em>${corpus.attrs.p.join('</em>, <em>')}</em>).
             </p>`;
         }
         ELEMS.corpus.info.innerHTML = html;
@@ -111,21 +126,19 @@ function select_corpus() {
 
 
 function select_example() {
-    let examples = ELEMS.search.examples;
+    let examples = ELEMS.query.examples;
     if (examples.value) {
-        ELEMS.search.string.value = examples.value;
-        ELEMS.search.string.focus();
+        ELEMS.query.string.value = examples.value;
+        ELEMS.query.string.focus();
     }
     examples.selectedIndex = 0;
 }
 
 
-const NUM_HITS = 20;
-
 function search_corpus() {
     let params = {
         corpus: ELEMS.corpus.list.value,
-        cqp: ELEMS.search.string.value,
+        cqp: ELEMS.query.string.value,
         num: NUM_HITS,
     };
     call_api('query', params, show_search_results);
@@ -158,25 +171,27 @@ function navigate(nav) {
     }
     let params = {
         corpus: ELEMS.corpus.list.value,
-        cqp: ELEMS.search.string.value,
+        cqp: ELEMS.query.string.value,
         start: start,
         num: NUM_HITS,
     };
+    console.log(STATE, params)
     call_api('query', params, show_search_results);
 }
 
 
 function show_search_results(response) {
     STATE.hits = response.hits; STATE.start = response.start; STATE.end = response.end;
-    ELEMS.search.info.innerHTML = `
-        Found ${response.hits.toLocaleString(LOCALE)} matches,
-        showing n:o ${response.start.toLocaleString(LOCALE)}&ndash;${response.end.toLocaleString(LOCALE)}
-        (completed in ${response.time.toLocaleString(LOCALE,{maximumFractionDigits:2})} s)
+    ELEMS.query.info.innerHTML = `
+        Found ${showNum(response.hits)} matches,
+        showing n:o ${showNum(response.start)}&ndash;${showNum(response.end)}
+        (completed in ${showNum(response.time, 2)} s)
     `;
-    ELEMS.search.results.innerHTML = '';
+    ELEMS.navigate.container.classList.toggle("hidden", response.hits <= NUM_HITS);
+    let html = '';
     let n = response.start;
     for (let line of response.kwic) {
-        ELEMS.search.results.innerHTML +=
+        html +=
             '<tr><td class="prefix">' +
             line.tokens.map((token, i) =>
                 (i===line.match.start ? '</td><td class="match">' : '') +
@@ -186,10 +201,11 @@ function show_search_results(response) {
             '</td></tr>';
         n++;
     }
-    let container = ELEMS.search.container;
+    let container = ELEMS.query.results;
+    container.innerHTML = `<table id="query-results">${html}</table>`;
     let match = document.querySelector('.match');
     scrollbar = match.offsetLeft + match.offsetWidth / 2 - container.offsetWidth / 2;
-    ELEMS.search.container.scrollLeft = scrollbar;
+    ELEMS.query.results.scrollLeft = scrollbar;
 }
 
 
@@ -198,6 +214,76 @@ function show_token(token) {
     let word = token[keys[0]];
     let title = keys.map((k) => `${k}: ${token[k]}`).join('&#13;');
     return `<span class="token" title="${title}">${word}</span>`;
+}
+
+
+function count_corpus() {
+    let params = {
+        corpus: ELEMS.corpus.list.value,
+        cqp: ELEMS.query.string.value,
+        group_by: GROUP_BY,
+        num: NUM_HITS,
+        sampling: SAMPLING,
+    };
+    call_api('count', params, show_count_results);
+}
+
+
+function show_count_results(response){
+    ELEMS.query.info.innerHTML = `
+        Found ${showNum(response.count)} different groups,
+        (completed in ${showNum(response.time, 2)} s)
+    `;
+    ELEMS.navigate.container.classList.add("hidden");
+    const corpora = ["∑"];
+    const stats = [response.combined];
+    for (const crp in response.corpora) {
+        corpora.push(crp);
+        stats.push(response.corpora[crp]);
+    }
+    const table = {};
+    for (let n = 0; n < stats.length; n++) {
+        (table["∑"] ??= []).push(
+            stats[n].sums.absolute,
+            showNum(stats[n].sums.relative, 1),
+            "",
+        );
+            for (const row of stats[n].rows) {
+            const hdr = row.value[GROUP_BY].join(" ");
+            (table[hdr] ??= []).push(
+                row.absolute,
+                showNum(row.relative, 1),
+                showNum(100 * row.absolute / stats[n].sums.absolute, 1) + "%",
+            );
+        }
+        for (const hdr in table) {
+            while (table[hdr].length <= n) table[hdr].push("");
+        }
+    }
+    let html = '';
+    const row_hdrs = Object.keys(table);
+    row_hdrs.sort((a,b) => table[b][0] - table[a][0]);
+    row_hdrs.splice(NUM_HITS);
+    let tblrow = '<th></th>';
+    for (let n = 0; n < corpora.length; n++) {
+        const sampling = 100 * stats[n].sums['sampled-hits'] / stats[n].sums['total-hits'];
+        tblrow += `<th colspan="3" class="center">${corpora[n]} (${showNum(sampling, 1)}%)</th>`;
+    }
+    html += `<tr>${tblrow}</tr>`;
+    tblrow = '<th></th>';
+    for (let n = 0; n < corpora.length; n++) {
+        tblrow += "<th>Hits</th><th>Hits/million</th><th>% of hits</th>";
+    }
+    html += `<tr>${tblrow}</tr>`;
+    for (const crp of corpora) tblrow += `<th>${crp}</th>`;
+    for (const hdr of row_hdrs) {
+        tblrow = `<th>${hdr}</th>`;
+        for (const n of table[hdr]) {
+            tblrow += `<td>${typeof n === "number" ? showNum(n, 0) : n}</td>`
+        };
+        html += `<tr>${tblrow}</tr>`;
+    }
+    ELEMS.query.results.innerHTML = `<table id="count-results">${html}</table>`;
 }
 
 

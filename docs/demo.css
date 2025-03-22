@@ -22,18 +22,18 @@
     text-align: center;
 }
 
-#search-results-container {
+#results-container {
     width: 100%;
     overflow-x: auto;
     scroll-snap-align: center;
 }
 
-#search-results {
-    border-collapse: collapse; 
+#results-container table {
+    border-collapse: collapse;
     border: 1px solid black;
 }
 
-#search-results td {
+#results-container td, #results-container th {
     white-space: nowrap;
     border-top: 1px solid black;
     padding: 3px 10px;
@@ -49,5 +49,22 @@
 }
 
 .suffix {
-    text-align: left; 
+    text-align: left;
+}
+
+#count-results td, #count-results th {
+    text-align: right;
+    border: 1px solid black;
+}
+
+#count-results th:first-child {
+    text-align: left;
+}
+
+#count-results .center {
+    text-align: center;
+}
+
+.hidden {
+    display: none;
 }
