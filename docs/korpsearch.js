@@ -1,5 +1,6 @@
 
-const API_DOMAIN = "https://korpsearch.cse.chalmers.se:8000/";
+// const API_DOMAIN = "https://korpsearch.cse.chalmers.se:8000/";
+const API_DOMAIN = "http://127.0.0.1:8000/";
 const LOCALE = "en-US";
 
 const ELEMS = {
@@ -9,18 +10,13 @@ const ELEMS = {
     error: null,
 };
 
-const search_examples = {
-    'English (BNC)': [
-        '[pos="ART"] [lemma="big"] [pos="SUBST"]',
-        '[lemma="be"] [pos="ART"] [pos="ADJ"] [pos="SUBST"]',
-        '[pos="ADJ"] [lemma="cut" pos="VERB"]',
-    ],
-    'Swedish': [
-        '[pos="DT"] [word="stort"] [pos="NN"]',
-        '[word="är"] [pos="DT"] [pos="JJ"] [pos="NN"]',
-        '[pos="NN"] [word="händer" pos!="NN"]',
-    ],
-};
+const search_examples = [
+    '[lemma="vara"] [pos="DT"] [pos="JJ"] [pos="NN"]',
+    '[lemma="en"] [lemma="stor"] [pos="NN"]',
+    '[pos="NN"] [word="händer" pos!="NN"]',
+    '[word="hon|han"] [pos="VB"]',
+    '[lemma="pojke|flicka"]',
+];
 
 const NUM_HITS = 20;       // N:o hits to show
 const GROUP_BY = 'word';   // Feature to group by for statistics
@@ -35,14 +31,13 @@ window.addEventListener('DOMContentLoaded', initialize);
 
 function initialize() {
     ELEMS.corpus = {
-        list: document.getElementById('corpus-list'),
-        info: document.getElementById('corpus-info'),
+        table: document.getElementById('corpora-table'),
     };
     ELEMS.query = {
         string: document.getElementById('search-string'),
         examples: document.getElementById('search-examples'),
         search: document.getElementById('search-button'),
-        count: document.getElementById('count-button'),
+        type: document.getElementById('search-type'),
         info: document.getElementById('search-info'),
         results: document.getElementById('results-container'),
     },
@@ -58,34 +53,43 @@ function initialize() {
     ELEMS.error = document.getElementById('error');
 
     call_api('info', {}, (response) => {
-        ELEMS.navigate.container.classList.add("hidden");
-        ELEMS.corpus.list.innerHTML = "";
-        for (let corpus of response.corpora) {
-            let opt = document.createElement('option');
-            opt.text = opt.value = corpus;
-            ELEMS.corpus.list.add(opt);
-        }
-        select_corpus();
-    })
+        call_api('corpus_info', {corpus: response.corpora.sort().join(",")}, (response) => {
+            ELEMS.navigate.container.classList.add("hidden");
+            let html = `
+            <tr><th class="center">Corpus</th><th class="right">Tokens</th><th class="right">Sentences</th>
+            <th class="center">Compiled indexes</th><th class="left">Features</th></tr>
+            `;
+            for (const corpus of Object.values(response.corpora).toSorted()) {
+                html += `
+                <tr><th class="left"><label><input type="checkbox" name="corpus" value="${corpus.info.Name}"/> ${corpus.info.Name}</label></th>
+                <td class="right">${showNum(corpus.info.Size)}</td>
+                <td class="right">${showNum(corpus.info.Sentences)}</td>
+                <td class="center">${showNum(corpus.info.Indexes.length)}</td>
+                <td class="left"><em>${corpus.attrs.p.join('</em>, <em>')}</em></td>
+                </tr>`;
+            }
+            ELEMS.corpus.table.innerHTML = html;
+            for (const checkbox of ELEMS.corpus.table.querySelectorAll('input')) {
+                checkbox.addEventListener('click', search_corpus);
+            }
+            ELEMS.corpus.table.querySelector('input').checked = true;
+        });
+    });
 
     let opt = document.createElement('option');
     opt.text = '(try an example search)'
     ELEMS.query.examples.add(opt);
-    for (let corpus in search_examples) {
-        let group = document.createElement('optgroup');
-        group.label = corpus;
-        for (let example of search_examples[corpus]){
-            let opt = document.createElement('option');
-            opt.text = opt.value = example;
-            group.appendChild(opt);
-        }
-        ELEMS.query.examples.add(group);
+    for (const example of search_examples) {
+        let opt = document.createElement('option');
+        opt.text = opt.value = example;
+        ELEMS.query.examples.appendChild(opt);
     }
 
-    ELEMS.corpus.list.addEventListener('change', select_corpus);
     ELEMS.query.examples.addEventListener('change', select_example);
     ELEMS.query.search.addEventListener('click', search_corpus);
-    ELEMS.query.count.addEventListener('click', count_corpus);
+    for (const radio of ELEMS.query.type.querySelectorAll('input[type=radio]')) {
+        radio.addEventListener('click', search_corpus);
+    }
 
     for (let nav in ELEMS.navigate.buttons) {
         ELEMS.navigate.buttons[nav].addEventListener('click', () => navigate(nav));
@@ -100,28 +104,13 @@ function initialize() {
 }
 
 
-function clear_output() {
-    ELEMS.corpus.info.innerHTML = ELEMS.query.info.innerHTML = ELEMS.query.results.innerHTML = ELEMS.error.innerHTML = '';
+function get_selected_corpora() {
+    return [...ELEMS.corpus.table.querySelectorAll('input[type=checkbox]:checked')].map((c) => c.value);
 }
 
 
-function select_corpus() {
-    clear_output();
-    let corpus = ELEMS.corpus.list.value;
-    call_api('corpus_info', {corpus: corpus}, (response) => {
-        ELEMS.navigate.container.classList.add("hidden");
-        let html = "";
-        for (const corpus of Object.values(response.corpora)) {
-            html += `<p>
-                <strong>${corpus.info.Name}</strong>:
-                ${showNum(corpus.info.Size)} tokens;
-                ${showNum(corpus.info.Sentences)} sentences;
-                ${showNum(corpus.info.Indexes.length)} compiled indexes;
-                ${showNum(corpus.attrs.p.length)} features (<em>${corpus.attrs.p.join('</em>, <em>')}</em>).
-            </p>`;
-        }
-        ELEMS.corpus.info.innerHTML = html;
-    });
+function get_query_type() {
+    return ELEMS.query.type.querySelector('input[type=radio]:checked').value;
 }
 
 
@@ -136,12 +125,22 @@ function select_example() {
 
 
 function search_corpus() {
-    let params = {
-        corpus: ELEMS.corpus.list.value,
-        cqp: ELEMS.query.string.value,
+    const corpora = get_selected_corpora();
+    const query = ELEMS.query.string.value.trim();
+    console.log(query, corpora)
+    if (corpora.length === 0 || !query) return;
+    const params = {
+        corpus: corpora.join(","),
+        cqp: query,
+        group_by: GROUP_BY,
         num: NUM_HITS,
+        sampling: SAMPLING,
     };
-    call_api('query', params, show_search_results);
+    if (get_query_type() == "qwic") {
+        call_api('query', params, show_search_results);
+    } else if (get_query_type() == "statistics") {
+        call_api('count', params, show_count_results);
+    }
 }
 
 
@@ -170,7 +169,7 @@ function navigate(nav) {
             start = STATE.hits - NUM_HITS;
     }
     let params = {
-        corpus: ELEMS.corpus.list.value,
+        corpus: get_selected_corpora().join(","),
         cqp: ELEMS.query.string.value,
         start: start,
         num: NUM_HITS,
@@ -217,21 +216,9 @@ function show_token(token) {
 }
 
 
-function count_corpus() {
-    let params = {
-        corpus: ELEMS.corpus.list.value,
-        cqp: ELEMS.query.string.value,
-        group_by: GROUP_BY,
-        num: NUM_HITS,
-        sampling: SAMPLING,
-    };
-    call_api('count', params, show_count_results);
-}
-
-
 function show_count_results(response){
     ELEMS.query.info.innerHTML = `
-        Found ${showNum(response.count)} different groups,
+        Found ${showNum(response.count)} different groups
         (completed in ${showNum(response.time, 2)} s)
     `;
     ELEMS.navigate.container.classList.add("hidden");
@@ -248,7 +235,7 @@ function show_count_results(response){
             showNum(stats[n].sums.relative, 1),
             "",
         );
-            for (const row of stats[n].rows) {
+        for (const row of stats[n].rows) {
             const hdr = row.value[GROUP_BY].join(" ");
             (table[hdr] ??= []).push(
                 row.absolute,
@@ -257,7 +244,7 @@ function show_count_results(response){
             );
         }
         for (const hdr in table) {
-            while (table[hdr].length <= n) table[hdr].push("");
+            while (table[hdr].length < 3*(n+1)) table[hdr].push("");
         }
     }
     let html = '';

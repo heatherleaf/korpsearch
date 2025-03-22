@@ -11,18 +11,18 @@
 
   <div id="error"></div>
 
-  <p>
-    <label>Corpus: <select id="corpus-list"></select></label>
-    &nbsp;&nbsp;
-    <span id="corpus-info"></span>
-  </p>
+  <table id="corpora-table"></table>
 
   <p>
     <label>CQP search string: <input type="text" id="search-string" size="50"/></label>
     <button id="search-button">Search</button>
-    <button id="count-button">Statistics</button>
     &nbsp;&nbsp;
     <select id="search-examples"></select>
+  </p>
+
+  <p id="search-type">
+    <label><input type="radio" name="search-type" value="qwic" checked> Search for examples</label>
+    <label><input type="radio" name="search-type" value="statistics"> Statistics</label>
   </p>
 
   <table id="search-info-container">

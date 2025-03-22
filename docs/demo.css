@@ -12,6 +12,10 @@
     width: 100%;
 }
 
+#search-info-container, #search-info-container td {
+    border: 0px;
+}
+
 #search-info {
     width: 40%;
     text-align: left;
@@ -28,12 +32,12 @@
     scroll-snap-align: center;
 }
 
-#results-container table {
+table {
     border-collapse: collapse;
     border: 1px solid black;
 }
 
-#results-container td, #results-container th {
+td, th {
     white-space: nowrap;
     border-top: 1px solid black;
     padding: 3px 10px;
@@ -44,12 +48,16 @@
     font-weight: bold;
 }
 
-.prefix {
+.prefix, .right {
     text-align: right;
 }
 
-.suffix {
+.suffix, .left {
     text-align: left;
+}
+
+.center {
+    text-align: center;
 }
 
 #count-results td, #count-results th {
@@ -59,10 +67,6 @@
 
 #count-results th:first-child {
     text-align: left;
-}
-
-#count-results .center {
-    text-align: center;
 }
 
 .hidden {
