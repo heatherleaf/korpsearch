@@ -29,7 +29,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 ################################################################################
-## Main
+## Command-line arguments
 
 parser = argparse.ArgumentParser(description='Test things')
 parser.add_argument('--corpus', '-c', nargs='+', required=True,

@@ -120,7 +120,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
 
 
 ################################################################################
-## Main
+## Command-line arguments
 
 parser = argparse.ArgumentParser(description='Build search index(es) for a given corpus')
 
