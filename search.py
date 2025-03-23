@@ -257,18 +257,18 @@ def main_search(args: Namespace) -> dict[str, Any]:
             if args.show:
                 features_to_show = [Feature(f) for f in args.show.encode().split(b',')]
                 for f in features_to_show:
-                    if f not in corpus.features:
-                        raise ValueError(f"Unknown feature: {f}")
+                    if f not in corpus.features():
+                        raise ValueError(f"Unknown feature: {f!r}")
             else:
                 features_to_show = [
-                    feat for feat in corpus.features
+                    feat for feat in corpus.features()
                     if feat in query.features
                     if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
                     if not feat.endswith(b'_rev')  # don't show reversed features
                 ]
 
             # Always include the 'word' feature, and put it first
-            if WORD in corpus.features:
+            if WORD in corpus.features():
                 if WORD in features_to_show:
                     features_to_show.remove(WORD)
                 features_to_show.insert(0, WORD)

@@ -21,7 +21,6 @@ class Corpus:
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
 
-    features: list[Feature]
     tokens: dict[Feature, DiskStringArray]
     sentence_pointers: DiskIntArray
     id: str
@@ -36,12 +35,10 @@ class Corpus:
         self.id = str(self.path)
         if self.path.suffix != self.dir_suffix:
             self.path = add_suffix(self.path, self.dir_suffix)
-        with open(self.path / self.features_file, 'r') as IN:
-            self.features = [feat.encode() for feat in json.load(IN)]
         self.sentence_pointers = DiskIntArray(self.path / self.sentences_path)
         self.tokens = {
             feature: DiskStringArray(self.indexpath(self.path, feature))
-            for feature in self.features
+            for feature in self.features()
         }
         assert all(
             len(self) == len(arr) for arr in self.tokens.values()
@@ -54,7 +51,14 @@ class Corpus:
         return f"Corpus({self.name}, base={self.base_dir})"
 
     def __len__(self) -> int:
-        return len(self.tokens[self.features[0]])
+        return len(self.tokens[self.features()[0]])
+
+    def default_feature(self) -> Feature:
+        return self.features()[0]
+
+    def features(self) -> list[Feature]:
+        with open(self.path / self.features_file, 'r') as IN:
+            return [feat.encode() for feat in json.load(IN)]
 
     def strings(self, feature: Feature) -> StringCollection:
         return self.tokens[feature]._strings  # type: ignore
@@ -87,7 +91,7 @@ class Corpus:
     def render_sentence(self, sent: int, pos: int = -1, offset: int = -1,
                         features: Sequence[Feature] = (), context: int = -1) -> str:
         if not features:
-            features = self.features[:1]
+            features = [self.default_feature()]
         tokens: list[str] = []
         positions = self.sentence_positions(sent)
         for p in positions:
@@ -131,7 +135,7 @@ class Corpus:
 
     def sanity_check(self) -> None:
         logging.info("Sanity checking corpus")
-        for feat in self.features:
+        for feat in self.features():
             logging.debug(f"Checking corpus index: {feat.decode()}")
             self.tokens[feat].sanity_check()
         assert self.sentence_pointers.path
@@ -195,10 +199,10 @@ class Corpus:
 
         with corpus_reader(corpusfile, "Collecting strings", args) as corpus:
             with open(basedir / Corpus.features_file, 'w') as OUT:
-                json.dump([feat.decode() for feat in corpus.header], OUT)
+                print(json.dumps([feat.decode() for feat in corpus.header()]), file=OUT)
 
-            features = corpus.header
-            stringsets: list[set[FValue]] = [set() for _feature in corpus.header]
+            features = corpus.header()
+            stringsets: list[set[FValue]] = [set() for _feature in corpus.header()]
             n_sentences = n_tokens = 0
             for sentence in corpus.sentences():
                 n_sentences += 1

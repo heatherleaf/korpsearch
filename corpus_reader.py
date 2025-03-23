@@ -15,7 +15,6 @@ Sentence = list[Token]
 
 
 class CorpusReader(ABC):
-    @property
     @abstractmethod
     def header(self) -> Header:
         pass
@@ -53,14 +52,13 @@ class AugmentedReader(CorpusReader):
         self.wrapped = reader
         self.args = args
 
-        self._header = reader.header
+        self._header = reader.header()
         if not self.args.no_reversed_features:
             revd = [Feature(feature + b'_rev') for feature in self._header]
             self._header.extend(revd)
         if not self.args.no_sentence_feature:
             self._header.append(SENTENCE)
 
-    @property
     def header(self) -> Header:
         return self._header
 
@@ -99,7 +97,6 @@ class CSVReader(CorpusReader):
     def split_line(line: bytes) -> Iterable[bytes]:
         return line.split(b'\t')
 
-    @property
     def header(self) -> Header:
         return self._header
 
@@ -195,7 +192,6 @@ class CoNLLReader(CorpusReader):
         while (wl := next_wordline()) is not None:
             yield wl
 
-    @property
     def header(self) -> Header:
         return self._header
 
