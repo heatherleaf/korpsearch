@@ -15,16 +15,15 @@
 
   <table id="corpora-table"></table>
 
-  <p>
-    <label>CQP search string: <input type="text" id="search-string" size="50"/></label>
-    <button id="search-button">Search</button>
-    &nbsp;&nbsp;
-    <select id="search-examples"></select>
+  <p id="query-group">
+    <label>CQP search string: <input type="text" id="search-string" size="50"/></label><select id="search-examples"></select>
+    &nbsp;
+    <button><label><input type="radio" name="search-type" id="search-kwic" value="kwic" checked> Search</label></button>
+    &nbsp;
+    <button><label><input type="radio" name="search-type" id="search-stat" value="statistics"> Statistics</label></button>
   </p>
 
   <p id="search-type">
-    <label><input type="radio" name="search-type" value="qwic" checked> Search for examples</label>
-    <label><input type="radio" name="search-type" value="statistics"> Statistics</label>
   </p>
 
   <table id="search-info-container">

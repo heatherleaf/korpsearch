@@ -33,10 +33,11 @@ function initialize() {
         table: document.getElementById('corpora-table'),
     };
     ELEMS.query = {
+        container: document.getElementById('query-group'),
         string: document.getElementById('search-string'),
         examples: document.getElementById('search-examples'),
-        search: document.getElementById('search-button'),
-        type: document.getElementById('search-type'),
+        kwicButton: document.getElementById('search-kwic'),
+        statButton: document.getElementById('search-stat'),
         info: document.getElementById('search-info'),
         results: document.getElementById('results-container'),
     },
@@ -68,15 +69,15 @@ function initialize() {
                 </tr>`;
             }
             ELEMS.corpus.table.innerHTML = html;
-            for (const checkbox of ELEMS.corpus.table.querySelectorAll('input')) {
+            for (const checkbox of ELEMS.corpus.table.querySelectorAll('input[type=checkbox]')) {
                 checkbox.addEventListener('click', search_corpus);
             }
-            ELEMS.corpus.table.querySelector('input').checked = true;
+            ELEMS.corpus.table.querySelector('input[type=checkbox]').checked = true;
         });
     });
 
     let opt = document.createElement('option');
-    opt.text = '(try an example search)'
+    opt.text = '···';
     ELEMS.query.examples.add(opt);
     for (const example of search_examples) {
         let opt = document.createElement('option');
@@ -85,10 +86,8 @@ function initialize() {
     }
 
     ELEMS.query.examples.addEventListener('change', select_example);
-    ELEMS.query.search.addEventListener('click', search_corpus);
-    for (const radio of ELEMS.query.type.querySelectorAll('input[type=radio]')) {
-        radio.addEventListener('click', search_corpus);
-    }
+    ELEMS.query.kwicButton.addEventListener('click', search_corpus);
+    ELEMS.query.statButton.addEventListener('click', search_corpus);
 
     for (let nav in ELEMS.navigate.buttons) {
         ELEMS.navigate.buttons[nav].addEventListener('click', () => navigate(nav));
@@ -97,7 +96,7 @@ function initialize() {
     ELEMS.query.string.addEventListener('keypress', function(event) {
         if (event.key === 'Enter') {
             event.preventDefault(); // Cancel the default action, if needed
-            ELEMS.query.search.click();
+            search_corpus();
         }
     });
 }
@@ -109,7 +108,7 @@ function get_selected_corpora() {
 
 
 function get_query_type() {
-    return ELEMS.query.type.querySelector('input[type=radio]:checked').value;
+    return ELEMS.query.container.querySelector('input[type=radio]:checked').value;
 }
 
 
@@ -134,7 +133,7 @@ function search_corpus() {
         num: NUM_HITS,
         sampling: SAMPLING,
     };
-    if (get_query_type() == "qwic") {
+    if (get_query_type() == "kwic") {
         call_api('query', params, show_search_results);
     } else if (get_query_type() == "statistics") {
         call_api('count', params, show_count_results);
