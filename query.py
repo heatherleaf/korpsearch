@@ -22,8 +22,10 @@ def get_query_literals(query_element: QueryElement) -> tuple[KnownLiteral, ...]:
 
 
 class Query:
-    query_regex = re.compile(r'^ (\[ (\|? [\w_]+   !?  = " [^"]+ " )* \])+ $', re.X)
-    token_regex = re.compile(r'  (\|?)(   [\w_]+) (!?) = "([^"]+)"          ', re.X)
+    _token_re_string = r' ([|&]?) \s* ([\w_]+) \s* (!?) (?:=|contains) \s* "\s*([^"]+?)\s*" '
+    token_regex = re.compile(rf'               {_token_re_string}                 ', re.X)
+    query_regex = re.compile(rf'       \[ \s* ({_token_re_string} \s*)* \]        ', re.X)
+    fullq_regex = re.compile(rf'^ \s* (\[ \s* ({_token_re_string} \s*)* \] \s*)+ $', re.X)
 
     corpus: Corpus
     literals: list[QueryElement]
@@ -162,16 +164,15 @@ class Query:
 
     @staticmethod
     def parse(corpus: Corpus, querystr: str, no_sentence_breaks: bool = False) -> 'Query':
-        querystr = querystr.replace(' ', '')
-        if not Query.query_regex.match(querystr):
+        if not Query.fullq_regex.match(querystr):
             raise ValueError(f"Error in query: {querystr!r}")
-        tokens = querystr.split('][')
+        tokens = [tok.group() for tok in Query.query_regex.finditer(querystr)]
         query: list[QueryElement] = []
         for offset, token in enumerate(tokens):
             query_list: list[list[KnownLiteral]] = [[]]
             for match in Query.token_regex.finditer(token):
-                or_separator, featstr, negated, valstr = match.groups()
-                if or_separator == '|':
+                separator, featstr, negated, valstr = match.groups()
+                if separator == '|' and query_list[-1]:
                     query_list.append([])
                 feature = Feature(featstr.lower().encode())
                 negative = (negated == '!')
