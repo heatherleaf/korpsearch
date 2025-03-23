@@ -126,7 +126,6 @@ function select_example() {
 function search_corpus() {
     const corpora = get_selected_corpora();
     const query = ELEMS.query.string.value.trim();
-    console.log(query, corpora)
     if (corpora.length === 0 || !query) return;
     const params = {
         corpus: corpora.join(","),
@@ -274,9 +273,11 @@ function show_count_results(response){
 
 
 function call_api(command, params, callback) {
-    let queryparams = Object.keys(params).map((k) => `${k}=${params[k]}`).join('&');
-    let url = `${API_DOMAIN}${command}?${queryparams}`;
-    console.log(`API call: ${command} ? ${queryparams}`);
+    const url = new URL(API_DOMAIN + command);
+    for (const key in params) {
+        url.searchParams.set(key, params[key]);
+    }
+    console.log("API call:", command, url.searchParams);
     let http = new XMLHttpRequest();
     if (!http) {
         error("Browser does not support HTTP Request", 500);
@@ -296,6 +297,7 @@ function call_api(command, params, callback) {
                     } catch(e) {
                         error("JSON parsing problem", 400);
                     }
+                    console.log("API response:", obj);
                     callback(obj, http.status);
                 }
             }
