@@ -16,6 +16,8 @@ In *KONVENS 2024, 20th Conference on Natural Language Processing*, pages 149–1
 
 ## Dependencies
 
+You need Python version 3.10 or later, but we recommend at least version 3.11 because it is so much faster than 3.10.
+
 There are no required libraries, you should be able to run things without installing anything extra.
 However, we recommend that you install the following:
 

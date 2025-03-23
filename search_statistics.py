@@ -25,6 +25,7 @@ def main_count(args: Namespace) -> dict[str, Any]:
     total_tokens = 0
     total_stats: Counter[tuple[str, ...]] = Counter()
     corpus_stats: dict[str, Any] = {}
+    sums: dict[str, int]  # this is just an approximation: sums["relative"] is a float
     for corpus_id in corpora:
         logging.info(f"Searching in corpus: {corpus_id}")
         with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
@@ -56,7 +57,7 @@ def main_count(args: Namespace) -> dict[str, Any]:
                 )
                 stats[group] += 1
 
-            sums: dict[str, int] = {
+            sums = {
                 "absolute": sum(stats.values()),
                 "total-hits": len(results),
                 "sampled-hits": len(sampled_indices),
@@ -77,7 +78,7 @@ def main_count(args: Namespace) -> dict[str, Any]:
                 del corpus_stats[corpus.name]["rows"][args.num:]
             total_tokens += len(corpus)
 
-    sums: dict[str, int] = {
+    sums = {
         "absolute": sum(crp["sums"]["absolute"] for crp in corpus_stats.values()),
         "total-hits": sum(crp["sums"]["total-hits"] for crp in corpus_stats.values()),
         "sampled-hits": sum(crp["sums"]["sampled-hits"] for crp in corpus_stats.values()),

@@ -62,7 +62,7 @@ def uncompressed_suffix(path: Path) -> str:
     else:
         return path.suffix
 
-def clean_up(path: Path, suffixes: list[str]):
+def clean_up(path: Path, suffixes: list[str]) -> None:
     """For every given suffix, the given path with the suffix appended is removed from the file system."""
     for suffix in suffixes:
         try:
@@ -78,9 +78,12 @@ def get_integer_size(max_value: int) -> int:
     """The minimal n:o bytes needed to store values `0...max_value`"""
     itemsize = math.ceil(math.log(max_value + 1, 2) / 8)
     assert 1 <= itemsize <= 8
-    if itemsize == 3: itemsize = 4
-    if itemsize > 4: itemsize = 8
-    return itemsize
+    if itemsize == 3:
+        return 4
+    elif itemsize > 4:
+        return 8
+    else:
+        return itemsize
 
 
 TypeFormat = Literal['B', 'H', 'I', 'Q']

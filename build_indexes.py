@@ -18,10 +18,10 @@ FILE_SUFFIXES = set(CompressedFileReader.compressors.keys()) | set(CORPUS_READER
 ## Building the corpus index and the query indexes
 
 def main(args: argparse.Namespace) -> None:
-    corpus_id = Path(args.corpus)
-    while corpus_id.suffix in FILE_SUFFIXES:
-        corpus_id = corpus_id.with_suffix('')
-    corpus_id = str(corpus_id)
+    corpus_path = Path(args.corpus)
+    while corpus_path.suffix in FILE_SUFFIXES:
+        corpus_path = corpus_path.with_suffix('')
+    corpus_id = str(corpus_path)
 
     corpus_dir = add_suffix(args.base_dir / corpus_id, Corpus.dir_suffix)
     index_dir = add_suffix(args.base_dir / corpus_id, Index.dir_suffix)
@@ -104,9 +104,11 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             yield Template([TemplateLiteral(0, feat)])
         # Binary indexes depend on unary indexes, so we build them afterwards.
         for feat1 in features:
-            if feat1.endswith(b'_rev'): continue
+            if feat1.endswith(b'_rev'):
+                continue
             for feat2 in features:
-                if feat2.endswith(b'_rev'): continue
+                if feat2.endswith(b'_rev'):
+                    continue
                 for dist in range(1, args.max_dist+1):
                     template = [TemplateLiteral(0, feat1), TemplateLiteral(dist, feat2)]
                     if args.no_sentence_breaks:

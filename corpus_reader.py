@@ -2,7 +2,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Callable
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Any
 from argparse import Namespace
 
 from util import CompressedFileReader, uncompressed_suffix
@@ -15,7 +15,6 @@ Sentence = list[Token]
 
 
 class CorpusReader(ABC):
-
     @property
     @abstractmethod
     def header(self) -> Header:
@@ -26,13 +25,13 @@ class CorpusReader(ABC):
         pass
 
     @abstractmethod
-    def close(self):
+    def close(self) -> None:
         pass
 
-    def __enter__(self):
+    def __enter__(self) -> 'CorpusReader':
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, *_: Any) -> None:
         self.close()
 
 
@@ -76,7 +75,7 @@ class AugmentedReader(CorpusReader):
                 sentence[0][-1] = START
             yield sentence
 
-    def close(self):
+    def close(self) -> None:
         self.wrapped.close()
 
 
@@ -92,7 +91,8 @@ class CSVReader(CorpusReader):
 
         header_line = self._corpus.reader.readline()
         self._header = [Feature(f) for f in CSVReader.split_line(header_line.strip())]
-        for feat in self._header: check_feature(feat)
+        for feat in self._header:
+            check_feature(feat)
         self._n_feats = len(self._header)
 
     @staticmethod
@@ -104,8 +104,8 @@ class CSVReader(CorpusReader):
         return self._header
 
     def sentences(self) -> Iterator[Sentence]:
+        pbar: ProgressBar[None]
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
-            pbar: ProgressBar[None]
             sentence: Sentence = []
             for n, line in enumerate(self._corpus.reader, 2):
                 line = line.strip()
@@ -124,7 +124,7 @@ class CSVReader(CorpusReader):
             if sentence:
                 yield sentence
 
-    def close(self):
+    def close(self) -> None:
         self._corpus.close()
 
 
@@ -200,8 +200,8 @@ class CoNLLReader(CorpusReader):
         return self._header
 
     def sentences(self) -> Iterator[Sentence]:
+        pbar: ProgressBar[None]
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
-            pbar: ProgressBar[None]
             sentence: Sentence = []
 
             for line in self.wordlines():
@@ -217,7 +217,7 @@ class CoNLLReader(CorpusReader):
             if sentence:
                 yield sentence
 
-    def close(self):
+    def close(self) -> None:
         self._corpus.close()
 
 

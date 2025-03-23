@@ -164,7 +164,8 @@ def run_query(corpus: str, **xargs: Any) -> APIResult:
     args = SETTINGS.__dict__
     args['corpus'] = corpus.split(',')
     for k, v in xargs.items():
-        if v is not None: args[k] = v
+        if v is not None:
+            args[k] = v
     return main_search(Namespace(**args))
 
 
@@ -201,7 +202,8 @@ def run_count(corpus: str, **xargs: Any) -> APIResult:
     args = SETTINGS.__dict__
     args['corpus'] = corpus.split(',')
     for k, v in xargs.items():
-        if v is not None: args[k] = v
+        if v is not None:
+            args[k] = v
     return main_count(Namespace(**args))
 
 

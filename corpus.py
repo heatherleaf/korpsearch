@@ -124,7 +124,8 @@ class Corpus:
         self.close()
 
     def close(self) -> None:
-        for sa in self.tokens.values(): sa.close()
+        for sa in self.tokens.values():
+            sa.close()
         DiskIntArray.close(self.sentence_pointers)
 
 

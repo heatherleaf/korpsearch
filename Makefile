@@ -15,13 +15,13 @@ clean:
 	rm -rf build
 
 
-PYVERSION = 3.9
+PYVERSION = 3.10
 
 # F541: Warn about f-strings without placeholders
 RUFFCONFIG = 'lint.ignore = ["F541"]'
 
 lint:
-	mypy --python-version ${PYVERSION} --strict *.py || true
+	mypy --python-version ${PYVERSION} --strict --no-warn-unused-ignores *.py || true
 	@echo
 	pyright --pythonversion ${PYVERSION} *.py || true
 	@echo

@@ -40,7 +40,7 @@ class KnownLiteral:
         else:
             return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
 
-    def is_prefix(self):
+    def is_prefix(self) -> bool:
         return self.value != self.value2
 
     # unoptimized version for use with Query.check_position
@@ -84,7 +84,7 @@ class DisjunctiveGroup:
     def check_position(self, corpus: Corpus, pos: int) -> bool:
         return any(lit.check_position(corpus, pos) for lit in self.literals)
 
-    def is_prefix(self):
+    def is_prefix(self) -> bool:
         return any(lit.is_prefix() for lit in self.literals)
 
     @staticmethod
@@ -151,14 +151,14 @@ class Template:
     def querystr(self) -> str:
         tokens: list[str] = []
         for offset in range(self.min_offset(), self.max_offset()+1):
-            tok = ','.join('?' + l.feature.decode() for l in self.template if l.offset == offset)
-            lit = ','.join(f'{l.feature.decode()}{"≠" if l.negative else "="}"{val}"'
-                           for l in self.literals if l.offset == offset
-                           for val in [l.corpus.lookup_value(l.feature, l.value).decode()])
-            if lit:
-                tokens.append(tok + '|' + lit)
+            token = ','.join('?' + lit.feature.decode() for lit in self.template if lit.offset == offset)
+            literal = ','.join(f'{lit.feature.decode()}{"≠" if lit.negative else "="}"{val}"'
+                               for lit in self.literals if lit.offset == offset
+                               for val in [lit.corpus.lookup_value(lit.feature, lit.value).decode()])
+            if literal:
+                tokens.append(token + '|' + literal)
             else:
-                tokens.append(tok)
+                tokens.append(token)
         return ''.join('[' + tok + ']' for tok in tokens)
 
     def __iter__(self) -> Iterator[TemplateLiteral]:
