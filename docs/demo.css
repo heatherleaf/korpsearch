@@ -39,8 +39,13 @@ table {
 
 td, th {
     white-space: nowrap;
-    border-top: 1px solid black;
+    border: 1px solid black;
     padding: 3px 10px;
+}
+
+#query-results td, #query-results th {
+    border: 0px;
+    border-top: 1px solid black;
 }
 
 .match {
@@ -60,9 +65,8 @@ td, th {
     text-align: center;
 }
 
-#count-results td, #count-results th {
+#count-results td {
     text-align: right;
-    border: 1px solid black;
 }
 
 #count-results th:first-child {
