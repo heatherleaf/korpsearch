@@ -37,10 +37,10 @@ def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path 
     info_file = query_dir / INFO_FILE
     if not info_file.is_file():
         with open(info_file, 'w') as INFO:
-            json.dump({
+            print(json.dumps({
                 'name': query.corpus.name,
                 'id': query.corpus.id,
-            }, INFO)
+            }), file=INFO)
     query_hash = hash_repr(query, extra_args, size=32)
     return DiskIntArray.getpath(query_dir / query_hash)
 

@@ -84,12 +84,12 @@ class DiskIntArray:
             itemsize = DiskIntArray.default_itemsize
         if path:
             with open(DiskIntArray.getconfig(path), 'w') as configfile:
-                json.dump({
+                print(json.dumps({
                     'itemsize': itemsize,
                     'byteorder': sys.byteorder,
                     'size': size,
                     **config,
-                }, configfile)
+                }), file=configfile)
             with open(DiskIntArray.getpath(path), 'wb') as file:
                 file.truncate(size * itemsize)
             return DiskIntArray(path)
