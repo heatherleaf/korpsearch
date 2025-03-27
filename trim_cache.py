@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 from disk import DiskIntArray
-from util import setup_logger
 
 
 def trim_cache(args: argparse.Namespace) -> None:
@@ -42,10 +41,17 @@ parser.add_argument('--cache-dir', '-d', type=Path, metavar='DIR', default=Path(
     help='directory where to store cache files (default: ./cache/)')
 parser.add_argument('--max-size', '-m', type=int, default=100,
     help='total max size of cache, in MB (default: 100 MB)')
-parser.add_argument('--quiet', '-q', action="store_const", dest="loglevel", const=logging.WARNING, default=logging.INFO,
+parser.add_argument('--quiet', '-q', action="store_const", dest="log_level", const=logging.WARNING, default=logging.INFO,
     help="only show warnings (default: be more verbose)")
+parser.add_argument('--log-file', '-f', type=Path,
+    help="log file (default: print to stderr)")
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    setup_logger('{relativeCreated:8.2f} s {warningname}| {message}', timedivider=1000, loglevel=args.loglevel)
+    logging.basicConfig(
+        format = "%(asctime)s | %(message)s",
+        datefmt = "%Y-%m-%d, %H:%M:%S",
+        level = args.log_level,
+        filename = args.log_file,
+    )
     trim_cache(args)
