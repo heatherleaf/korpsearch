@@ -52,6 +52,12 @@ class KnownLiteral:
         value = self.corpus.tokens[self.feature][pos + self.offset]
         return (value == self.value) != self.negative
 
+    def alter_offset(self, offset: int) -> 'KnownLiteral':
+        return KnownLiteral(self.negative, offset, self.feature, self.value, self.value2, self.corpus)
+    
+    def alter_negation(self, negative: bool) -> 'KnownLiteral':
+        return KnownLiteral(negative, self.offset, self.feature, self.value, self.value2, self.corpus)
+
     @staticmethod
     def parse(corpus: Corpus, litstr: str) -> 'KnownLiteral':
         try:
@@ -133,8 +139,8 @@ class Template:
             assert len(self.template) > 0,                             f"Empty template"
             assert self.min_offset() == 0,                             f"Minimum offset must be 0"
             assert all(lit.negative for lit in self.literals),         f"Positive template literal(s)"
-        except AssertionError:
-            raise ValueError(f"Invalid template: {self}")
+        except AssertionError as e:
+            raise ValueError(f"Invalid template: {self} -- {e}")
 
     def offsets(self) -> set[int]:
         return {lit.offset for lit in self.template + self.literals}
