@@ -343,7 +343,7 @@ class Query:
                     if separator:
                         expressionString += separator
                     elif len(expressionString) > 0 and expressionString[-1] not in ['(', '&', '|']:
-                        separator = '&'
+                        expressionString += '&'
                     
                     if negative:
                         expressionString += "!"
