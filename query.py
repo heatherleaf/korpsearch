@@ -5,7 +5,7 @@ from typing import Literal
 from collections.abc import Iterator, Sequence
 from string import ascii_lowercase
 
-from pyeda.inter import Expression, And, Or
+from pyeda.inter import Expression, And, Or, Xor
 from pyeda.boolalg.expr import exprvar, Complement
 
 from expressions import evaluate_boolean_expr
@@ -27,7 +27,7 @@ def get_query_literals(query_element: QueryElement) -> tuple[KnownLiteral, ...]:
 
 
 class Query:
-    _token_re_string = r' ([|&]?) \s* ([\w_]+) \s* (!?) (?:=|contains) \s* "\s*([^"]+?)\s*" '
+    _token_re_string = r' ([|&^]?) \s* ([\w_]+) \s* (!?) (?:=|contains) \s* "\s*([^"]+?)\s*" '
     token_regex = re.compile(rf'               {_token_re_string}                 ', re.X)
     query_regex = re.compile(rf'       \[ \s* ({_token_re_string} \s*)* \]        ', re.X)
     fullq_regex = re.compile(rf'^ \s* (\[ \s* ({_token_re_string} \s*)* \] \s*)+ $', re.X)
@@ -211,7 +211,7 @@ class Query:
     
     @staticmethod
     def _tokenize_expression(expression: str) -> list[str]:
-        return re.findall(r'\[.*?\]|\(|\)|&|\|', expression)
+        return re.findall(r'\[.*?\]|\(|\)|&|\||[\^]', expression)
     
     @staticmethod
     def _variable_name_generator():
@@ -297,8 +297,24 @@ class Query:
         if expr.NAME == 'Or':
             return Or(*(Query._distribute_expression(arg) for arg in expr.xs))
         
-        # Add xor in the future?
-        
+        # Xor nodes.
+        if expr.NAME == 'Xor':
+            if len(expr.xs) < 2:
+                raise ValueError("Xor requires at least two operands.")
+
+            # Base case: two operands
+            if len(expr.xs) == 2:
+                left = expr.xs[0]
+                right = expr.xs[1]
+                term1 = And(left, ~right)
+                term2 = And(~left, right)
+                return Query._distribute_expression(Or(Query._distribute_expression(term1), Query._distribute_expression(term2)))
+
+            # Recursive case: more than two operands
+            first = expr.xs[0]
+            rest = Xor(*expr.xs[1:])
+            return Query._distribute_expression(Xor(first, rest))
+            
         assert False, f"Unknown expression type: {expr!r}"
 
     @staticmethod
@@ -323,7 +339,7 @@ class Query:
             # A group represents 'where' in the query it is located, to keep track of the order of the literals.
             
             # Symbols.
-            if token in ['(', ')', '&', '|']:
+            if token in ['(', ')', '&', '|', '^']:
                 expressionString += token
             else:
                 # If the previous character was not a symbol, add an implicit AND.
@@ -388,6 +404,9 @@ class Query:
 
         # Distribute the expression to DNF.
         expanded = Query._distribute_expression(epr)
+        
+        if hasattr(expanded, 'xs') and expanded.NAME == 'And' and len(expanded.xs) >= 1:
+            expanded = Query._distribute_expression(expanded)
         
         # The variables to use in the query, with the correct offsets and negations.
         variables: dict[str, KnownLiteral] = {}
@@ -479,6 +498,13 @@ class Query:
                         query.append(variables[term.inputs[0].name])
                     elif hasattr(term, 'xs'):                                   
                         literals = list(variables[value.inputs[0].name if isinstance(value, Complement) else value.name] for value in term.xs)
+                        
+                        # Apply complement to the literals.
+                        for i, x in enumerate(term.xs):
+                            if isinstance(x, Complement):
+                                literals[i] = literals[i].alter_negation(True)
+                            else:
+                                literals[i] = literals[i].alter_negation(False)
                         
                         # Filter out None values, the wildcard cases.
                         literals = [lit for lit in literals if lit is not None]

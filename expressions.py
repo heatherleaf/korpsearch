@@ -1,10 +1,10 @@
 import re
-from pyeda.inter import And, Or, Not
+from pyeda.inter import And, Or, Not, Xor
 from pyeda.boolalg.expr import exprvar
 
 def tokenize(expression):
     """ Tokenizes a Boolean expression into variables, operators, and parentheses. """
-    tokens = re.findall(r'[A-Za-z]+|[&|!()]', expression)
+    tokens = re.findall(r'[A-Za-z]+|[&|!^()]', expression)
     return tokens
 
 def parse_boolean_expr(tokens):
@@ -35,12 +35,20 @@ def parse_boolean_expr(tokens):
                 factors.append(parse_factor())
         return factors[0] if len(factors) == 1 else And(*factors)
 
+    def parse_xor_expr():
+        """ Parses an XOR-expression, flattening chains like a ^ b ^ c into Xor(a, b, c). """
+        terms = [parse_and_expr()]
+        while tokens and tokens[0] == "^":
+            tokens.pop(0)  # Consume "^"
+            terms.append(parse_and_expr())
+        return terms[0] if len(terms) == 1 else Xor(*terms)
+
     def parse_or_expr():
         """ Parses an OR-expression, flattening chains like a | b | c into Or(a, b, c). """
-        terms = [parse_and_expr()]
+        terms = [parse_xor_expr()]
         while tokens and tokens[0] == "|":
             tokens.pop(0)  # Consume "|"
-            terms.append(parse_and_expr())
+            terms.append(parse_xor_expr())
         return terms[0] if len(terms) == 1 else Or(*terms)
 
     return parse_or_expr()
