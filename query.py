@@ -340,11 +340,10 @@ class Query:
                     negative = (negated == '!')
 
                     # If the previous character was not a symbol, add an implicit AND.
-                    if len(expressionString) > 0 and expressionString[-1] not in ['(', '&', '|']:
-                        separator = '&'
-                    
                     if separator:
                         expressionString += separator
+                    elif len(expressionString) > 0 and expressionString[-1] not in ['(', '&', '|']:
+                        separator = '&'
                     
                     if negative:
                         expressionString += "!"
