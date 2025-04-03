@@ -278,7 +278,12 @@ def main_search(args: Namespace) -> dict[str, Any]:
             logging.info(f"Results: {results}")
 
             if start < len(results) and end >= 0:
-                query_offset = query.max_offset() + 1
+                # Find the maximum offset of the query, this has to be replaced with something else
+                # now that the results may be different sizes.
+                query_offset = 0
+                for subquery in query.expand():
+                    query_offset = max(query_offset, subquery.max_offset())
+                query_offset = query_offset + 1
                 try:
                     for match_pos in results.slice(max(0, start), end+1):
                         sentence = corpus.get_sentence_from_position(match_pos)

@@ -1,5 +1,5 @@
 
-const API_DOMAIN = "https://korpsearch.cse.chalmers.se:8000/";
+const API_DOMAIN = "http://localhost:8000/";
 const LOCALE = "en-US";
 
 const ELEMS = {
