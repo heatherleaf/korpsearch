@@ -70,7 +70,7 @@ function initialize() {
             }
             ELEMS.corpus.table.innerHTML = html;
             for (const checkbox of ELEMS.corpus.table.querySelectorAll('input[type=checkbox]')) {
-                checkbox.addEventListener('click', search_corpus);
+                checkbox.addEventListener('click', invalidate_search);
             }
             ELEMS.corpus.table.querySelector('input[type=checkbox]').checked = true;
         });
@@ -97,6 +97,8 @@ function initialize() {
         if (event.key === 'Enter') {
             event.preventDefault(); // Cancel the default action, if needed
             search_corpus();
+        } else {
+            invalidate_search();
         }
     });
 }
@@ -119,6 +121,12 @@ function select_example() {
         ELEMS.query.string.focus();
     }
     examples.selectedIndex = 0;
+    invalidate_search();
+}
+
+
+function invalidate_search() {
+    ELEMS.query.results.classList.add("inactive");
 }
 
 
@@ -201,6 +209,7 @@ function show_search_results(response) {
     container.innerHTML = `<table id="query-results">${html}</table>`;
     let match = document.querySelector('.match');
     scrollbar = match.offsetLeft + match.offsetWidth / 2 - container.offsetWidth / 2;
+    container.classList.remove("inactive");
     ELEMS.query.results.scrollLeft = scrollbar;
 }
 
@@ -268,10 +277,12 @@ function show_count_results(response){
         html += `<tr>${tblrow}</tr>`;
     }
     ELEMS.query.results.innerHTML = `<table id="count-results">${html}</table>`;
+    ELEMS.query.results.classList.remove("inactive");
 }
 
 
 function call_api(command, params, callback) {
+    ELEMS.query.results.classList.add("inactive");
     const url = new URL(API_DOMAIN + command);
     for (const key in params) {
         url.searchParams.set(key, params[key]);

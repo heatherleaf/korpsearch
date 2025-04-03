@@ -76,3 +76,7 @@ td, th {
 .hidden {
     display: none;
 }
+
+.inactive {
+    color: lightgrey;
+}
