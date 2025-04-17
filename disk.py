@@ -8,7 +8,7 @@ import itertools
 from typing import Optional, Union, Any, NewType
 from collections.abc import Iterator, Iterable
 
-from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range
+from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range, file_size
 
 
 ################################################################################
@@ -96,6 +96,10 @@ class DiskIntArray:
         else:
             data = bytearray(size * itemsize)
             return DiskIntArray(data, itemsize)
+
+    @classmethod
+    def disksize(cls, path: Path) -> int:
+        return file_size(cls.getpath(path)) + file_size(cls.getconfig(path))
 
     @classmethod
     def getpath(cls, path: Path) -> Path:
