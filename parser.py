@@ -183,6 +183,9 @@ class WildcardQuery(Query):
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         yield (self, i + 1)
         
+    def atomics(self) -> Iterator['AtomicQuery']:
+        yield self
+        
     def __repr__(self) -> str:
         return "*"
 
@@ -227,6 +230,8 @@ class QueryParser:
         start += 1  # Skip opening bracket
         end = len(query)
         
+        is_wildcard = True
+        
         yield QueryOperator.OPEN_PARENTHESIS
         
         while start < end:
@@ -234,6 +239,13 @@ class QueryParser:
             start = QueryParser._skip_whitespace(query, start, end)
             if start >= end:
                 break
+            
+            if query[start] == QueryParser.atomic_close:
+                # Skip closing bracket
+                start += 1
+                break
+            
+            is_wildcard = False
             
             feat_start = start
             # While alphanumeric
@@ -300,6 +312,9 @@ class QueryParser:
             else:
                 yield QueryOperator.AND
                 
+        if is_wildcard:
+            yield WildcardQuery()
+                
         yield QueryOperator.CLOSE_PARENTHESIS
         
         yield QueryOperator.CONCATENATE
@@ -343,7 +358,7 @@ class QueryParser:
         stack = []
         
         for token in tokens:
-            if isinstance(token, AtomicQuery):
+            if isinstance(token, AtomicQuery) or isinstance(token, WildcardQuery):
                 yield token
             elif isinstance(token, QueryOperator):
                 if token == QueryOperator.OPEN_PARENTHESIS:
@@ -374,7 +389,7 @@ class QueryParser:
         stack = []
         
         for token in postfix_tokens:
-            if isinstance(token, AtomicQuery):
+            if isinstance(token, AtomicQuery) or isinstance(token, WildcardQuery):
                 stack.append(token)
             elif isinstance(token, QueryOperator):
                 if token == QueryOperator.AND:
@@ -458,11 +473,11 @@ class QueryParser:
             yield (query, position)
         
 if __name__ == "__main__":
-    example_query = '[word="grand" lemma="la"] [word="hit" lemma="la"]'
+    example_query = '([word="grand" lemma="la"]) ; [] ; ([word="hit" lemma="la"])'
     
     # Tokenize the example query
-    tokens = QueryParser.tokenize(example_query)
-    postfix_tokens = QueryParser.infix_to_postfix(tokens)
+    tokens = list(QueryParser.tokenize(example_query))
+    postfix_tokens = list(QueryParser.infix_to_postfix(tokens))
     query = QueryParser.to_query(postfix_tokens)
     print("Postfix Query:")
     print(query)
