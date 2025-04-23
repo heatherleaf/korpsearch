@@ -180,7 +180,7 @@ class WildcardQuery(Query):
         pass
     
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
-        yield (self, i + 2)
+        yield (self, i)
         
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
@@ -481,7 +481,7 @@ class QueryParser:
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '([word="grand" lemma!="la"] | [word="here"]) ([word="hit" lemma="la"])'
+    input_query = '([word="grand" lemma!="la"] | [word="here"]) [] [] ([word="hit" lemma="la"])'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
