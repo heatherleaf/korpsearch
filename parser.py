@@ -317,8 +317,6 @@ class QueryParser:
                 
         yield QueryOperator.CLOSE_PARENTHESIS
         
-        yield QueryOperator.CONCATENATE
-        
         yield start
     
     @staticmethod
@@ -402,11 +400,6 @@ class QueryParser:
                     stack.append(DisjunctionQuery(fst, snd))
                 elif token == QueryOperator.CONCATENATE:
                     snd = stack.pop()
-                    
-                    if len(stack) == 0:
-                        stack.append(snd)
-                        continue
-                    
                     fst = stack.pop()
                     stack.append(ConcatenationQuery(fst, snd))
                 elif token == QueryOperator.NOT:
@@ -417,8 +410,16 @@ class QueryParser:
             else:
                 raise ValueError(f"Unexpected token: {token}")
         
-        if len(stack) != 1:
-            raise ValueError("Invalid query structure")
+        if len(stack) > 1:
+            # Concatenate remaining queries
+            while len(stack) > 1:
+                snd = stack.pop()
+                fst = stack.pop()
+                stack.append(ConjunctionQuery(fst, snd))
+        if len(stack) == 0:
+            raise ValueError("Empty query")
+        if len(stack) > 1:
+            raise ValueError("Too many queries in stack")
         
         return stack[0]
     
@@ -472,8 +473,44 @@ class QueryParser:
                         atomic.position = atomic.position - biggest_pos
             yield (query, position)
         
+def to_dnf(query: Query, index: int = 0) -> Iterator[tuple[Query, int]]:
+    """
+    Converts the query into DNF
+    """
+    if isinstance(query, AtomicQuery):
+        # Set atomic position
+        query.position = index
+        yield (query, index)
+    elif isinstance(query, WildcardQuery):
+        # Wildcards skip an index
+        yield (WildcardQuery(), index + 2)
+    elif isinstance(query, ConjunctionQuery):
+        # Expand both sides of the conjunction
+        for fst_query, fst_index in to_dnf(query.fst, index):
+            for snd_query, snd_index in to_dnf(query.snd, fst_index):
+                yield (ConjunctionQuery(fst_query, snd_query), snd_index)
+    elif isinstance(query, DisjunctionQuery):
+        # Expand both sides of the disjunction
+        for fst_query, fst_index in to_dnf(query.fst, index):
+            yield (fst_query, fst_index)
+        for snd_query, snd_index in to_dnf(query.snd, index):
+            yield (snd_query, snd_index)
+    elif isinstance(query, NegationQuery):
+        # Negation does not change the index
+        for sub_query, sub_index in to_dnf(query.query, index):
+            yield (NegationQuery(sub_query), sub_index)
+    elif isinstance(query, ConcatenationQuery):
+        # Expand concatenations into conjunctions with incremented indices
+        for fst_query, fst_index in to_dnf(query.fst, index):
+            for snd_query, snd_index in to_dnf(query.snd, fst_index + 1):
+                yield (ConjunctionQuery(fst_query, snd_query), snd_index)
+    else:
+        raise ValueError(f"Unexpected query type: {type(query)}")
+
+
+# Example usage in the main block
 if __name__ == "__main__":
-    example_query = '([word="grand" lemma="la"]) ; [] ; ([word="hit" lemma="la"])'
+    example_query = '([word="grand" lemma!="la"]) [] ([word="hit" lemma="la"])'
     
     # Tokenize the example query
     tokens = list(QueryParser.tokenize(example_query))
@@ -482,12 +519,8 @@ if __name__ == "__main__":
     print("Postfix Query:")
     print(query)
     
-    expanded_query = list(query.expand(0))
-    
-    #optimized_expansions = QueryParser.optimize_positions(expanded_query)
-    #print("\nOptimized Expansions:")
-    #for optimized_query, position in optimized_expansions:
-    #    print(f"Optimized Query: {optimized_query}, Position: {position}")
-    
+    # Expand the query into DNF
+    expanded_query = list(to_dnf(query, 0))
+    print("\nExpanded Query in DNF:")
     for expanded_query, position in expanded_query:
         print(f"Expanded Query: {expanded_query}, Position: {position}")
