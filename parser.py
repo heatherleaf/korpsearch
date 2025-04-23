@@ -3,6 +3,8 @@ from typing import Iterator, NewType
 
 from util import Feature, FValue
 
+import sys
+
 
 class Query:
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
@@ -204,10 +206,10 @@ class QueryParser:
     atomic_open = "["
     atomic_close = "]"
     precedence = {
-        QueryOperator.AND: 2,
+        QueryOperator.AND: 3,
         QueryOperator.OR: 1,
-        QueryOperator.NOT: 3,
-        QueryOperator.CONCATENATE: 0
+        QueryOperator.NOT: 4,
+        QueryOperator.CONCATENATE: 2
     }
     
     def __init__(self) -> None:
@@ -324,6 +326,8 @@ class QueryParser:
         start = 0
         end = len(query)
         
+        should_concatenate = False
+        
         while start < end:
             # Skip whitespace
             start = QueryParser._skip_whitespace(query, start, end)
@@ -331,6 +335,9 @@ class QueryParser:
                 break
             
             if query[start] == QueryParser.atomic_open:
+                if should_concatenate:
+                    yield QueryOperator.CONCATENATE
+                
                 # Find end of atomic query
                 generator = QueryParser._parse_atomic(query, start)
                 for token in generator:
@@ -338,7 +345,9 @@ class QueryParser:
                         start = token
                     else:
                         yield token
+                should_concatenate = True
             elif valid_enum_value(query[start], QueryOperator):
+                should_concatenate = False
                 # Yield operator
                 yield QueryOperator(query[start])
                 start += 1
@@ -472,14 +481,19 @@ class QueryParser:
 
 # Example usage in the main block
 if __name__ == "__main__":
-    example_query = '(([word="grand" lemma!="la"]) | [word="here"]) ([word="hit" lemma="la"])'
+    input_query = '([word="grand" lemma!="la"] | [word="here"]) ([word="hit" lemma="la"])'
+    
+    if len(sys.argv) > 1:
+        input_query = sys.argv[1]
     
     # Tokenize the example query
-    tokens = list(QueryParser.tokenize(example_query))
+    print("Query:", input_query)
+    tokens = list(QueryParser.tokenize(input_query))
+    print("Tokens:", tokens)
     postfix_tokens = list(QueryParser.infix_to_postfix(tokens))
+    print("Postfix Tokens:", postfix_tokens)
     query = QueryParser.to_query(postfix_tokens)
-    print("Postfix Query:")
-    print(query)
+    print("Parsed Query:", query)
     
     # Expand the query into DNF
     expanded_query = query.expand(0)
