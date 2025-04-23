@@ -52,7 +52,7 @@ class AtomicQuery(Query):
 
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         copy = AtomicQuery(self.feat, self.value, self.operator, i)
-        yield (copy, i + 1)
+        yield (copy, i)
         
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
@@ -89,12 +89,9 @@ class ConjunctionQuery(Query):
         assert isinstance(snd, Query), f"Second operand must be a Query: {snd!r}"
         
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
-        first_q = None
         for q1, i1 in self.fst.expand(i):
-            if first_q is None:
-                first_q = i1
-            for q2, i2 in self.snd.expand(first_q):
-                yield (ConjunctionQuery(q1, q2), first_q)
+            for q2, i2 in self.snd.expand(i1):
+                yield (ConjunctionQuery(q1, q2), i2)
                 
     def atomics(self) -> Iterator['AtomicQuery']:
         for q1 in self.fst.atomics():
@@ -160,9 +157,9 @@ class ConcatenationQuery(Query):
         assert isinstance(snd, Query), f"Second operand must be a Query: {snd!r}"
         
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
-        for q1, i1 in self.fst.expand(i):
-            for q2, i2 in self.snd.expand(i1):
-                yield (ConjunctionQuery(q1, q2), i2)
+        for fst_query, fst_index in self.fst.expand(i):
+            for snd_query, snd_index in self.snd.expand(fst_index + 1):
+                yield (ConjunctionQuery(fst_query, snd_query), snd_index)
                 
     def atomics(self) -> Iterator['AtomicQuery']:
         for q1 in self.fst.atomics():
@@ -181,7 +178,7 @@ class WildcardQuery(Query):
         pass
     
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
-        yield (self, i + 1)
+        yield (self, i + 2)
         
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
@@ -415,7 +412,7 @@ class QueryParser:
             while len(stack) > 1:
                 snd = stack.pop()
                 fst = stack.pop()
-                stack.append(ConjunctionQuery(fst, snd))
+                stack.append(ConcatenationQuery(fst, snd))
         if len(stack) == 0:
             raise ValueError("Empty query")
         if len(stack) > 1:
@@ -472,45 +469,10 @@ class QueryParser:
                     else:
                         atomic.position = atomic.position - biggest_pos
             yield (query, position)
-        
-def to_dnf(query: Query, index: int = 0) -> Iterator[tuple[Query, int]]:
-    """
-    Converts the query into DNF
-    """
-    if isinstance(query, AtomicQuery):
-        # Set atomic position
-        query.position = index
-        yield (query, index)
-    elif isinstance(query, WildcardQuery):
-        # Wildcards skip an index
-        yield (WildcardQuery(), index + 2)
-    elif isinstance(query, ConjunctionQuery):
-        # Expand both sides of the conjunction
-        for fst_query, fst_index in to_dnf(query.fst, index):
-            for snd_query, snd_index in to_dnf(query.snd, fst_index):
-                yield (ConjunctionQuery(fst_query, snd_query), snd_index)
-    elif isinstance(query, DisjunctionQuery):
-        # Expand both sides of the disjunction
-        for fst_query, fst_index in to_dnf(query.fst, index):
-            yield (fst_query, fst_index)
-        for snd_query, snd_index in to_dnf(query.snd, index):
-            yield (snd_query, snd_index)
-    elif isinstance(query, NegationQuery):
-        # Negation does not change the index
-        for sub_query, sub_index in to_dnf(query.query, index):
-            yield (NegationQuery(sub_query), sub_index)
-    elif isinstance(query, ConcatenationQuery):
-        # Expand concatenations into conjunctions with incremented indices
-        for fst_query, fst_index in to_dnf(query.fst, index):
-            for snd_query, snd_index in to_dnf(query.snd, fst_index + 1):
-                yield (ConjunctionQuery(fst_query, snd_query), snd_index)
-    else:
-        raise ValueError(f"Unexpected query type: {type(query)}")
-
 
 # Example usage in the main block
 if __name__ == "__main__":
-    example_query = '([word="grand" lemma!="la"]) [] ([word="hit" lemma="la"])'
+    example_query = '(([word="grand" lemma!="la"]) | [word="here"]) ([word="hit" lemma="la"])'
     
     # Tokenize the example query
     tokens = list(QueryParser.tokenize(example_query))
@@ -520,7 +482,7 @@ if __name__ == "__main__":
     print(query)
     
     # Expand the query into DNF
-    expanded_query = list(to_dnf(query, 0))
+    expanded_query = query.expand(0)
     print("\nExpanded Query in DNF:")
     for expanded_query, position in expanded_query:
         print(f"Expanded Query: {expanded_query}, Position: {position}")
