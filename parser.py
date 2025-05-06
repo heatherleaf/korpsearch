@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Iterator, NewType
+from dataclasses import dataclass, field
 
 from util import Feature, FValue
 
@@ -38,58 +39,39 @@ class AtomicIdentity:
     def __hash__(self) -> int:
         return hash((self.feat, self.value, self.operator))
 
-class AtomicQuery(Query):
-    def __init__(self, feat: Feature, value: FValue, operator: FeatureOperator, position: int | None) -> None:
-        self.feat = feat
-        self.value = value
-        self.operator = operator
-        self.position = position
-        
-        assert isinstance(feat, bytes), f"Feature must be a bytestring: {feat!r}"
-        assert isinstance(value, bytes), f"Value must be a bytestring: {value!r}"
-        assert isinstance(operator, FeatureOperator), f"Operator must be a FeatureOperator: {operator!r}"
-        assert isinstance(position, (int, type(None))), f"Position must be an int or None: {position!r}"
-        assert self.feat, "Feature must not be empty"
-        assert self.value, "Value must not be empty"
+@dataclass
+class Indexed:
+    index: int | None = field(default=None, init=False)
 
+@dataclass
+class AtomicQuery(Query, Indexed):
+    feat: Feature
+    value: FValue
+    operator: FeatureOperator
+    
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
-        copy = AtomicQuery(self.feat, self.value, self.operator, i)
+        copy = AtomicQuery(self.feat, self.value, self.operator)
+        copy.index = i
         yield (copy, i)
-        
+
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
         
     def identity(self) -> AtomicIdentity:
         return AtomicIdentity(self.feat, self.value, self.operator)
-        
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, AtomicQuery):
-            return False
-        return (self.feat == other.feat and
-                self.value == other.value and
-                self.operator == other.operator and
-                self.position == other.position)
-        
-    def __hash__(self) -> int:
-        return hash((self.feat, self.value, self.operator, self.position))
-    
-    def __ne__(self, other: object) -> bool:
-        return not self == other
     
     def __len__(self) -> int:
         return 1
     
     def __repr__(self) -> str:
-        position_str = f"@{self.position}" if self.position is not None else ""
+        position_str = f"@{self.index}" if self.index is not None else ""
         return f"[{self.feat.decode()}{self.operator.value}{self.value.decode()}{position_str}]"
-        
+    
+@dataclass
 class ConjunctionQuery(Query):
-    def __init__(self, fst: Query, snd: Query) -> None:
-        self.fst = fst
-        self.snd = snd
-        assert isinstance(fst, Query), f"First operand must be a Query: {fst!r}"
-        assert isinstance(snd, Query), f"Second operand must be a Query: {snd!r}"
-        
+    fst: Query
+    snd: Query
+    
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         for q1, i1 in self.fst.expand(i):
             for q2, i2 in self.snd.expand(i1):
@@ -107,13 +89,11 @@ class ConjunctionQuery(Query):
     def __repr__(self) -> str:
         return f"({self.fst} & {self.snd})"
 
+@dataclass
 class DisjunctionQuery(Query):
-    def __init__(self, fst: Query, snd: Query) -> None:
-        self.fst = fst
-        self.snd = snd
-        assert isinstance(fst, Query), f"First operand must be a Query: {fst!r}"
-        assert isinstance(snd, Query), f"Second operand must be a Query: {snd!r}"
-        
+    fst: Query
+    snd: Query
+    
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         for q1, i1 in self.fst.expand(i):
             yield (q1, i1)
@@ -132,11 +112,10 @@ class DisjunctionQuery(Query):
     def __repr__(self) -> str:
         return f"({self.fst} | {self.snd})"
 
+@dataclass
 class NegationQuery(Query):
-    def __init__(self, query: Query) -> None:
-        self.query = query
-        assert isinstance(query, Query), f"Query must be a Query: {query!r}"
-        
+    query: Query
+    
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         for q, i1 in self.query.expand(i):
             yield (NegationQuery(q), i1)
@@ -151,13 +130,11 @@ class NegationQuery(Query):
     def __repr__(self) -> str:
         return f"!{self.query}"
 
+@dataclass
 class ConcatenationQuery(Query):
-    def __init__(self, fst: Query, snd: Query) -> None:
-        self.fst = fst
-        self.snd = snd
-        assert isinstance(fst, Query), f"First operand must be a Query: {fst!r}"
-        assert isinstance(snd, Query), f"Second operand must be a Query: {snd!r}"
-        
+    fst: Query
+    snd: Query
+    
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         for fst_query, fst_index in self.fst.expand(i):
             for snd_query, snd_index in self.snd.expand(fst_index + 1):
@@ -174,19 +151,20 @@ class ConcatenationQuery(Query):
                 
     def __repr__(self) -> str:
         return f"({self.fst} ; {self.snd})"
-                
-class WildcardQuery(Query):
-    def __init__(self) -> None:
-        pass
-    
+
+@dataclass
+class WildcardQuery(Query, Indexed):
+
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
-        yield (self, i)
+        copy = WildcardQuery()
+        copy.index = i
+        yield (copy, i)
         
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
         
     def __repr__(self) -> str:
-        return "*"
+        return f"[]@{self.index}"
 
 class QueryOperator(Enum):
     AND = "&"
@@ -287,7 +265,7 @@ class QueryParser:
             value = query[value_start:start]
             start += 1  # Skip closing quote
             
-            yield AtomicQuery(feat.encode(), value.encode(), FeatureOperator(operator), None)
+            yield AtomicQuery(feat.encode(), value.encode(), FeatureOperator(operator))
             
             # Skip whitespace
             start = QueryParser._skip_whitespace(query, start, end)    
@@ -373,7 +351,7 @@ class QueryParser:
                     if not stack or stack[-1] != QueryOperator.OPEN_PARENTHESIS:
                         raise ValueError("Mismatched parentheses")
                     stack.pop()
-                elif token in {QueryOperator.AND, QueryOperator.OR, QueryOperator.NOT, QueryOperator.CONCATENATE}:
+                elif token in QueryParser.precedence:
                     while (stack and stack[-1] != QueryOperator.OPEN_PARENTHESIS and
                            QueryParser.precedence[token] <= QueryParser.precedence[stack[-1]]):
                         yield stack.pop()
