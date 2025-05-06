@@ -62,6 +62,7 @@ def uncompressed_suffix(path: Path) -> str:
     else:
         return path.suffix
 
+
 def clean_up(path: Path, suffixes: list[str]) -> None:
     """For every given suffix, the given path with the suffix appended is removed from the file system."""
     for suffix in suffixes:
@@ -69,6 +70,18 @@ def clean_up(path: Path, suffixes: list[str]) -> None:
             add_suffix(path, suffix).unlink()
         except FileNotFoundError:
             pass
+
+
+def file_size(file: Path) -> int:
+    """Return the n:o bytes the file uses up on disk, or 0 if the file doesn't exist."""
+    try:
+        stat = file.stat()
+    except:
+        return 0
+    try:
+        return stat.st_blocks * 512
+    except AttributeError:
+        return stat.st_size
 
 
 ###############################################################################

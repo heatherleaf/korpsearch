@@ -11,16 +11,16 @@ def trim_cache(args: argparse.Namespace) -> None:
     mb = 1 << 20
     cache_files = sorted(args.cache_dir.rglob('*' + DiskIntArray.array_suffix),
                          key = lambda f: f.stat().st_mtime)
-    size = sum(file.stat().st_size for file in cache_files)
+    size = sum(DiskIntArray.disksize(file) for file in cache_files)
     logging.info(f"Current cache size: {size/mb:.1f} MB (max limit: {args.max_size} MB)")
     excess = size - args.max_size * mb
     for file in cache_files:
         if excess <= 0:
             break
         logging.info(f"Deleting old cache file: {file} ({file.stat().st_size/mb:.1f} MB)")
-        excess -= file.stat().st_size
+        excess -= DiskIntArray.disksize(file)
         DiskIntArray.getconfig(file).unlink(missing_ok=True)
-        file.unlink(missing_ok=True)
+        DiskIntArray.getpath(file).unlink(missing_ok=True)
     for dir, _, filenames in os.walk(args.cache_dir, topdown=False):
         dir = Path(dir)
         if dir != args.cache_dir:
