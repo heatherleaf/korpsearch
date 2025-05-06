@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Iterator, NewType
+from typing import Iterator, NewType, Union
 from dataclasses import dataclass, field
 
 from util import Feature, FValue
@@ -11,8 +11,94 @@ class Query:
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         raise NotImplementedError("Subclasses must implement this method")
     
+    def compute_range(self, i: 'Range') -> 'QueryRange':
+        raise NotImplementedError("Subclasses must implement this method")
+    
     def atomics(self) -> Iterator['AtomicQuery']:
         raise NotImplementedError("Subclasses must implement this method")
+    
+    def variants(self) -> Iterator['Query']:
+        raise NotImplementedError("Subclasses must implement this method")
+    
+    def __len__(self) -> int:
+        raise NotImplementedError("Subclasses must implement this method")
+    
+    def __repr__(self) -> str:
+        raise NotImplementedError("Subclasses must implement this method")
+    
+    def __eq__(self, other: object) -> bool:
+        raise NotImplementedError("Subclasses must implement this method")
+    
+    def __hash__(self) -> int:
+        raise NotImplementedError("Subclasses must implement this method")
+
+@dataclass
+class Range:
+    start: Union[int, 'Range']
+    end: Union[int, 'Range']
+    
+    def __post_init__(self) -> None:
+        pass
+        # Combine start={n:m} & end={n:x} into start=n & end={m:x}
+        if isinstance(self.start, Range) and isinstance(self.end, Range):
+            ostart = self.start
+            oend = self.end
+            if self.start.start == self.end.start:
+                if self.start.end == self.end.end:
+                    self.start = self.start.start
+                    self.end = self.end.end
+                else:
+                    self.start = self.start.start
+                    self.end = Range(ostart.end, self.end.end)
+            elif self.start.end == self.end.end:
+                self.start = Range(self.start.start, self.start.end)
+                self.end = self.end.start
+        
+    def __repr__(self) -> str:
+        return f"{self.start}:{self.end}"
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Range):
+            return False
+        return (self.start == other.start and
+                self.end == other.end)
+    
+    def __hash__(self) -> int:
+        return hash((self.start, self.end))
+    
+    def __add__(self, other: Union[int, 'Range']) -> 'Range':
+        if isinstance(other, Range):
+            return Range(self.start + other.start, self.end + other.end)
+        elif isinstance(other, int):
+            return Range(self.start + other, self.end + other)
+        else:
+            raise TypeError(f"Unsupported type for addition: {type(other)}")
+    
+    def extend(self, other: int) -> 'Range':
+        if isinstance(other, int):
+            if self.start != self.end:
+                return Range(Range(self.start, self.start + other),
+                              Range(self.end, self.end + other))
+            return Range(self.start, self.end + other)
+        else:
+            raise TypeError(f"Unsupported type for extension: {type(other)}")
+        
+    def __repr__(self):
+        return f"{f'{{{self.start}}}' if isinstance(self.start, Range) else self.start}:{f'{{{self.end}}}' if isinstance(self.end, Range) else self.end}"
+        
+    def repr_atomic(self) -> str:
+        if isinstance(self.start, Range) or isinstance(self.end, Range):
+            return f"{{{self.start.end}:{self.end.end}}}"
+        else:
+            return f"{self.start}:{self.end}"
+
+@dataclass
+class QueryRange:
+    query: Union[Query, 'QueryRange']
+    range: Range
+    
+    def __repr__(self) -> str:
+        return f"{self.query}@{self.range}"
 
 class FeatureOperator(Enum):
     EQUALS = "="
@@ -53,6 +139,9 @@ class AtomicQuery(Query, Indexed):
         copy = AtomicQuery(self.feat, self.value, self.operator)
         copy.index = i
         yield (copy, i)
+        
+    def compute_range(self, i: Range) -> QueryRange:
+        return QueryRange(self, i.extend(1))
 
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
@@ -63,9 +152,24 @@ class AtomicQuery(Query, Indexed):
     def __len__(self) -> int:
         return 1
     
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AtomicQuery):
+            return False
+        return (self.feat == other.feat and
+                self.value == other.value and
+                self.operator == other.operator and
+                self.index == other.index)
+        
+    def __hash__(self) -> int:
+        return hash((self.feat, self.value, self.operator, self.index))
+    
     def __repr__(self) -> str:
         position_str = f"@{self.index}" if self.index is not None else ""
         return f"[{self.feat.decode()}{self.operator.value}{self.value.decode()}{position_str}]"
+    
+    def variants(self) -> Iterator['Query']:
+        yield self
+
     
 @dataclass
 class ConjunctionQuery(Query):
@@ -77,6 +181,11 @@ class ConjunctionQuery(Query):
             for q2, i2 in self.snd.expand(i1):
                 yield (ConjunctionQuery(q1, q2), i2)
                 
+    def compute_range(self, i: Range) -> QueryRange:
+        fst = self.fst.compute_range(i)
+        snd = self.snd.compute_range(i)
+        return QueryRange(ConjunctionQuery(fst, snd), Range(fst.range.start, snd.range.end))
+
     def atomics(self) -> Iterator['AtomicQuery']:
         for q1 in self.fst.atomics():
             yield q1
@@ -88,6 +197,37 @@ class ConjunctionQuery(Query):
     
     def __repr__(self) -> str:
         return f"({self.fst} & {self.snd})"
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ConjunctionQuery):
+            return False
+        return (self.fst == other.fst and
+                self.snd == other.snd)
+        
+    def __hash__(self) -> int:
+        return hash((self.fst, self.snd))
+    
+    def variants(self) -> Iterator['Query']:
+        # Base case
+        yield self
+
+        for v1 in self.fst.variants():
+            for v2 in self.snd.variants():
+                yield ConjunctionQuery(v1, v2)
+
+        # (A | B) & C -> (A & C) | (B & C)
+        if isinstance(self.fst, DisjunctionQuery):
+            for a in self.fst.fst.variants():
+                for b in self.fst.snd.variants():
+                    for c in self.snd.variants():
+                        yield DisjunctionQuery(ConjunctionQuery(a, c), ConjunctionQuery(b, c))
+
+        # A & (B | C) -> (A & B) | (A & C)
+        if isinstance(self.snd, DisjunctionQuery):
+            for a in self.fst.variants():
+                for b in self.snd.fst.variants():
+                    for c in self.snd.snd.variants():
+                        yield DisjunctionQuery(ConjunctionQuery(a, b), ConjunctionQuery(a, c))
 
 @dataclass
 class DisjunctionQuery(Query):
@@ -100,6 +240,15 @@ class DisjunctionQuery(Query):
         for q2, i2 in self.snd.expand(i):
             yield (q2, i2)
             
+    def compute_range(self, i: Range) -> QueryRange:
+        fst = self.fst.compute_range(i)
+        snd = self.snd.compute_range(i)
+        min_start = min(fst.range.start, snd.range.start)
+        max_start = max(fst.range.start, snd.range.start)
+        min_end = min(fst.range.end, snd.range.end)
+        max_end = max(fst.range.end, snd.range.end)
+        return QueryRange(DisjunctionQuery(fst, snd), Range(Range(min_start, min_end), Range(max_start, max_end)))
+            
     def atomics(self) -> Iterator['AtomicQuery']:
         for q1 in self.fst.atomics():
             yield q1
@@ -111,6 +260,32 @@ class DisjunctionQuery(Query):
     
     def __repr__(self) -> str:
         return f"({self.fst} | {self.snd})"
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DisjunctionQuery):
+            return False
+        return (self.fst == other.fst and
+                self.snd == other.snd)
+        
+    def __hash__(self) -> int:
+        return hash((self.fst, self.snd))
+    
+    def variants(self) -> Iterator['Query']:
+        yield self
+
+        for v1 in self.fst.variants():
+            for v2 in self.snd.variants():
+                yield DisjunctionQuery(v1, v2)
+
+        """ Unnecessary?
+        # (A | B) | C -> A | B | C
+        if isinstance(self.fst, DisjunctionQuery):
+            yield DisjunctionQuery(self.fst.fst, DisjunctionQuery(self.fst.snd, self.snd))
+        # A | (B | C) -> A | B | C
+        if isinstance(self.snd, DisjunctionQuery):
+            yield DisjunctionQuery(DisjunctionQuery(self.fst, self.snd.fst), self.snd.snd)
+        """
+
 
 @dataclass
 class NegationQuery(Query):
@@ -119,6 +294,10 @@ class NegationQuery(Query):
     def expand(self, i: int) -> Iterator[tuple['Query', int]]:
         for q, i1 in self.query.expand(i):
             yield (NegationQuery(q), i1)
+    
+    def compute_range(self, i: Range) -> QueryRange:
+        q = self.query.compute_range(i)
+        return QueryRange(q, q.start, q.end)
             
     def atomics(self) -> Iterator['AtomicQuery']:
         for q in self.query.atomics():
@@ -129,6 +308,18 @@ class NegationQuery(Query):
             
     def __repr__(self) -> str:
         return f"!{self.query}"
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, NegationQuery):
+            return False
+        return self.query == other.query
+    
+    def __hash__(self) -> int:
+        return hash(self.query)
+    
+    def variants(self) -> Iterator['Query']:
+        for v in self.query.variants():
+            yield NegationQuery(v)
 
 @dataclass
 class ConcatenationQuery(Query):
@@ -139,6 +330,11 @@ class ConcatenationQuery(Query):
         for fst_query, fst_index in self.fst.expand(i):
             for snd_query, snd_index in self.snd.expand(fst_index + 1):
                 yield (ConjunctionQuery(fst_query, snd_query), snd_index)
+                
+    def compute_range(self, i: Range) -> QueryRange:
+        fst = self.fst.compute_range(i)
+        snd = self.snd.compute_range(Range(fst.range.end, fst.range.end))
+        return QueryRange(ConcatenationQuery(fst, snd), Range(fst.range.start, snd.range.end))
                 
     def atomics(self) -> Iterator['AtomicQuery']:
         for q1 in self.fst.atomics():
@@ -151,6 +347,36 @@ class ConcatenationQuery(Query):
                 
     def __repr__(self) -> str:
         return f"({self.fst} ; {self.snd})"
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ConcatenationQuery):
+            return False
+        return (self.fst == other.fst and
+                self.snd == other.snd)
+    
+    def __hash__(self) -> int:
+        return hash((self.fst, self.snd))
+    
+    def variants(self) -> Iterator['Query']:
+        yield self
+
+        for v1 in self.fst.variants():
+            for v2 in self.snd.variants():
+                yield ConcatenationQuery(v1, v2)
+
+        # (A | B) ; C -> (A ; C) | (B ; C)
+        if isinstance(self.fst, DisjunctionQuery):
+            for a in self.fst.fst.variants():
+                for b in self.fst.snd.variants():
+                    for c in self.snd.variants():
+                        yield DisjunctionQuery(ConcatenationQuery(a, c), ConcatenationQuery(b, c))
+
+        # A ; (B | C) -> (A ; B) | (A ; C)
+        if isinstance(self.snd, DisjunctionQuery):
+            for a in self.fst.variants():
+                for b in self.snd.fst.variants():
+                    for c in self.snd.snd.variants():
+                        yield DisjunctionQuery(ConcatenationQuery(a, b), ConcatenationQuery(a, c))
 
 @dataclass
 class WildcardQuery(Query, Indexed):
@@ -164,7 +390,21 @@ class WildcardQuery(Query, Indexed):
         yield self
         
     def __repr__(self) -> str:
-        return f"[]@{self.index}"
+        return f"[]@{self.index}" if self.index is not None else "[]"
+    
+    def __len__(self) -> int:
+        return 1
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, WildcardQuery):
+            return False
+        return self.index == other.index
+    
+    def __hash__(self) -> int:
+        return hash(self.index)
+    
+    def variants(self) -> Iterator['Query']:
+        yield self
 
 class QueryOperator(Enum):
     AND = "&"
@@ -407,23 +647,9 @@ class QueryParser:
         
         return stack[0]
     
+    """
     @staticmethod
     def optimize_positions(expansions: list[tuple['Query', int]]) -> Iterator[tuple['Query', int]]:
-        """
-        For example, turn:
-         (([word=big@0] & [word=dog@1]) & [word=is@2])
-         (([word=small@0] & [word=dog@1]) & [word=is@2])
-         (([word=tiny@0] & [word=dog@1]) & [word=is@2])
-         ([word=cat@0] & [word=is@1])
-        into:
-         (([word=big@-1] & [word=dog@0]) & [word=is@1])
-         (([word=small@-1] & [word=dog@0]) & [word=is@1])
-         (([word=tiny@-1] & [word=dog@0]) & [word=is@1])
-         ([word=cat@0] & [word=is@1])
-         
-        Because word=is is the same in all of them.
-        """
-        
         # Find common atomics
         atomics: map[AtomicIdentity, list[AtomicQuery]] = {}
         for query, position in expansions:
@@ -456,10 +682,11 @@ class QueryParser:
                     else:
                         atomic.position = atomic.position - biggest_pos
             yield (query, position)
+    """
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '([word="grand" lemma!="la"] | [word="here"]) [] [] ([word="hit" lemma="la"])'
+    input_query = '[word="F"] ; (([word="A"] ; [word="B"]) | ([word="C"] ; [word="D"] ; [word="E"]))'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
@@ -472,7 +699,13 @@ if __name__ == "__main__":
     print("Postfix Tokens:", postfix_tokens)
     query = QueryParser.to_query(postfix_tokens)
     print("Parsed Query:", query)
-    
+
+    all_variants = set(query.variants())
+
+    for variant in all_variants:
+        print("Variant:", repr(variant).replace("[word=", "").replace("]", ""))
+        print("\t", repr(variant.compute_range(Range(0, 0))).replace("[word=", "").replace("]", ""))
+
     # Expand the query into DNF
     expanded_query = query.expand(0)
     print("\nExpanded Query in DNF:")
