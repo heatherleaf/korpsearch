@@ -301,7 +301,7 @@ class NegationQuery(Query):
     
     def compute_range(self, i: Range) -> QueryRange:
         q = self.query.compute_range(i)
-        return QueryRange(q, q.start, q.end)
+        return QueryRange(q, Range(i.start, i.end))
             
     def atomics(self) -> Iterator['AtomicQuery']:
         for q in self.query.atomics():
@@ -690,7 +690,7 @@ class QueryParser:
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '[word="F"] ; (([word="X"]) | ([word="A"] ; [word="B"]) | ([word="C"] ; [word="D"] ; [word="E"]))'
+    input_query = '([word="F"] | !([word="Y"] ; [word="Z"] ; [word="W"])) ; (([word="X"]) | ([word="A"] ; [word="B"]) | ([word="C"] ; [word="D"] ; [word="E"]))'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
