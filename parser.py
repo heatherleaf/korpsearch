@@ -243,10 +243,14 @@ class DisjunctionQuery(Query):
     def compute_range(self, i: Range) -> QueryRange:
         fst = self.fst.compute_range(i)
         snd = self.snd.compute_range(i)
-        min_start = min(fst.range.start, snd.range.start)
-        max_start = max(fst.range.start, snd.range.start)
-        min_end = min(fst.range.end, snd.range.end)
-        max_end = max(fst.range.end, snd.range.end)
+        min_start = min(fst.range.start.start if isinstance(fst.range.start, Range) else fst.range.start,
+                snd.range.start.start if isinstance(snd.range.start, Range) else snd.range.start)
+        max_start = max(fst.range.start.end if isinstance(fst.range.start, Range) else fst.range.start,
+                snd.range.start.end if isinstance(snd.range.start, Range) else snd.range.start)
+        min_end = min(fst.range.end.start if isinstance(fst.range.end, Range) else fst.range.end,
+                  snd.range.end.start if isinstance(snd.range.end, Range) else snd.range.end)
+        max_end = max(fst.range.end.end if isinstance(fst.range.end, Range) else fst.range.end,
+                  snd.range.end.end if isinstance(snd.range.end, Range) else snd.range.end)
         return QueryRange(DisjunctionQuery(fst, snd), Range(Range(min_start, min_end), Range(max_start, max_end)))
             
     def atomics(self) -> Iterator['AtomicQuery']:
@@ -686,7 +690,7 @@ class QueryParser:
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '[word="F"] ; (([word="A"] ; [word="B"]) | ([word="C"] ; [word="D"] ; [word="E"]))'
+    input_query = '[word="F"] ; (([word="X"]) | ([word="A"] ; [word="B"]) | ([word="C"] ; [word="D"] ; [word="E"]))'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
