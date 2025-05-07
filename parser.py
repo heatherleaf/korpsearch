@@ -301,7 +301,7 @@ class NegationQuery(Query):
     
     def compute_range(self, i: Range) -> QueryRange:
         q = self.query.compute_range(i)
-        return QueryRange(q, Range(i.start, i.end))
+        return QueryRange(NegationQuery(q), Range(q.range.start, q.range.end))
             
     def atomics(self) -> Iterator['AtomicQuery']:
         for q in self.query.atomics():
@@ -311,7 +311,7 @@ class NegationQuery(Query):
         return len(self.query)
             
     def __repr__(self) -> str:
-        return f"!{self.query}"
+        return f"!({self.query})"
     
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, NegationQuery):
@@ -338,7 +338,7 @@ class ConcatenationQuery(Query):
     def compute_range(self, i: Range) -> QueryRange:
         fst = self.fst.compute_range(i)
         snd = self.snd.compute_range(Range(fst.range.end, fst.range.end))
-        return QueryRange(ConcatenationQuery(fst, snd), Range(fst.range.start, snd.range.end))
+        return QueryRange(ConjunctionQuery(fst, snd), Range(fst.range.start, snd.range.end))
                 
     def atomics(self) -> Iterator['AtomicQuery']:
         for q1 in self.fst.atomics():
