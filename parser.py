@@ -685,9 +685,15 @@ class QueryParser:
         
         return stack[0]
 
+def simple_stringify(query: Query) -> str:
+    """
+    Simplifies the query string by removing unnecessary characters.
+    """
+    return repr(query).replace("[]", "*").replace("[", "").replace("word=", "").replace("]", "").replace(";", "&").replace("*", "[]")
+
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '(([word="B"] ; [word="C"] ; []) | ([word="D"] ; [word="E"] & [word="F"])) [word="X"]'
+    input_query = '[word="A"] ; ([] [word="B" word="X"] | [word="C"]) ; ([word="D"] | [word="E"] | [word="F"])'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
@@ -704,23 +710,22 @@ if __name__ == "__main__":
     start_time = time.time()
     all_variants = list(recursive_variants(query))
     end_time = time.time()
-    print(f"Time taken to compute {len(all_variants)} variants: {end_time - start_time:.6f} seconds")
-
-    print("Source Query:", repr(query).replace("[", "").replace("word=", "").replace("]", ""))
+    print("Source Query:", simple_stringify(query))
     for variant in all_variants:
-        print("Variant:", repr(variant).replace("[", "").replace("word=", "").replace("]", ""))
-        print("\t", repr(variant.compute_range(Range(0, 0))).replace("[", "").replace("word=", "").replace("]", "").replace(";", "&"))
+        print("Variant:", simple_stringify(variant))
+        print("\t", simple_stringify(variant.compute_range(Range(0, 0))))
 
     # Expand the query into DNF
     expanded_query = query.expand(0)
     print("\nExpanded Query in DNF:")
     for expanded_query, position in expanded_query:
-        print(f"Expanded Query: {expanded_query}, Position: {position}")
+        print(f"Expanded Query: {simple_stringify(expanded_query)}, Position: {position}")
         
     # Tests
-    print("source = \"", repr(query).replace("[", "").replace("word=", "").replace("]", "").replace(";", "&"), "\"")
+    print("source = \"", simple_stringify(query), "\"")
     print("variants = [")
     for variant in all_variants:
-        print("\t\"", repr(variant).replace("[", "").replace("word=", "").replace("]", "").replace(";", "&"), "\",")
+        print("\t\"", simple_stringify(variant), "\",")
     print("]")
     
+    print(f"Time taken to compute {len(all_variants)} variants: {end_time - start_time:.6f} seconds")
