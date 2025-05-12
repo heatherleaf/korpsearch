@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from util import Feature, FValue
 
 import sys
+import time
 
 
 class Query:
@@ -209,8 +210,6 @@ class ConjunctionQuery(Query):
     
     def variants(self) -> Iterator['Query']:
         # Base case
-        yield self
-
         for v1 in self.fst.variants():
             for v2 in self.snd.variants():
                 yield ConjunctionQuery(v1, v2)
@@ -275,20 +274,19 @@ class DisjunctionQuery(Query):
         return hash((self.fst, self.snd))
     
     def variants(self) -> Iterator['Query']:
-        yield self
-
+        # Base case
         for v1 in self.fst.variants():
             for v2 in self.snd.variants():
                 yield DisjunctionQuery(v1, v2)
 
-        """ Unnecessary?
+        #""" Unnecessary?
         # (A | B) | C -> A | B | C
-        if isinstance(self.fst, DisjunctionQuery):
-            yield DisjunctionQuery(self.fst.fst, DisjunctionQuery(self.fst.snd, self.snd))
-        # A | (B | C) -> A | B | C
-        if isinstance(self.snd, DisjunctionQuery):
-            yield DisjunctionQuery(DisjunctionQuery(self.fst, self.snd.fst), self.snd.snd)
-        """
+        #if isinstance(self.fst, DisjunctionQuery):
+        #    yield DisjunctionQuery(self.fst.fst, DisjunctionQuery(self.fst.snd, self.snd))
+        ## A | (B | C) -> A | B | C
+        #if isinstance(self.snd, DisjunctionQuery):
+        #    yield DisjunctionQuery(DisjunctionQuery(self.fst, self.snd.fst), self.snd.snd)
+        #"""
 
 
 @dataclass
@@ -322,8 +320,28 @@ class NegationQuery(Query):
         return hash(self.query)
     
     def variants(self) -> Iterator['Query']:
+        # Base case
         for v in self.query.variants():
             yield NegationQuery(v)
+
+        # Double negation
+        if isinstance(self.query, NegationQuery):
+            for v in self.query.query.variants():
+                yield v
+
+        # De Morgan's Lag
+        if isinstance(self.query, ConjunctionQuery):
+            # !(A & B) -> (!A | !B)
+            for a in NegationQuery(self.query.fst).variants():
+                for b in NegationQuery(self.query.snd).variants():
+                    yield DisjunctionQuery(a, b)
+
+        elif isinstance(self.query, DisjunctionQuery):
+            # !(A | B) -> (!A & !B)
+            for a in NegationQuery(self.query.fst).variants():
+                for b in NegationQuery(self.query.snd).variants():
+                    yield ConjunctionQuery(a, b)
+                
 
 @dataclass
 class ConcatenationQuery(Query):
@@ -362,8 +380,7 @@ class ConcatenationQuery(Query):
         return hash((self.fst, self.snd))
     
     def variants(self) -> Iterator['Query']:
-        yield self
-
+        # Base case
         for v1 in self.fst.variants():
             for v2 in self.snd.variants():
                 yield ConcatenationQuery(v1, v2)
@@ -390,6 +407,9 @@ class WildcardQuery(Query, Indexed):
         copy.index = i
         yield (copy, i)
         
+    def compute_range(self, i: Range) -> QueryRange:
+        return QueryRange(self, i)
+        
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
         
@@ -410,6 +430,20 @@ class WildcardQuery(Query, Indexed):
     def variants(self) -> Iterator['Query']:
         yield self
 
+def recursive_variants(query) -> Iterator['Query']:
+    seen = set()
+    stack = [query]
+
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        yield current
+        for variant in current.variants():
+            if variant not in seen:
+                stack.append(variant)
+                
 class QueryOperator(Enum):
     AND = "&"
     OR = "|"
@@ -650,47 +684,10 @@ class QueryParser:
             raise ValueError("Too many queries in stack")
         
         return stack[0]
-    
-    """
-    @staticmethod
-    def optimize_positions(expansions: list[tuple['Query', int]]) -> Iterator[tuple['Query', int]]:
-        # Find common atomics
-        atomics: map[AtomicIdentity, list[AtomicQuery]] = {}
-        for query, position in expansions:
-            for atomic in query.atomics():
-                identity = atomic.identity()
-                if identity not in atomics:
-                    atomics[identity] = []
-                atomics[identity].append(atomic)
-        
-        biggest_identity = None
-        biggest_count = 0
-        for identity, atomics_list in atomics.items():
-            if len(atomics_list) > biggest_count:
-                biggest_identity = identity
-                biggest_count = len(atomics_list)
-        if biggest_identity is None:
-            raise ValueError("No common atomics found")
-        
-        # Shift positions so that the biggest identity is at 0
-        for query, position in expansions:
-            biggest_pos = None
-            for atomic in query.atomics():
-                if atomic.identity() == biggest_identity:
-                    biggest_pos = atomic.position
-                    break
-            if biggest_pos is not None:
-                for atomic in query.atomics():
-                    if atomic.identity() == biggest_identity:
-                        atomic.position = 0
-                    else:
-                        atomic.position = atomic.position - biggest_pos
-            yield (query, position)
-    """
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '([word="F"] | !([word="Y"] ; [word="Z"] ; [word="W"])) ; (([word="X"]) | ([word="A"] ; [word="B"]) | ([word="C"] ; [word="D"] ; [word="E"]))'
+    input_query = '(([word="B"] ; [word="C"] ; []) | ([word="D"] ; [word="E"] & [word="F"])) [word="X"]'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
@@ -704,14 +701,26 @@ if __name__ == "__main__":
     query = QueryParser.to_query(postfix_tokens)
     print("Parsed Query:", query)
 
-    all_variants = set(query.variants())
+    start_time = time.time()
+    all_variants = list(recursive_variants(query))
+    end_time = time.time()
+    print(f"Time taken to compute {len(all_variants)} variants: {end_time - start_time:.6f} seconds")
 
+    print("Source Query:", repr(query).replace("[", "").replace("word=", "").replace("]", ""))
     for variant in all_variants:
-        print("Variant:", repr(variant).replace("[word=", "").replace("]", ""))
-        print("\t", repr(variant.compute_range(Range(0, 0))).replace("[word=", "").replace("]", ""))
+        print("Variant:", repr(variant).replace("[", "").replace("word=", "").replace("]", ""))
+        print("\t", repr(variant.compute_range(Range(0, 0))).replace("[", "").replace("word=", "").replace("]", "").replace(";", "&"))
 
     # Expand the query into DNF
     expanded_query = query.expand(0)
     print("\nExpanded Query in DNF:")
     for expanded_query, position in expanded_query:
         print(f"Expanded Query: {expanded_query}, Position: {position}")
+        
+    # Tests
+    print("source = \"", repr(query).replace("[", "").replace("word=", "").replace("]", "").replace(";", "&"), "\"")
+    print("variants = [")
+    for variant in all_variants:
+        print("\t\"", repr(variant).replace("[", "").replace("word=", "").replace("]", "").replace(";", "&"), "\",")
+    print("]")
+    
