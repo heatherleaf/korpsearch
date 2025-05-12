@@ -408,7 +408,7 @@ class WildcardQuery(Query, Indexed):
         yield (copy, i)
         
     def compute_range(self, i: Range) -> QueryRange:
-        return QueryRange(self, i)
+        return QueryRange(self, i.extend(1))
         
     def atomics(self) -> Iterator['AtomicQuery']:
         yield self
@@ -693,7 +693,7 @@ def simple_stringify(query: Query) -> str:
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '[word="A"] ; ([] [word="B" word="X"] | [word="C"]) ; ([word="D"] | [word="E"] | [word="F"])'
+    input_query = '[word="A"] ; ([] [] [word="B" word="X"] | [word="C"]) ; ([word="D"] | [word="E"] | [word="F"])'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
