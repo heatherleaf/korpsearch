@@ -693,7 +693,7 @@ def simple_stringify(query: Query) -> str:
 
 # Example usage in the main block
 if __name__ == "__main__":
-    input_query = '[word="A"] ; ([] [] [word="B" word="X"] | [word="C"]) ; ([word="D"] | [word="E"] | [word="F"])'
+    input_query = '([word="A"]) ; (([word="B" word="X"] | [word="C"])) ; (([word="D"] | [word="E"] | [word="F"]))'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
@@ -728,4 +728,4 @@ if __name__ == "__main__":
         print("\t\"", simple_stringify(variant), "\",")
     print("]")
     
-    print(f"Time taken to compute {len(all_variants)} variants: {end_time - start_time:.6f} seconds")
+    print(f"Time taken to compute {len(all_variants)} variants from {query}: {end_time - start_time:.6f} seconds")
