@@ -105,7 +105,7 @@ class DisjunctionVariable(Variable):
         for value in self.values:
             value.collect_variables(variables)
         
-    def __add__(self, other: Union[int, Variable]) -> 'DisjunctionVariable':
+    def __add__(self, other: Union[int, Variable]) -> OffsetVariable:
         if isinstance(other, int):
             # Add directly to each value in the disjunction
             #return DisjunctionVariable([v + other for v in self.values])
@@ -132,6 +132,65 @@ class DisjunctionVariable(Variable):
         if self.name is not None:
             return f"{self.name}"
         return f"({' | '.join(str(v) for v in self.values)})"
+
+@dataclass
+class ConjunctionVariable(Variable):
+    """
+    A class representing a conjunction variable.
+    
+    It may take one of several values.
+    """
+    values: list[Variable]
+    
+    def __post_init__(self):
+        if not isinstance(self.values, list):
+            raise TypeError("values must be a list of Variables")
+        for value in self.values:
+            if not isinstance(value, Variable):
+                raise TypeError("All values must be Variables")
+            
+        # Remove duplicates
+        new_values = []
+        for value in self.values:
+            if value not in new_values:
+                new_values.append(value)
+        self.values = new_values
+        
+    def collect_variables(self, variables: set[Variable]) -> None:
+        """
+        Collect all variables in this variable and add them to the set.
+        """
+        variables.add(self)
+        for value in self.values:
+            value.collect_variables(variables)
+        
+    def __add__(self, other: Union[int, Variable]) -> OffsetVariable:
+        if isinstance(other, int):
+            # Add directly to each value in the disjunction
+            #return DisjunctionVariable([v + other for v in self.values])
+            return OffsetVariable(offset=other, relative_to=self)
+        elif isinstance(other, Variable):
+            # Wrap other inside each value in the disjunction
+            #return DisjunctionVariable([v + other for v in self.values])
+            return OffsetVariable(offset=other, relative_to=self)
+        else:
+            raise TypeError(f"Unsupported operand type(s) for +: 'DisjunctionVariable' and '{type(other).__name__}'")
+    
+    def __repr__(self) -> str:
+        return f"max({', '.join(str(v) for v in self.values)})"
+    
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DisjunctionVariable):
+            return False
+        return self.values == other.values
+    
+    def __hash__(self) -> int:
+        return hash(tuple(self.values))
+    
+    def __str__(self) -> str:
+        if self.name is not None:
+            return f"{self.name}"
+        return f"max({', '.join(str(v) for v in self.values)})"
 
 @dataclass
 class UnknownVariable(Variable):

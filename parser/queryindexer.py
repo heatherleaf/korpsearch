@@ -7,7 +7,7 @@ from disjunction import DisjunctionQuery
 from conjunction import ConjunctionQuery
 from negation import NegationQuery
 from range import Range, QueryRange
-from variable import DisjunctionVariable, OffsetVariable, UnknownVariable, Variable
+from variable import ConjunctionVariable, DisjunctionVariable, OffsetVariable, UnknownVariable, Variable
 from atomic import AtomicQuery, Feature, FValue, FeatureOperator
 from spacer import SpacerQuery
 from wildcard import WildcardQuery
@@ -32,7 +32,7 @@ class QueryIndexer:
             start = inner_range.end
             queries.append(inner_range)
         self.end = start
-        return QueryRange(ConcatenationQuery(queries), Range(self.start, self.end))
+        return QueryRange(ConjunctionQuery(queries), Range(self.start, self.end))
     
     def __match__disjunction__(self, query: DisjunctionQuery) -> QueryRange:
         start = self.start
@@ -55,7 +55,7 @@ class QueryIndexer:
             queries.append(inner_range)
             possible_ends.append(inner_range.end)
         
-        return QueryRange(ConjunctionQuery(queries), Range(self.start, DisjunctionVariable(possible_ends)))
+        return QueryRange(ConjunctionQuery(queries), Range(self.start, ConjunctionVariable(possible_ends)))
         
     
     def __match__negation__(self, query: NegationQuery) -> QueryRange:
