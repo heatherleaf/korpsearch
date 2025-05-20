@@ -10,6 +10,16 @@ class ConcatenationQuery(Query):
     """
     queries: list[Query]
 
+    def __post_init__(self):
+        # If any of the children are ConcatenationQuery, flatten them
+        flattened_queries = []
+        for query in self.queries:
+            if isinstance(query, ConcatenationQuery):
+                flattened_queries.extend(query.queries)
+            else:
+                flattened_queries.append(query)
+        self.queries = flattened_queries
+        
     def components(self) -> Iterator[Query]:
         yield from self.queries
 

@@ -1,4 +1,6 @@
 from typing import Union
+from parser import QueryParser
+from queryvariants import QueryVariants
 from query import Query
 from concatenation import ConcatenationQuery
 from disjunction import DisjunctionQuery
@@ -9,6 +11,8 @@ from variable import DisjunctionVariable, OffsetVariable, UnknownVariable, Varia
 from atomic import AtomicQuery, Feature, FValue, FeatureOperator
 from spacer import SpacerQuery
 from wildcard import WildcardQuery
+import os
+import sys
 
 class QueryIndexer:
     """
@@ -57,7 +61,7 @@ class QueryIndexer:
     def __match__negation__(self, query: NegationQuery) -> QueryRange:
         inner_query = query.query
         inner_range = QueryIndexer.query_range(inner_query, self.start)
-        return QueryRange(NegationQuery(inner_query), Range(inner_range.start, inner_range.end))
+        return QueryRange(NegationQuery(inner_range), Range(inner_range.start, inner_range.end))
     
     def __match__atomic__(self, query: AtomicQuery) -> QueryRange:
         return QueryRange(query, Range(self.start, self.start + 1))
@@ -144,23 +148,18 @@ class Multimap:
         return iter(self.map.values())
 
 if __name__ == "__main__":
-    test_query = ConcatenationQuery([
-        WildcardQuery(AtomicQuery("word", "a", FeatureOperator.EQUALS)),
-        DisjunctionQuery([
-            AtomicQuery("word", "x", FeatureOperator.EQUALS),
-            SpacerQuery(0),
-            ConcatenationQuery([
-                AtomicQuery("word", "y", FeatureOperator.EQUALS),
-                AtomicQuery("word", "z", FeatureOperator.EQUALS)
-            ])
-        ]),
-        DisjunctionQuery([AtomicQuery("word", "b", FeatureOperator.EQUALS), ConcatenationQuery([
-            AtomicQuery("word", "c", FeatureOperator.EQUALS),
-            AtomicQuery("word", "d", FeatureOperator.EQUALS)
-        ])])
-    ])
+    input_query = '[word="A"]* (![word="X"] | e)'
     
-    print("Query:", test_query)
+    if len(sys.argv) > 1:
+        input_query = sys.argv[1]
+    
+    print("Query:", input_query)
+    tokens = list(QueryParser.tokenize(input_query))
+    print("Tokens:", tokens)
+    postfix_tokens = list(QueryParser.infix_to_postfix(tokens))
+    print("Postfix Tokens:", postfix_tokens)
+    test_query = QueryParser.to_query(postfix_tokens)
+    print("Parsed Query:", test_query)
     
     start = OffsetVariable(0)
     query_range = QueryIndexer.query_range(test_query, start)
@@ -192,3 +191,9 @@ if __name__ == "__main__":
     print("Variables:", variableSet)
     
     print("Range:", query_range)
+    
+    #variants = QueryVariants.variants(test_query)
+    
+    #print("Variants:")
+    #for variant in variants:
+    #    print(variant)

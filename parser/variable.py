@@ -108,10 +108,12 @@ class DisjunctionVariable(Variable):
     def __add__(self, other: Union[int, Variable]) -> 'DisjunctionVariable':
         if isinstance(other, int):
             # Add directly to each value in the disjunction
-            return DisjunctionVariable([v + other for v in self.values])
+            #return DisjunctionVariable([v + other for v in self.values])
+            return OffsetVariable(offset=other, relative_to=self)
         elif isinstance(other, Variable):
             # Wrap other inside each value in the disjunction
-            return DisjunctionVariable([v + other for v in self.values])
+            #return DisjunctionVariable([v + other for v in self.values])
+            return OffsetVariable(offset=other, relative_to=self)
         else:
             raise TypeError(f"Unsupported operand type(s) for +: 'DisjunctionVariable' and '{type(other).__name__}'")
     

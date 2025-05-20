@@ -9,6 +9,16 @@ class DisjunctionQuery(Query):
     A class representing a disjunction of queries. A disjunction is a logical OR operation.
     """
     queries: list[Query]
+    
+    def __post_init__(self):
+        # If any of the children are DisjunctionQuery, flatten them
+        flattened_queries = []
+        for query in self.queries:
+            if isinstance(query, DisjunctionQuery):
+                flattened_queries.extend(query.queries)
+            else:
+                flattened_queries.append(query)
+        self.queries = flattened_queries
 
     def components(self) -> Iterator[Query]:
         yield from self.queries

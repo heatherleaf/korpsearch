@@ -9,6 +9,16 @@ class ConjunctionQuery(Query):
     A class representing a conjunction of queries. A conjunction is a logical AND operation.
     """
     queries: list[Query]
+    
+    def __post_init__(self):
+        # If any of the children are ConjunctionQuery, flatten them
+        flattened_queries = []
+        for query in self.queries:
+            if isinstance(query, ConjunctionQuery):
+                flattened_queries.extend(query.queries)
+            else:
+                flattened_queries.append(query)
+        self.queries = flattened_queries
 
     def components(self) -> Iterator[Query]:
         yield from self.queries
