@@ -148,7 +148,7 @@ class Multimap:
         return iter(self.map.values())
 
 if __name__ == "__main__":
-    input_query = '[word="A"]* (![word="X"] | e)'
+    input_query = '[word="A"]* (![word="X"] | e) & [word="B"]'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]

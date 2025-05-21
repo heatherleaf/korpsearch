@@ -11,7 +11,7 @@ class WildcardQuery(Query):
     query: Query
     
     def components(self) -> Iterator[Query]:
-        yield from self.query
+        yield self.query
         
     def __eq__(self, other: Query) -> bool:
         if not isinstance(other, WildcardQuery):
