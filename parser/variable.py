@@ -174,7 +174,7 @@ class ConjunctionVariable(Variable):
             #return DisjunctionVariable([v + other for v in self.values])
             return OffsetVariable(offset=other, relative_to=self)
         else:
-            raise TypeError(f"Unsupported operand type(s) for +: 'DisjunctionVariable' and '{type(other).__name__}'")
+            raise TypeError(f"Unsupported operand type(s) for +: 'ConjunctionVariable' and '{type(other).__name__}'")
     
     def __repr__(self) -> str:
         return f"max({', '.join(str(v) for v in self.values)})"

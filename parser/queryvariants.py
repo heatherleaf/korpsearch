@@ -24,25 +24,15 @@ class QueryVariants:
     def __match__concatenation__(self, query: ConcatenationQuery) -> Iterator[Query]:
         queries = query.queries
         
-        # Base case
-        for i in range(len(queries)):
-            for v in QueryVariants.variants(queries[i]):
-                new_queries = queries[:i] + [v] + queries[i+1:]
-                yield ConcatenationQuery(new_queries)
-                
-        # (A | B) ; C -> (A ; C) | (B ; C)
-        if isinstance(queries[0], DisjunctionQuery):
-            for a in queries[0].queries:
-                for c in queries[1:]:
-                    new_queries = [a] + queries[1:]
-                    yield DisjunctionQuery(ConcatenationQuery(new_queries))
-        
         # A ; (B | C) -> (A ; B) | (A ; C)
-        if isinstance(queries[-1], DisjunctionQuery):
-            for a in queries[:-1]:
-                for b in queries[-1].queries:
-                    new_queries = queries[:-1] + [b]
-                    yield DisjunctionQuery(ConcatenationQuery(new_queries))
+        for i in range(len(queries)):
+            a = queries[i]
+            if isinstance(a, DisjunctionQuery):
+                parts: list[Query] = []
+                for b in a.queries:
+                    new_queries = queries[:i] + [b] + queries[i+1:]
+                    parts.append(ConcatenationQuery(new_queries))
+                yield DisjunctionQuery(parts)
     
     def __match__disjunction__(self, query: DisjunctionQuery) -> Iterator[Query]:
         queries = query.queries
@@ -56,25 +46,15 @@ class QueryVariants:
     def __match__conjunction__(self, query: ConjunctionQuery) -> Iterator[Query]:
         queries = query.queries
         
-        # Base case
-        for i in range(len(queries)):
-            for v in QueryVariants.variants(queries[i]):
-                new_queries = queries[:i] + [v] + queries[i+1:]
-                yield ConjunctionQuery(new_queries)
-                
-        # (A | B) & C -> (A & C) | (B & C)
-        if isinstance(queries[0], DisjunctionQuery):
-            for a in queries[0].queries:
-                for c in queries[1:]:
-                    new_queries = [a] + queries[1:]
-                    yield DisjunctionQuery(ConjunctionQuery(new_queries))
-        
         # A & (B | C) -> (A & B) | (A & C)
-        if isinstance(queries[-1], DisjunctionQuery):
-            for a in queries[:-1]:
-                for b in queries[-1].queries:
-                    new_queries = queries[:-1] + [b]
-                    yield DisjunctionQuery(ConjunctionQuery(new_queries))
+        for i in range(len(queries)):
+            a = queries[i]
+            if isinstance(a, DisjunctionQuery):
+                parts: list[Query] = []
+                for b in a.queries:
+                    new_queries = queries[:i] + [b] + queries[i+1:]
+                    parts.append(ConjunctionQuery(new_queries))
+                yield DisjunctionQuery(parts)
         
     
     def __match__negation__(self, query: NegationQuery) -> Iterator[Query]:
