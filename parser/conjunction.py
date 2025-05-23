@@ -26,7 +26,7 @@ class ConjunctionQuery(Query):
     def __eq__(self, other: Query) -> bool:
         if not isinstance(other, ConjunctionQuery):
             return False
-        return self.queries == other.queries
+        return set(self.queries) == set(other.queries)
     
     def __hash__(self) -> int:
         return hash(tuple(self.queries))
