@@ -247,6 +247,11 @@ class QueryParser:
                     stack.append(token)
                 else:
                     raise ValueError(f"Unhandled operator: {token}")
+                
+        while stack:
+            if stack[-1] == QueryOperator.OPEN_PARENTHESIS:
+                raise ValueError("Mismatched parentheses")
+            yield stack.pop()
 
             
     @staticmethod
