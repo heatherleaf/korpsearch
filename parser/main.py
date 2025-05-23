@@ -71,7 +71,7 @@ def simple_stringify(query: Query) -> str:
     """
     Simplifies the query string by removing unnecessary characters.
     """
-    return repr(query).replace("[]", "*").replace("[", "").replace("b'word' = b'", "").replace("'", "").replace("]", "").replace(";", "&").replace("*", "[]")
+    return repr(query).replace("[]", "*").replace("[", "").replace("b'word' = b'", "").replace("'", "").replace("]", "").replace(";", "&")
 
 if __name__ == "__main__":
     input_query = '[word="A"] ; ([word="B"] | [word="C"]) ; ([word="D"] | [word="E"] | [word="F"])' #'([word="A"] [word="O"])* (![word="X"] | e | [word="Y"] [word="Z"]) & [word="B"]'
