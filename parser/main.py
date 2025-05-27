@@ -74,7 +74,7 @@ def simple_stringify(query: Query) -> str:
     return repr(query).replace("[]", "*").replace("[", "").replace("b'word' = b'", "").replace("'", "").replace("]", "").replace(";", "&")
 
 if __name__ == "__main__":
-    input_query = '[word="A"] ; ([word="B"] | [word="C"]) ; ([word="D"] | [word="E"] | [word="F"])' #'([word="A"] [word="O"])* (![word="X"] | e | [word="Y"] [word="Z"]) & [word="B"]'
+    input_query = '[word="A"] ; ([word="B"] | [word="C"]) ; ([word="D"] | [word="E"] ; [word="F"])' #'([word="A"] [word="O"])* (![word="X"] | e | [word="Y"] [word="Z"]) & [word="B"]'
     
     if len(sys.argv) > 1:
         input_query = sys.argv[1]
