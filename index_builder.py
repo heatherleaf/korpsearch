@@ -162,10 +162,9 @@ class ListCollector(Collector):
         self.rows.sort()
 
         logging.debug(f"Creating index file")
-        with IntArray.create(nr_rows, index_path, **config) as suffix_array:
-            for i, row in enumerate(self.rows):
-                # Keep the least significant 4 bytes (32-bits)
-                suffix_array[i] = row & 0xFFFFFFFF
+        # Keep the least significant 4 bytes (32-bits)
+        positions = (row & 0xFFFFFFFF for row in self.rows)
+        IntArray.build(index_path, positions, nr_rows, **config)
 
 
 class TmpfileCollector(Collector):

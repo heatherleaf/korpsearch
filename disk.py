@@ -107,6 +107,17 @@ class IntArray:
             data = bytearray(size * itemsize)
             return IntArray(data, itemsize)
 
+    @staticmethod
+    def build(path: Optional[Path], values: Iterable[int], size: int = 0, **config: Any) -> None:
+        if isinstance(values, (list, tuple)):
+            assert not size or size == len(values), "Wrong size"
+        elif not size:
+            values = list(values)
+            size = len(values)
+        with IntArray.create(size, path, **config) as array:
+            for i, val in enumerate(values):
+                array[i] = val
+
     @classmethod
     def disksize(cls, path: Path) -> int:
         return file_size(cls.getpath(path)) + file_size(cls.getconfig(path))
