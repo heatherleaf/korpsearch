@@ -5,7 +5,6 @@ import re
 import json
 from pathlib import Path
 from mmap import mmap
-import itertools
 from typing import Optional, Union, Any, NewType
 from collections.abc import Iterator, Iterable
 
@@ -132,6 +131,76 @@ class IntArray:
 
 
 ################################################################################
+## On-disk arrays of bytestrings
+
+class BytesArray:
+    _starts: IntArray
+    _rawdata: mmap
+
+    def __init__(self, path: Path) -> None:
+        startspath, rawpath = self.getpaths(path)
+        self._starts = IntArray(startspath)
+        with open(rawpath, 'r+b') as file:
+            self._rawdata = mmap(file.fileno(), 0)
+
+    def __len__(self) -> int:
+        return len(self._starts) - 1
+
+    def __getitem__(self, i: int) -> bytes:
+        arr = self._starts.array
+        start, end = arr[i], arr[i+1]
+        return self._rawdata[start : end]
+
+    def __setitem__(self, i: int, value: bytes) -> None:
+        raise TypeError("'BytesArray' does not support item assignment")
+
+    def __enter__(self) -> 'BytesArray':
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._rawdata.close()
+        self._starts.close()
+
+    def finditer(self, regex: bytes, flags: int = 0) -> Iterator[int]:
+        regex = b'^(?:' + regex + b')$'
+        flags |= re.MULTILINE
+        positions = self._starts.array
+        pos = 0
+        for match in re.finditer(regex, self._rawdata, flags=flags):
+            start, end = match.span()
+            if start < end:
+                yield binsearch(pos, len(positions), start, lambda i: positions[i])
+
+    def sanity_check(self) -> None:
+        starts = self._starts.array
+        assert starts[0] == 0 and starts[-1] == len(self._rawdata)
+        for start, end in zip(starts, starts[1:]):
+            assert start <= end, f"'BytesArray' position error: {start} > {end}"
+
+    @staticmethod
+    def build(path: Path, values: Iterable[bytes]) -> int:
+        startspath, rawpath = BytesArray.getpaths(path)
+        pos = 0
+        starts: list[int] = [pos]
+        with open(rawpath, 'wb') as rawfile:
+            for val in values:
+                rawfile.write(val)
+                pos += len(val)
+                starts.append(pos)
+        with IntArray.create(len(starts), startspath, max_value=starts[-1]) as arr:
+            for i, start in enumerate(starts):
+                arr[i] = start
+        return len(starts) - 1
+
+    @staticmethod
+    def getpaths(path: Path) -> tuple[Path, Path]:
+        return (add_suffix(path, '.starts'), add_suffix(path, '.rawdata'))
+
+
+################################################################################
 ## Symbols (interned bytestrings)
 
 Symbol = NewType('Symbol', int)
@@ -139,49 +208,42 @@ SymbolRange = tuple[Symbol, Symbol]
 
 
 class SymbolCollection:
-    symbols_suffix = '.symbols'
-
-    _rawdata: mmap
-    _starts: IntArray
+    _bytesarray: BytesArray
     _preload: dict[bytes, Symbol]
 
     def __init__(self, path: Path, preload: bool = False) -> None:
-        path = self.getpath(path)
-        with open(path, 'r+b') as file:
-            self._rawdata = mmap(file.fileno(), 0)
-        self._starts = IntArray(path)
-        assert self._starts.array[0]+1 == self._starts.array[1]
+        self._bytesarray = BytesArray(path)
         self._preload = {}
         if preload:
             self.preload()
 
     def __len__(self) -> int:
-        return len(self._starts) - 1
+        return len(self._bytesarray)
 
     def to_name(self, index: Symbol|int) -> bytes:
-        arr = self._starts.array
-        start, nextstart = arr[index], arr[index + 1]
-        return self._rawdata[start : nextstart-1]
+        return self._bytesarray[index]
 
     def preload(self) -> None:
         if not self._preload:
             self._preload = {}
             for i in range(len(self)):
-                self._preload[self.to_name(i)] = Symbol(i)
+                self._preload[self._bytesarray[i]] = Symbol(i)
 
     def to_symbol(self, name: bytes) -> Symbol:
         try:
             if self._preload:
                 return self._preload[name]
             else:
-                return Symbol(binsearch(0, len(self)-1, name, lambda i: self.to_name(i)))
+                ba = self._bytesarray
+                return Symbol(binsearch(0, len(self)-1, name, lambda i: ba[i]))
         except (KeyError, IndexError, ValueError):
             raise ValueError(f"Symbol doesn't exist: {name.decode(errors='ignore')}")
 
     def to_symbol_range(self, prefix: bytes) -> SymbolRange:
         try:
             n = len(prefix)
-            start, end = binsearch_range(0, len(self)-1, prefix, prefix, lambda i: self.to_name(i)[:n])
+            ba = self._bytesarray
+            start, end = binsearch_range(0, len(self)-1, prefix, prefix, lambda i: ba[i][:n])
             return (Symbol(start), Symbol(end))
         except (KeyError, IndexError, ValueError):
             raise ValueError(f"Symbol prefix doesn't exist: {prefix.decode(errors='ignore')}")
@@ -193,52 +255,25 @@ class SymbolCollection:
         self.close()
 
     def close(self) -> None:
-        self._rawdata.close()
-        self._starts.close()
+        self._bytesarray.close()
 
     def sanity_check(self) -> None:
-        starts = self._starts.array
-        assert starts[0] == 0 and starts[1] == 1
-        old = b''
-        for start, end in zip(starts[1:], starts[2:]):
-            assert start < end, f"SymbolCollection position error: {start} >= {end}"
-            new = self._rawdata[start : end]
-            assert old < new, f"SymbolCollection order error: {old!r} >= {new!r}"
-            old = new
+        self._bytesarray.sanity_check()
+        old = None
+        for name in self._bytesarray:
+            if old is not None:
+                assert old < name, f"'SymbolCollection' order error: {old!r} >= {name!r}"
+            old = name
 
     def finditer(self, regex: bytes, flags: int = 0) -> Iterator[Symbol]:
-        regex = b'^(?:' + regex + b')$'
-        flags |= re.MULTILINE
-        positions = self._starts.array
-        pos = 0
-        for match in re.finditer(regex, self._rawdata, flags=flags):
-            start, end = match.span()
-            if start < end:
-                pos = binsearch(pos, len(positions), start, lambda i: positions[i])
-                yield Symbol(pos)
-
+        for pos in self._bytesarray.finditer(regex, flags):
+            yield Symbol(pos)
 
     @staticmethod
-    def build(path: Path, names: Iterable[bytes]) -> None:
+    def build(path: Path, names: Iterable[bytes]) -> int:
         names = sorted({b''} | set(names))
         assert names[0] == b''
-
-        path = SymbolCollection.getpath(path)
-        rawsize = 0
-        with open(path, 'wb') as rawfile:
-            for name in names:
-                rawfile.write(name + b'\n')
-                rawsize += len(name) + 1
-
-        starts = list(itertools.accumulate((len(s)+1 for s in names), initial=0))
-        with IntArray.create(len(starts), path, max_value=starts[-1]) as arr:
-            for i, start in enumerate(starts):
-                arr[i] = start
-            assert arr[0] == 0 and arr[1] == 1 and arr[-1] == rawsize
-
-    @classmethod
-    def getpath(cls, path: Path) -> Path:
-        return add_suffix(path, cls.symbols_suffix)
+        return BytesArray.build(path, names)
 
 
 ################################################################################
@@ -249,8 +284,9 @@ class SymbolArray:
     array: IntArray
 
     def __init__(self, path: Path, preload: bool = False) -> None:
-        self.array = IntArray(path)
-        self.symbols = SymbolCollection(path, preload)
+        arrpath, symspath = SymbolArray.getpaths(path)
+        self.array = IntArray(arrpath)
+        self.symbols = SymbolCollection(symspath, preload)
 
     def raw(self) -> memoryview:
         return self.array.array
@@ -281,11 +317,14 @@ class SymbolArray:
     def sanity_check(self) -> None:
         self.symbols.sanity_check()
 
-
     @staticmethod
     def create(path: Path, names: Iterable[bytes], max_size: int) -> 'SymbolArray':
-        SymbolCollection.build(path, names)
-        collection = SymbolCollection(path, preload=True)
-        IntArray.create(max_size, path, max_value = len(collection)-1)
-        return SymbolArray(path, preload=True)
+        arrpath, symspath = SymbolArray.getpaths(path)
+        nsymbols = SymbolCollection.build(symspath, names)
+        IntArray.create(max_size, path, max_value=nsymbols)
+        return SymbolArray(arrpath, preload=True)
+
+    @staticmethod
+    def getpaths(path: Path) -> tuple[Path, Path]:
+        return (path, add_suffix(path, '.symbols'))
 
