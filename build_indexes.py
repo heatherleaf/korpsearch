@@ -150,8 +150,8 @@ parser.add_argument('--no-sentence-breaks', action='store_true',
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 parser.add_argument('--no-sentence-feature', action='store_true',
     help="don't build the 's' feature for sentence breaks (default: do build it)")
-parser.add_argument('--no-reversed-features', action='store_true',
-    help="don't build reversed features for suffix search (default: do build them)")
+parser.add_argument('--reversed-features', action='store_true',
+    help="build reversed features for suffix search (default: do not build them)")
 
 parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
     help='verbose output')

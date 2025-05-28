@@ -53,7 +53,7 @@ class AugmentedReader(CorpusReader):
         self.args = args
 
         self._header = reader.header()
-        if not self.args.no_reversed_features:
+        if self.args.reversed_features:
             revd = [Feature(feature + b'_rev') for feature in self._header]
             self._header.extend(revd)
         if not self.args.no_sentence_feature:
@@ -65,7 +65,7 @@ class AugmentedReader(CorpusReader):
     def sentences(self) -> Iterator[Sentence]:
         for sentence in self.wrapped.sentences():
             for token in sentence:
-                if not self.args.no_reversed_features:
+                if self.args.reversed_features:
                     token += [FValue(val.decode()[::-1].encode()) for val in token]
                 if not self.args.no_sentence_feature:
                     token.append(EMPTY)
