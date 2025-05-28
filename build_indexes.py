@@ -82,7 +82,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
-    svalue = corpus.intern(SENTENCE, START)
+    svalue = corpus.get_symbol(SENTENCE, START)
     if args.templates:
         for tmplstr in args.templates:
             tmpl = Template.parse(corpus, tmplstr)

@@ -1,5 +1,4 @@
 
-import re
 import json
 from pathlib import Path
 import logging
@@ -9,7 +8,7 @@ from contextlib import ExitStack
 from collections.abc import Iterator, Sequence
 
 from corpus_reader import corpus_reader
-from disk import DiskIntArray, DiskStringArray, InternedString, InternedRange, StringCollection
+from disk import IntArray, SymbolArray, Symbol, SymbolRange, SymbolCollection
 from util import progress_bar, add_suffix, binsearch_last, Feature, FValue, SENTENCE
 
 ################################################################################
@@ -21,8 +20,8 @@ class Corpus:
     feature_prefix = 'feature:'
     sentences_path = 'sentences'
 
-    tokens: dict[Feature, DiskStringArray]
-    sentence_pointers: DiskIntArray
+    tokens: dict[Feature, SymbolArray]
+    sentence_pointers: IntArray
     id: str
     name: str
     path: Path
@@ -35,9 +34,9 @@ class Corpus:
         self.id = str(self.path)
         if self.path.suffix != self.dir_suffix:
             self.path = add_suffix(self.path, self.dir_suffix)
-        self.sentence_pointers = DiskIntArray(self.path / self.sentences_path)
+        self.sentence_pointers = IntArray(self.path / self.sentences_path)
         self.tokens = {
-            feature: DiskStringArray(self.indexpath(self.path, feature))
+            feature: SymbolArray(self.indexpath(self.path, feature))
             for feature in self.features()
         }
         assert all(
@@ -60,17 +59,17 @@ class Corpus:
         with open(self.path / self.features_file, 'r') as IN:
             return [feat.encode() for feat in json.load(IN)]
 
-    def strings(self, feature: Feature) -> StringCollection:
-        return self.tokens[feature]._strings  # type: ignore
+    def symbols(self, feature: Feature) -> SymbolCollection:
+        return self.tokens[feature].symbols  # type: ignore
 
-    def intern(self, feature: Feature, value: FValue) -> InternedString:
-        return self.tokens[feature].intern(value)
+    def get_symbol(self, feature: Feature, value: FValue) -> Symbol:
+        return self.tokens[feature].symbols.to_symbol(value)
 
-    def interned_range(self, feature: Feature, value: FValue) -> InternedRange:
-        return self.tokens[feature].interned_range(value)
+    def get_symbol_range(self, feature: Feature, prefix: FValue) -> SymbolRange:
+        return self.tokens[feature].symbols.to_symbol_range(prefix)
 
-    def lookup_value(self, feature: Feature, i: InternedString) -> FValue:
-        return FValue(self.tokens[feature].interned_bytes(i))
+    def lookup_symbol(self, feature: Feature, sym: Symbol) -> FValue:
+        return FValue(self.tokens[feature].symbols.to_name(sym))
 
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
@@ -105,9 +104,9 @@ class Corpus:
             if p == pos:
                 tokens.append('[')
             tokens.append('/'.join(
-                strings.interned_string(strings[p])
+                symbol_array.symbols.to_name(symbol_array[p]).decode()
                 for feat in features
-                for strings in [self.tokens[feat]]
+                for symbol_array in [self.tokens[feat]]
             ))
             if p == pos+offset:
                 tokens.append(']')
@@ -130,7 +129,7 @@ class Corpus:
     def close(self) -> None:
         for sa in self.tokens.values():
             sa.close()
-        DiskIntArray.close(self.sentence_pointers)
+        IntArray.close(self.sentence_pointers)
 
 
     def sanity_check(self) -> None:
@@ -140,52 +139,22 @@ class Corpus:
             self.tokens[feat].sanity_check()
         assert self.sentence_pointers.path
         logging.debug(f"Checking sentence pointers: {self.sentence_pointers.path.name}")
-        sent_index = self.tokens[SENTENCE]
-        sent_pointers = self.sentence_pointers.array
-        assert sent_pointers[0] == sent_pointers[1] == 0, "Sentence 0 should not exist"
+        sentence_index = self.tokens[SENTENCE]
+        sentence_pointers = self.sentence_pointers.array
+        assert sentence_pointers[0] == sentence_pointers[1] == 0, "Sentence 0 should not exist"
         sentence = 1
-        sval = sent_index.intern(SENTENCE)
-        for token, sval_ in enumerate(progress_bar(sent_index, "Checking sentences")):
+        sval = sentence_index.symbols.to_symbol(SENTENCE)
+        for token, sval_ in enumerate(progress_bar(sentence_index, "Checking sentences")):
             if sval == sval_:
-                assert sent_pointers[sentence] == token, f"Sentence {sentence} doesn't point to the right token position"
+                assert sentence_pointers[sentence] == token, f"Sentence {sentence} doesn't point to the right token position"
                 sentence += 1
-        assert sentence == len(sent_pointers)
+        assert sentence == len(sentence_pointers)
         logging.info("Done checking corpus")
 
 
-    def get_matches(self, feature: Feature, match_regex: str) -> list[InternedString]:
-        contains = False
-        string_collection = self.strings(feature)
-        strings = string_collection.strings
-        positions = string_collection.starts.array
-        # if match_regex.startswith(".*") and match_regex.endswith(".*"):
-        #     match_regex = match_regex.strip(".*")
-        #     contains = True
-        binary_match_regex = bytes(match_regex, "utf-8")
-        matches = (value.span() for value in re.finditer(binary_match_regex, strings))
-        real_matches: list[InternedString] = []
-        # Can be optimized
-        for match in matches:
-            start, end = 0, len(positions)-2
-            while start <= end:
-                mid = (start + end) // 2
-                key = positions[mid]
-                if key < match[0]:
-                    start = mid + 1
-                elif key > match[0]:
-                    end = mid - 1
-                else:
-                    start = mid
-                    break
-            start_of_word = min(start, end)
-            start_of_this_word = positions[start_of_word]
-            start_of_next_word = positions[start_of_word+1]
-            # Range is until
-            # if contains and (match[1] - 1) < start_of_next_word:
-            #     real_matches.append(InternedString(string_collection, start_of_word))
-            if not contains and match[0] == start_of_this_word and match[1] == start_of_next_word-1:
-                real_matches.append(InternedString(start_of_word))
-        return real_matches
+    def get_matches(self, feature: Feature, regex: str) -> list[Symbol]:
+        symbols = self.symbols(feature)
+        return list(symbols.finditer(regex.encode()))
 
 
     @staticmethod
@@ -213,15 +182,15 @@ class Corpus:
         logging.debug(f" --> read {sum(map(len, stringsets))} distinct strings, {n_sentences} sentences, {n_tokens} tokens")
 
         path = basedir / Corpus.sentences_path
-        with DiskIntArray.create(n_sentences+1, path, max_value = n_tokens) as sentence_array:
+        with IntArray.create(n_sentences+1, path, max_value = n_tokens) as sentence_array:
             sentence_array[0] = 0  # sentence 0 doesn't exist
 
             with ExitStack() as stack:  # to close all feature builders at once
-                feature_builders: list[DiskStringArray] = []
+                feature_builders: list[SymbolArray] = []
                 for feature, strings in zip(features, stringsets):
                     path = Corpus.indexpath(basedir, feature)
                     path.parent.mkdir(exist_ok=True)
-                    str_array = stack.enter_context(DiskStringArray.create(path, strings, n_tokens))
+                    str_array = stack.enter_context(SymbolArray.create(path, strings, n_tokens))
                     feature_builders.append(str_array)
 
                 corpus = stack.enter_context(corpus_reader(corpusfile, "Building indexes", args))
@@ -230,7 +199,7 @@ class Corpus:
                     sentence_array[n] = ctr
                     for token in sentence:
                         for builder, value in zip(feature_builders, token):
-                            builder[ctr] = builder.intern(value)
+                            builder[ctr] = builder.symbols.to_symbol(value)
                         ctr += 1
                 assert ctr == n_tokens
 

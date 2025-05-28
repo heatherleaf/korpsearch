@@ -52,7 +52,7 @@ def main_count(args: Namespace) -> dict[str, Any]:
             for i in sampled_indices:
                 match_pos = results[i]
                 group = tuple(
-                    strings.interned_string(strings[p])
+                    strings.symbols.to_name(strings[p]).decode()
                     for p in range(match_pos, match_pos + query_offset)
                 )
                 stats[group] += 1

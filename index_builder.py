@@ -6,7 +6,7 @@ from mmap import mmap
 from abc import abstractmethod
 import logging
 
-from disk import DiskIntArray
+from disk import IntArray
 from corpus import Corpus
 from index import Template, TemplateLiteral, Index, UnaryIndex
 import sort
@@ -34,7 +34,7 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
         build_binary_index(corpus, index_path, template, args)
     else:
         raise ValueError(f"Cannot build indexes of length {len(template)}: {template}")
-    with DiskIntArray(index_path) as suffix_array:
+    with IntArray(index_path) as suffix_array:
         logging.info(f"Built index for {template}, with {len(suffix_array)} elements")
 
 
@@ -101,8 +101,8 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     else:
         collector = TmpfileCollector(3, index_path.parent / 'index.tmp', args)
 
-    # Optimisation: use the underlying memoryview for each DiskStringArray,
-    # and don't bother with looking up InternedStrings - use the ints directly instead.
+    # Optimisation: use the underlying memoryview for each SymbolArray,
+    # and don't bother with looking up symbols - use the ints directly instead.
     test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value) for lit in template.literals]
 
     skipped_instances = 0
@@ -162,7 +162,7 @@ class ListCollector(Collector):
         self.rows.sort()
 
         logging.debug(f"Creating index file")
-        with DiskIntArray.create(nr_rows, index_path, **config) as suffix_array:
+        with IntArray.create(nr_rows, index_path, **config) as suffix_array:
             for i, row in enumerate(self.rows):
                 # Keep the least significant 4 bytes (32-bits)
                 suffix_array[i] = row & 0xFFFFFFFF
@@ -206,7 +206,7 @@ class TmpfileCollector(Collector):
                 )
 
         logging.debug(f"Creating index file")
-        with DiskIntArray.create(nr_rows, index_path, **config) as suffix_array:
+        with IntArray.create(nr_rows, index_path, **config) as suffix_array:
             with open(self.path, 'rb') as file:
                 for i in range(nr_rows):
                     row = file.read(rowbytes)

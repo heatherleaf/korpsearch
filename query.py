@@ -30,7 +30,7 @@ class Query:
     corpus: Corpus
     literals: list[QueryElement]
     features: set[Feature]
-    # featured_query: dict[Feature, list[tuple[bool, int, InternedString, InternedString]]]
+    # featured_query: dict[Feature, list[tuple[bool, int, Symbol, Symbol]]]
     template: Template | None
 
     def __init__(self, corpus: Corpus, literals: Sequence[QueryElement]) -> None:
@@ -180,19 +180,19 @@ class Query:
                 match value_type:
                     case 'normal':
                         value = FValue(valstr.encode())
-                        interned_string = corpus.intern(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned_string, interned_string, corpus))
+                        symbol = corpus.get_symbol(feature, value)
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol, symbol, corpus))
                     case 'prefix':
                         valstr = valstr.split('.*')[0]
                         value = FValue(valstr.encode())
-                        interned_range = corpus.interned_range(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned_range[0], interned_range[1], corpus))
+                        symbol_range = corpus.get_symbol_range(feature, value)
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range[0], symbol_range[1], corpus))
                     case 'suffix':
                         valstr = valstr.split('.*')[-1][::-1]
                         value = FValue(valstr.encode())
                         feature = Feature(feature + b'_rev')
-                        interned_range = corpus.interned_range(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, interned_range[0], interned_range[1], corpus))
+                        symbol_range = corpus.get_symbol_range(feature, value)
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range[0], symbol_range[1], corpus))
                     case 'regex':
                         regex_matches = corpus.get_matches(feature, valstr)
                         regexed_literals = [KnownLiteral(negative, offset, feature, match, match, corpus) for match in regex_matches]
@@ -203,7 +203,7 @@ class Query:
             elif query_list:
                 query.extend(*query_list)
         if not no_sentence_breaks:
-            svalue = corpus.intern(SENTENCE, START)
+            svalue = corpus.get_symbol(SENTENCE, START)
             for offset in range(1, len(tokens)):
                 query.append(KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus))
         if not query:

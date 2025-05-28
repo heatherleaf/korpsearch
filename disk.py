@@ -1,6 +1,7 @@
 """General-purpose on-disk data structures."""
 
 import sys
+import re
 import json
 from pathlib import Path
 from mmap import mmap
@@ -12,9 +13,9 @@ from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearc
 
 
 ################################################################################
-## On-disk arrays of numbers
+## On-disk arrays of integers
 
-class DiskIntArray:
+class IntArray:
     array_suffix = '.ia'
     config_suffix = '.cfg'
     default_itemsize = 4
@@ -40,6 +41,15 @@ class DiskIntArray:
 
     def __len__(self) -> int:
         return len(self.array)
+
+    def __getitem__(self, i: int) -> int:
+        return self.array[i]
+
+    def __setitem__(self, i: int, value: int) -> None:
+        self.array[i] = value
+
+    def __iter__(self) -> Iterator[int]:
+        yield from self.array
 
     def __enter__(self) -> memoryview:
         return self.array
@@ -76,26 +86,26 @@ class DiskIntArray:
         self.array = memoryview(obj).cast(get_typecode(itemsize))
 
     @staticmethod
-    def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'DiskIntArray':
+    def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'IntArray':
         assert not (max_value and itemsize), "Only one of 'max_value' and 'itemsize' should be provided."
         if max_value > 0:
             itemsize = get_integer_size(max_value)
         if not itemsize:
-            itemsize = DiskIntArray.default_itemsize
+            itemsize = IntArray.default_itemsize
         if path:
-            with open(DiskIntArray.getconfig(path), 'w') as configfile:
+            with open(IntArray.getconfig(path), 'w') as configfile:
                 print(json.dumps({
                     'itemsize': itemsize,
                     'byteorder': sys.byteorder,
                     'size': size,
                     **config,
                 }), file=configfile)
-            with open(DiskIntArray.getpath(path), 'wb') as file:
+            with open(IntArray.getpath(path), 'wb') as file:
                 file.truncate(size * itemsize)
-            return DiskIntArray(path)
+            return IntArray(path)
         else:
             data = bytearray(size * itemsize)
-            return DiskIntArray(data, itemsize)
+            return IntArray(data, itemsize)
 
     @classmethod
     def disksize(cls, path: Path) -> int:
@@ -111,163 +121,160 @@ class DiskIntArray:
 
 
 ################################################################################
-## String interning
+## Symbols (interned bytestrings)
 
-InternedString = NewType('InternedString', int)
-InternedRange = tuple[InternedString, InternedString]
+Symbol = NewType('Symbol', int)
+SymbolRange = tuple[Symbol, Symbol]
 
 
-class StringCollection:
-    strings_suffix = '.strings'
+class SymbolCollection:
+    symbols_suffix = '.symbols'
 
-    strings: mmap
-    starts: DiskIntArray
-
-    _intern: dict[bytes, InternedString]
+    _rawdata: mmap
+    _starts: IntArray
+    _preload: dict[bytes, Symbol]
 
     def __init__(self, path: Path, preload: bool = False) -> None:
         path = self.getpath(path)
         with open(path, 'r+b') as file:
-            self.strings = mmap(file.fileno(), 0)
-        self.starts = DiskIntArray(path)
-        assert self.starts.array[0]+1 == self.starts.array[1]
-        self._intern = {}
+            self._rawdata = mmap(file.fileno(), 0)
+        self._starts = IntArray(path)
+        assert self._starts.array[0]+1 == self._starts.array[1]
+        self._preload = {}
         if preload:
             self.preload()
 
     def __len__(self) -> int:
-        return len(self.starts) - 1
+        return len(self._starts) - 1
 
-    def from_index(self, index: int) -> bytes:
-        arr = self.starts.array
+    def to_name(self, index: Symbol|int) -> bytes:
+        arr = self._starts.array
         start, nextstart = arr[index], arr[index + 1]
-        return self.strings[start : nextstart-1]
+        return self._rawdata[start : nextstart-1]
 
     def preload(self) -> None:
-        if not self._intern:
-            self._intern = {}
+        if not self._preload:
+            self._preload = {}
             for i in range(len(self)):
-                self._intern[self.from_index(i)] = InternedString(i)
+                self._preload[self.to_name(i)] = Symbol(i)
 
-    def intern(self, string: bytes) -> InternedString:
+    def to_symbol(self, name: bytes) -> Symbol:
         try:
-            if self._intern:
-                return self._intern[string]
+            if self._preload:
+                return self._preload[name]
             else:
-                return InternedString(binsearch(0, len(self)-1, string, lambda i: self.from_index(i)))
+                return Symbol(binsearch(0, len(self)-1, name, lambda i: self.to_name(i)))
         except (KeyError, IndexError, ValueError):
-            raise ValueError(f"Interned string doesn't exist: {string.decode(errors='ignore')}")
+            raise ValueError(f"Symbol doesn't exist: {name.decode(errors='ignore')}")
 
-    def interned_range(self, string: bytes) -> InternedRange:
+    def to_symbol_range(self, prefix: bytes) -> SymbolRange:
         try:
-            n = len(string)
-            start, end = binsearch_range(0, len(self)-1, string, string, lambda i: self.from_index(i)[:n])
-            return (InternedString(start), InternedString(end))
+            n = len(prefix)
+            start, end = binsearch_range(0, len(self)-1, prefix, prefix, lambda i: self.to_name(i)[:n])
+            return (Symbol(start), Symbol(end))
         except (KeyError, IndexError, ValueError):
-            raise ValueError(f"Interned prefix doesn't exist: {string.decode(errors='ignore')}")
+            raise ValueError(f"Symbol prefix doesn't exist: {prefix.decode(errors='ignore')}")
 
-    def __enter__(self) -> 'StringCollection':
+    def __enter__(self) -> 'SymbolCollection':
         return self
 
     def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
-        self.strings.close()
-        self.starts.close()
+        self._rawdata.close()
+        self._starts.close()
 
     def sanity_check(self) -> None:
-        starts = self.starts.array
+        starts = self._starts.array
         assert starts[0] == 0 and starts[1] == 1
         old = b''
         for start, end in zip(starts[1:], starts[2:]):
-            assert start < end, f"StringCollection position error: {start} >= {end}"
-            new = self.strings[start : end]
-            assert old < new, f"StringCollection order error: {old!r} >= {new!r}"
+            assert start < end, f"SymbolCollection position error: {start} >= {end}"
+            new = self._rawdata[start : end]
+            assert old < new, f"SymbolCollection order error: {old!r} >= {new!r}"
             old = new
+
+    def finditer(self, regex: bytes, flags: int = 0) -> Iterator[Symbol]:
+        regex = b'^(?:' + regex + b')$'
+        flags |= re.MULTILINE
+        positions = self._starts.array
+        pos = 0
+        for match in re.finditer(regex, self._rawdata, flags=flags):
+            start, end = match.span()
+            if start < end:
+                pos = binsearch(pos, len(positions), start, lambda i: positions[i])
+                yield Symbol(pos)
 
 
     @staticmethod
-    def build(path: Path, strings: Iterable[bytes]) -> None:
-        stringset = set(strings)
-        stringset.add(b'')
-        stringlist = sorted(stringset)
-        assert stringlist[0] == b''
+    def build(path: Path, names: Iterable[bytes]) -> None:
+        names = sorted({b''} | set(names))
+        assert names[0] == b''
 
-        path = StringCollection.getpath(path)
-        with open(path, 'wb') as stringsfile:
-            for string in stringlist:
-                stringsfile.write(string)
-                stringsfile.write(b'\n')
+        path = SymbolCollection.getpath(path)
+        rawsize = 0
+        with open(path, 'wb') as rawfile:
+            for name in names:
+                rawfile.write(name + b'\n')
+                rawsize += len(name) + 1
 
-        starts = list(itertools.accumulate((len(s)+1 for s in stringlist), initial=0))
-        with DiskIntArray.create(len(starts), path, max_value=starts[-1]) as arr:
+        starts = list(itertools.accumulate((len(s)+1 for s in names), initial=0))
+        with IntArray.create(len(starts), path, max_value=starts[-1]) as arr:
             for i, start in enumerate(starts):
                 arr[i] = start
-            assert arr[0] == 0 and arr[1] == 1
+            assert arr[0] == 0 and arr[1] == 1 and arr[-1] == rawsize
 
     @classmethod
     def getpath(cls, path: Path) -> Path:
-        return add_suffix(path, cls.strings_suffix)
+        return add_suffix(path, cls.symbols_suffix)
 
 
 ################################################################################
-## On-disk arrays of interned strings
+## On-disk arrays of symbols (interned bytestrings)
 
-class DiskStringArray:
-    _strings: StringCollection
-    _array: DiskIntArray
+class SymbolArray:
+    symbols: SymbolCollection
+    array: IntArray
 
     def __init__(self, path: Path, preload: bool = False) -> None:
-        self._array = DiskIntArray(path)
-        self._strings = StringCollection(path, preload)
+        self.array = IntArray(path)
+        self.symbols = SymbolCollection(path, preload)
 
     def raw(self) -> memoryview:
-        return self._array.array
-
-    def intern(self, x: bytes) -> InternedString:
-        return self._strings.intern(x)
-
-    def interned_range(self, x: bytes) -> InternedRange:
-        return self._strings.interned_range(x)
+        return self.array.array
 
     def __len__(self) -> int:
-        return len(self._array)
+        return len(self.array)
 
-    def __getitem__(self, i: int) -> InternedString:
-        return InternedString(self._array.array[i])
+    def __getitem__(self, i: int) -> Symbol:
+        return Symbol(self.array.array[i])
 
-    def interned_bytes(self, s: InternedString) -> bytes:
-        return self._strings.from_index(s)
+    def __setitem__(self, i: int, value: Symbol) -> None:
+        self.array[i] = value
 
-    def interned_string(self, s: InternedString) -> str:
-        return self.interned_bytes(s).decode()
+    def __iter__(self) -> Iterator[Symbol]:
+        for i in self.array:
+            yield Symbol(i)
 
-    def __setitem__(self, i: int, value: InternedString) -> None:
-        self._array.array[i] = value
-
-    def __iter__(self) -> Iterator[InternedString]:
-        for i in self._array.array:
-            yield InternedString(i)
-
-    def __enter__(self) -> 'DiskStringArray':
+    def __enter__(self) -> 'SymbolArray':
         return self
 
     def __exit__(self, *_: Any) -> None:
         self.close()
 
     def close(self) -> None:
-        self._array.close()
-        self._strings.close()
+        self.array.close()
+        self.symbols.close()
 
     def sanity_check(self) -> None:
-        self._strings.sanity_check()
+        self.symbols.sanity_check()
 
 
     @staticmethod
-    def create(path: Path, strings: Iterable[bytes], max_size: int) -> 'DiskStringArray':
-        StringCollection.build(path, strings)
-        collection = StringCollection(path, preload=True)
-        DiskIntArray.create(max_size, path, max_value = len(collection)-1)
-        return DiskStringArray(path, preload=True)
+    def create(path: Path, names: Iterable[bytes], max_size: int) -> 'SymbolArray':
+        SymbolCollection.build(path, names)
+        collection = SymbolCollection(path, preload=True)
+        IntArray.create(max_size, path, max_value = len(collection)-1)
+        return SymbolArray(path, preload=True)
 

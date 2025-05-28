@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 from collections.abc import Iterator, Callable
 
-from disk import DiskIntArray
+from disk import IntArray
 from enum import Enum
 from util import binsearch_lookup
 import merge
@@ -57,10 +57,10 @@ class IndexSet:
     start: int
     size: int
     offset: int
-    values: DiskIntArray
+    values: IntArray
     path: Optional[Path]
 
-    def __init__(self, values: DiskIntArray, path: Optional[Path] = None,
+    def __init__(self, values: IntArray, path: Optional[Path] = None,
                  start: int = 0, size: int = -1, offset: int = 0) -> None:
         assert values.array.itemsize == 4, "IndexSets must contain 4-byte integer arrays."
         if size < 0:
@@ -76,7 +76,7 @@ class IndexSet:
 
     @staticmethod
     def open(path: Path) -> 'IndexSet':
-        arr = DiskIntArray(path)
+        arr = IntArray(path)
         return IndexSet(arr, path)
 
     def __len__(self) -> int:
@@ -162,18 +162,18 @@ class IndexSet:
         self._finalise_result(result, i)
 
     def _init_result(self, resultpath: Optional[Path], other: Optional['IndexSet'] = None,
-                     merge_type: MergeType = MergeType.INTERSECTION) -> DiskIntArray:
+                     merge_type: MergeType = MergeType.INTERSECTION) -> IntArray:
         max_size = merge_type.max_merge_size(len(self), len(other)) if other else len(self)
         if not resultpath:
-            return DiskIntArray.create(max_size, itemsize = self.values.array.itemsize)
-        if self.path and DiskIntArray.getpath(self.path) == DiskIntArray.getpath(resultpath):
+            return IntArray.create(max_size, itemsize = self.values.array.itemsize)
+        if self.path and IntArray.getpath(self.path) == IntArray.getpath(resultpath):
             assert max_size <= len(self), "Indexset: cannot update unions in-place"
             return self.values
         if other and other.path:
-            assert DiskIntArray.getpath(other.path) != DiskIntArray.getpath(resultpath)
-        return DiskIntArray.create(max_size, resultpath)
+            assert IntArray.getpath(other.path) != IntArray.getpath(resultpath)
+        return IntArray.create(max_size, resultpath)
 
-    def _finalise_result(self, result: DiskIntArray, size: int) -> None:
+    def _finalise_result(self, result: IntArray, size: int) -> None:
         assert 0 <= size <= len(result)
         if size < len(result):
             result.truncate(size)

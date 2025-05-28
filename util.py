@@ -50,6 +50,7 @@ CT = TypeVar('CT', bound=ComparableProtocol)
 
 def add_suffix(path: Path, suffix: str) -> Path:
     """Add the suffix to the path, unless it's already there."""
+    path = Path(path)
     if path.suffix != suffix:
         path = Path(str(path) + suffix)
         # Alternatively: Path(path).with_suffix(path.suffix + suffix)

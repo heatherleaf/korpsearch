@@ -12,7 +12,7 @@ from indexset import IndexSet, MergeType
 from corpus import Corpus
 from query import Query
 from util import Feature, SENTENCE, WORD
-from disk import DiskIntArray
+from disk import IntArray
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -42,7 +42,7 @@ def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path 
                 'id': query.corpus.id,
             }), file=INFO)
     query_hash = hash_repr(query, extra_args, size=32)
-    return DiskIntArray.getpath(query_dir / query_hash)
+    return IntArray.getpath(query_dir / query_hash)
 
 
 def is_cache_file(cache_file: Path|None) -> bool:
@@ -54,7 +54,7 @@ def try_open_cache(cache_file: Path|None, args: Namespace) -> IndexSet | None:
         assert cache_file and not args.no_cache
         result = IndexSet.open(cache_file)
         cache_file.touch()
-        DiskIntArray.getconfig(cache_file).touch()
+        IntArray.getconfig(cache_file).touch()
         return result
     except (FileNotFoundError, AssertionError):
         return None
@@ -66,7 +66,7 @@ def collect_and_sort_prefix(index_view: IndexSet, sorted_file: Path|None, args: 
         from fast_merge import sort  # type: ignore
     except (ModuleNotFoundError, AssertionError):
         from merge import sort
-    result = DiskIntArray.create(index_view.size, sorted_file)
+    result = IntArray.create(index_view.size, sorted_file)
     sort(index_view.values.array, index_view.start, index_view.size, result.array)
     return IndexSet(result, path = sorted_file, offset = index_view.offset)
 
@@ -203,7 +203,7 @@ def run_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSe
     result = run_outer_query(query, results_file, args)
     if is_cache_file(result.path) and result.path != results_file:
         assert result.path is not None and results_file is not None
-        DiskIntArray.getconfig(result.path).replace(DiskIntArray.getconfig(results_file))
+        IntArray.getconfig(result.path).replace(IntArray.getconfig(results_file))
         result.path.replace(results_file)
         result.path = results_file
     return result
@@ -285,9 +285,9 @@ def main_search(args: Namespace) -> dict[str, Any]:
                         match_start = match_pos - corpus.sentence_pointers.array[sentence]
                         tokens = [
                             {
-                                feat.decode(): strings.interned_string(strings[p])
+                                feat.decode(): symbol_array.symbols.to_name(symbol_array[p]).decode()
                                 for feat in features_to_show
-                                for strings in [corpus.tokens[feat]]
+                                for symbol_array in [corpus.tokens[feat]]
                             }
                             for p in corpus.sentence_positions(sentence)
                         ]
