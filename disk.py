@@ -328,3 +328,33 @@ class SymbolArray:
     def getpaths(path: Path) -> tuple[Path, Path]:
         return (path, add_suffix(path, '.symbols'))
 
+
+################################################################################
+## On-disk maps/dicts from integers to bytestrings
+
+class IntBytesMap:
+    _keys: IntArray
+    _values: BytesArray
+
+    def __init__(self, path: Path):
+        keyspath, valspath = self.getpaths(path)
+        self._keys = IntArray(keyspath)
+        self._values = BytesArray(valspath)
+
+    def __getitem__(self, key: int) -> bytes:
+        pos = binsearch(0, len(self._keys), key, lambda k: self._keys[k])
+        return self._values[pos]
+
+    def __setitem__(self, key: int, value: bytes) -> None:
+        raise TypeError("'IntBytesMap' does not support item assignment")
+
+    @staticmethod
+    def build(path: Path, kvpairs: Iterable[tuple[int, bytes]]) -> None:
+        keyspath, valspath = IntBytesMap.getpaths(path)
+        keys, values = zip(*sorted(kvpairs))
+        IntArray.build(keyspath, keys, max_value=keys[-1])
+        BytesArray.build(valspath, values)
+
+    @staticmethod
+    def getpaths(path: Path) -> tuple[Path, Path]:
+        return (add_suffix(path, '.keys'), add_suffix(path, '.values'))
