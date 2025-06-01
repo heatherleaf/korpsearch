@@ -4,26 +4,26 @@ import logging
 import os
 from pathlib import Path
 
-from disk import IntArray
+from util import file_size
 
 
 def trim_cache(args: argparse.Namespace) -> None:
+    cache_dir: Path = args.cache_dir
     mb = 1 << 20
-    cache_files = sorted(args.cache_dir.rglob('*' + IntArray.array_suffix),
-                         key = lambda f: f.stat().st_mtime)
-    size = sum(IntArray.disksize(file) for file in cache_files)
-    logging.info(f"Current cache size: {size/mb:.1f} MB (max limit: {args.max_size} MB)")
-    excess = size - args.max_size * mb
-    for file in cache_files:
+    cache_files = sorted(cache_dir.rglob('*.bitmap'), key = lambda f: f.stat().st_mtime)
+    file_sizes = [file_size(file) for file in cache_files]
+    total_size = sum(file_sizes)
+    logging.info(f"Current cache size: {total_size/mb:.1f} MB (max limit: {args.max_size} MB)")
+    excess = total_size - args.max_size * mb
+    for file, size in zip(cache_files, file_sizes):
         if excess <= 0:
             break
-        logging.info(f"Deleting old cache file: {file} ({file.stat().st_size/mb:.1f} MB)")
-        excess -= IntArray.disksize(file)
-        IntArray.getconfig(file).unlink(missing_ok=True)
-        IntArray.getpath(file).unlink(missing_ok=True)
-    for dir, _, filenames in os.walk(args.cache_dir, topdown=False):
+        logging.info(f"Deleting old cache file: {file} ({size/mb:.1f} MB)")
+        excess -= size
+        file.unlink(missing_ok=True)
+    for dir, _, filenames in os.walk(cache_dir, topdown=False):
         dir = Path(dir)
-        if dir != args.cache_dir:
+        if dir != cache_dir:
             if filenames == ["__info__"]:
                 (dir / filenames[0]).unlink()
             try:
