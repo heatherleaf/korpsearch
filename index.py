@@ -3,21 +3,20 @@ from typing import Optional, Any, NewType
 from collections.abc import Iterator, Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+import json
 import logging
 
-from disk import Symbol, SymbolRange, IntArray
+from pyroaring import BitMap
+
+from disk import Symbol, SymbolRange, IntArray, IntBytesMap
 from corpus import Corpus
-from indexset import IndexSet
-from util import progress_bar, binsearch_range, check_feature, Feature, FValue
+from util import add_suffix, progress_bar, binsearch_range, check_feature, Feature, FValue
 
 
 ################################################################################
 ## Literals, templates and instances
 
-Instance = NewType('Instance', tuple[SymbolRange, ...])
-
-def mkInstance(strs: Sequence[Symbol | SymbolRange]) -> Instance:
-    return Instance(tuple(s if isinstance(s, tuple) else (s, s) for s in strs))
+Instance = NewType('Instance', Sequence[Symbol|SymbolRange])
 
 
 @dataclass(frozen=True, order=True)
@@ -25,28 +24,31 @@ class KnownLiteral:
     negative: bool
     offset: int
     feature: Feature
-    value: Symbol
-    value2: Symbol
+    value: Symbol | SymbolRange
     corpus: Corpus = field(compare=False)
 
     def __post_init__(self) -> None:
         check_feature(self.feature)
 
     def __str__(self) -> str:
-        value = self.corpus.lookup_symbol(self.feature, self.value).decode()
-        value2 = self.corpus.lookup_symbol(self.feature, self.value2).decode()
-        if self.is_prefix():
-            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}-{value2}"
+        if isinstance(self.value, tuple):
+            value0 = self.corpus.lookup_symbol(self.feature, self.value[0]).decode()
+            value1 = self.corpus.lookup_symbol(self.feature, self.value[1]).decode()
+            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}-{value1}"
         else:
+            value = self.corpus.lookup_symbol(self.feature, self.value).decode()
             return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
 
     def is_prefix(self) -> bool:
-        return self.value != self.value2
+        return isinstance(self.value, tuple)
 
     # unoptimized version for use with Query.check_position
     def check_position(self, corpus: Corpus, pos: int) -> bool:
         value = corpus.tokens[self.feature][pos + self.offset]
-        return (value >= self.value and value <= self.value2) != self.negative
+        if isinstance(self.value, tuple):
+            return self.negative != (self.value[0] <= value <= self.value[1])
+        else:
+            return self.negative != (self.value == value)
 
     def test(self, pos: int) -> bool:
         value = self.corpus.tokens[self.feature][pos + self.offset]
@@ -66,7 +68,7 @@ class KnownLiteral:
                 negative = True
             value = FValue(valstr.encode())
             symbol = corpus.get_symbol(feature, value)
-            return KnownLiteral(negative, int(offset), feature, symbol, symbol, corpus)
+            return KnownLiteral(negative, int(offset), feature, symbol, corpus)
         except (ValueError, AssertionError):
             raise ValueError(f"Ill-formed literal: {litstr}")
 
@@ -78,7 +80,8 @@ class DisjunctiveGroup:
     literals: tuple[KnownLiteral, ...]
 
     def __str__(self) -> str:
-        return "|".join(map(str, self.literals))
+        return ("|".join(map(str, self.literals)) if len(self.literals) < 10 else
+                "|".join(map(str, self.literals[:3])) + "|...|" + "|".join(map(str, self.literals[-3:])))
 
     # unoptimized version for use with Query.check_position
     def check_position(self, corpus: Corpus, pos: int) -> bool:
@@ -152,9 +155,12 @@ class Template:
         tokens: list[str] = []
         for offset in range(self.min_offset(), self.max_offset()+1):
             token = ','.join('?' + lit.feature.decode() for lit in self.template if lit.offset == offset)
-            literal = ','.join(f'{lit.feature.decode()}{"≠" if lit.negative else "="}"{val}"'
-                               for lit in self.literals if lit.offset == offset
-                               for val in [lit.corpus.lookup_symbol(lit.feature, lit.value).decode()])
+            literal = ','.join(
+                f'{lit.feature.decode()}{"≠" if lit.negative else "="}"{val}"'
+                for lit in self.literals if lit.offset == offset
+                for lval in [lit.value[0] if isinstance(lit.value, tuple) else lit.value]
+                for val in [lit.corpus.lookup_symbol(lit.feature, lval).decode()]
+            )
             if literal:
                 tokens.append(token + '|' + literal)
             else:
@@ -170,7 +176,7 @@ class Template:
     def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
         if not all(lit.test(pos) for lit in self.literals):
             return None
-        return mkInstance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
+        return Instance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))
 
     @staticmethod
     def parse(corpus: Corpus, template_str: str) -> 'Template':
@@ -198,20 +204,30 @@ class Index:
     dir_suffix: str = '.indexes'
     corpus: Corpus
     template: Template
-    index: IntArray
+    smallsets: IntArray | None
+    bigsets: IntBytesMap | None
     path: Path
 
     def __init__(self, corpus: Corpus, template: Template) -> None:
         self.corpus = corpus
         self.template = template
         self.path = self.indexpath(corpus, template)
-        self.index = IntArray(self.path)
+        try:
+            self.smallsets = IntArray(self.path)
+        except FileNotFoundError:
+            self.smallsets = None
+        try:
+            self.bigsets = IntBytesMap(self.path)
+        except FileNotFoundError:
+            self.bigsets = None
+        if self.smallsets is self.bigsets is None:
+            raise FileNotFoundError(f"Index does not exist: {self.path}")
 
     def __str__(self) -> str:
         return self.__class__.__name__ + ':' + str(self.template)
 
     def __len__(self) -> int:
-        return len(self.index)
+        return self.getconfig()['size']
 
     def __enter__(self) -> 'Index':
         return self
@@ -220,35 +236,84 @@ class Index:
         self.close()
 
     def getconfig(self) -> dict[str, Any]:
-        return self.index.config
+        try:
+            with open(self.getconfigpath(self.path)) as configfile:
+                return json.load(configfile)
+        except FileNotFoundError:
+            assert self.smallsets
+            return self.smallsets.getconfig()
 
     def close(self) -> None:
-        self.index.close()
+        if self.smallsets: self.smallsets.close()
+        if self.bigsets: self.bigsets.close()
 
-    def search(self, instance: Instance, offset: int = 0) -> IndexSet:
-        set_start, set_end = self.lookup_instance(instance)
-        set_size = set_end - set_start + 1
-        iset = IndexSet(self.index, path=self.path, start=set_start, size=set_size, offset=offset)
-        return iset
+    def search(self, instance: Instance, offset: int = 0) -> BitMap:
+        try:
+            start, end = self.get_instance_range(instance)
+        except ValueError:
+            return BitMap()
+        small = self.lookup_smallset(start, end)
+        big = self.lookup_bigset(start, end)
+        result = small | big
+        if offset:
+            result = result.shift(-offset)
+        logging.debug(f"Search: {len(small)} smallsets + {len(big)} bigsets = {len(result)}")
+        return result
 
-    def lookup_instance(self, instance: Instance) -> tuple[int, int]:
+    def get_instance_range(self, instance: Instance) -> tuple[int, int]:
         raise NotImplementedError("Must be overridden by a subclass")
+
+    def get_search_key(self) -> Callable[[int], int]:
+        raise NotImplementedError("Must be overridden by a subclass")
+
+    def lookup_smallset(self, start_key: int, end_key: int) -> BitMap:
+        if self.smallsets:
+            try:
+                search_key = self.get_search_key()
+                error = (start_key == end_key)
+                start, end = binsearch_range(0, len(self.smallsets)-1, start_key, end_key, search_key, error=error)
+                if 0 <= start <= end < len(self.smallsets):
+                    return BitMap(self.smallsets.slice(start, end+1))
+            except (KeyError, IndexError):
+                pass
+        return BitMap()
+
+    def lookup_bigset(self, start_key: int, end_key: int) -> BitMap:
+        if self.bigsets:
+            try:
+                if start_key == end_key:
+                    bmap = self.bigsets[start_key]
+                    return BitMap.deserialize(bmap)
+                else:
+                    bmaps = self.bigsets.slice(start_key, end_key)
+                    logging.debug(f"Found {len(bmaps)} bitmaps between {start_key}..{end_key}")
+                    return BitMap.union(*(BitMap.deserialize(bm) for bm in bmaps))
+            except (KeyError, IndexError):
+                pass
+        return BitMap()
 
     def sanity_check(self) -> None:
         logging.info(f"Checking search index: {self.template}")
-        prev_pos = -1
-        prev_instance = None
-        for i in progress_bar(range(len(self.index)), desc="Checking index"):
-            pos = self.index.array[i]
-            instance = self.template.instantiate(self.corpus, pos)
-            assert instance is not None
-            if prev_instance is not None:
-                assert prev_instance <= instance, f"Index position {i}: {prev_instance} > {instance}"
-                if prev_instance == instance:
-                    assert prev_pos < pos, f"Index position {i}: {prev_instance} == {instance} but {prev_pos} >= {pos}"
-            prev_pos = pos
-            prev_instance = instance
+        if self.bigsets:
+            self.bigsets.sanity_check()
+        if self.smallsets:
+            prev_pos = -1
+            prev_instance = None
+            for i in progress_bar(range(len(self.smallsets)), desc="Checking index"):
+                pos = self.smallsets.array[i]
+                instance = self.template.instantiate(self.corpus, pos)
+                assert instance is not None
+                if prev_instance is not None:
+                    assert prev_instance <= instance, f"Index position {i}: {prev_instance} > {instance}"  # type: ignore
+                    if prev_instance == instance:
+                        assert prev_pos < pos, f"Index position {i}: {prev_instance} == {instance} but {prev_pos} >= {pos}"
+                prev_pos = pos
+                prev_instance = instance
 
+
+    @staticmethod
+    def getconfigpath(path: Path) -> Path:
+        return add_suffix(path, '.cfg')
 
     @staticmethod
     def indexpath(corpus: Corpus, template: Template) -> Path:
@@ -270,18 +335,20 @@ class UnaryIndex(Index):
         assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
         super().__init__(corpus, template)
 
-    def search_key(self) -> Callable[[int], Symbol]:
+    def get_instance_range(self, instance: Instance) -> tuple[int, int]:
+        assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
+        (value,) = instance
+        return value if isinstance(value, tuple) else (value, value)
+
+    def get_search_key(self) -> Callable[[int], int]:
+        assert self.smallsets
         tmpl = self.template.template[0]
         features = self.corpus.tokens[tmpl.feature]
         offset = tmpl.offset
-        index = self.index.array
-        return lambda k: features[index[k] + offset]
-
-    def lookup_instance(self, instance: Instance) -> tuple[int, int]:
-        assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
-        ((value1, value2),) = instance
-        error = (value1 == value2)
-        return binsearch_range(0, len(self)-1, value1, value2, self.search_key(), error=error)
+        index = self.smallsets.array
+        def search_key(k: int) -> int:
+            return features[index[k] + offset]
+        return search_key
 
 
 class BinaryIndex(Index):
@@ -289,18 +356,27 @@ class BinaryIndex(Index):
         assert len(template) == 2, f"BinaryIndex templates must have length 2: {template}"
         super().__init__(corpus, template)
 
-    def lookup_instance(self, instance: Instance) -> tuple[int, int]:
+    def get_instance_range(self, instance: Instance) -> tuple[int, int]:
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
-        ((left1, left2), (right1, right2)) = instance
-        if left1 != left2:
-            raise KeyError("BinaryIndex cannot have a range as left value")
+        (left, right) = instance
+        if isinstance(left, (tuple, list)):
+            raise ValueError("BinaryIndex cannot have a range as left value")
+        left <<= 32
+        if isinstance(right, tuple):
+            return (left + right[0], left + right[1])
+        else:
+            return (left + right, left + right)
+
+    def get_search_key(self) -> Callable[[int], int]:
+        assert self.smallsets
         tmpl1, tmpl2 = self.template.template
         offset1, offset2 = tmpl1.offset, tmpl2.offset
         features1 = self.corpus.tokens[tmpl1.feature]
         features2 = self.corpus.tokens[tmpl2.feature]
-        index = self.index.array
-        def search_key(k: int) -> SymbolRange:
-            return (features1[index[k] + offset1], features2[index[k] + offset2])
-        error = (right1 == right2)
-        return binsearch_range(0, len(self)-1, (left1, right1), (left2, right2), search_key, error=error)
+        index = self.smallsets.array
+        def search_key(k: int) -> int:
+            key1 = features1[index[k] + offset1]
+            key2 = features2[index[k] + offset2]
+            return (key1 << 32) + key2
+        return search_key
 

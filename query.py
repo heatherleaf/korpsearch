@@ -4,7 +4,7 @@ import itertools
 from typing import Literal
 from collections.abc import Iterator, Sequence
 
-from index import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance, mkInstance, Index
+from index import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance, Index
 from corpus import Corpus
 from util import Feature, FValue, SENTENCE, START
 
@@ -63,7 +63,7 @@ class Query:
         else:
             self.template = Template(
                 [TemplateLiteral(lit.offset-self.min_offset(), lit.feature) for lit in self.positive_literals()],
-                [KnownLiteral(True, lit.offset-self.min_offset(), lit.feature, lit.value, lit.value2, corpus) for lit in self.negative_literals()],
+                [KnownLiteral(True, lit.offset-self.min_offset(), lit.feature, lit.value, corpus) for lit in self.negative_literals()],
             )
 
 
@@ -93,9 +93,9 @@ class Query:
 
     def instance(self) -> Instance:
         if self.is_negative():
-            return mkInstance([(lit.value, lit.value2) for lit in self.negative_literals()])
+            return Instance([lit.value for lit in self.negative_literals()])
         else:
-            return mkInstance([(lit.value, lit.value2) for lit in self.positive_literals()])
+            return Instance([lit.value for lit in self.positive_literals()])
 
     def index(self) -> Index:
         assert self.template
@@ -181,21 +181,21 @@ class Query:
                     case 'normal':
                         value = FValue(valstr.encode())
                         symbol = corpus.get_symbol(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol, symbol, corpus))
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol, corpus))
                     case 'prefix':
                         valstr = valstr.split('.*')[0]
                         value = FValue(valstr.encode())
                         symbol_range = corpus.get_symbol_range(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range[0], symbol_range[1], corpus))
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range, corpus))
                     case 'suffix':
                         valstr = valstr.split('.*')[-1][::-1]
                         value = FValue(valstr.encode())
                         feature = Feature(feature + b'_rev')
                         symbol_range = corpus.get_symbol_range(feature, value)
-                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range[0], symbol_range[1], corpus))
-                    case 'regex':
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range, corpus))
+                    case _:
                         regex_matches = corpus.get_matches(feature, valstr)
-                        regexed_literals = [KnownLiteral(negative, offset, feature, match, match, corpus) for match in regex_matches]
+                        regexed_literals = [KnownLiteral(negative, offset, feature, match, corpus) for match in regex_matches]
                         last_group = query_list.pop()
                         query_list.extend(last_group + [lit] for lit in regexed_literals)
             if len(query_list) > 1:
@@ -205,7 +205,7 @@ class Query:
         if not no_sentence_breaks:
             svalue = corpus.get_symbol(SENTENCE, START)
             for offset in range(1, len(tokens)):
-                query.append(KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus))
+                query.append(KnownLiteral(True, offset, SENTENCE, svalue, corpus))
         if not query:
             raise ValueError(f"Found no matching query literals")
         assert not all(lit.negative for lit in query), "Cannot handle queries with only negative literals"

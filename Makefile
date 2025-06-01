@@ -5,7 +5,6 @@ help:
 	@echo "'make clean': remove files built by the commands above"
 	@echo "'make lint': type-check and linting using mypy, pyright, and ruff"
 	@echo "'make cython': build all Cython modules"
-	@echo "'make fast-merge': build the 'fast_merge' module for merging qery sets"
 	@echo "'make faster-index-builder': build the 'faster_index_builder' module for index building"
 
 
@@ -28,9 +27,8 @@ lint:
 	ruff check --config ${RUFFCONFIG} *.py || true
 
 
-cython: fast-merge faster-index-builder
+cython: faster-index-builder
 
-fast-merge: fast_merge.c
 faster-index-builder: faster_index_builder.c
 
 %.c: %.pyx
