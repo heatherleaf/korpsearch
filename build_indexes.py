@@ -91,7 +91,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             else:
                 dist = tmpl.max_offset()
                 literals = set(tmpl.literals) | {
-                    KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus)
+                    KnownLiteral(True, offset, SENTENCE, svalue, corpus)
                     for offset in range(1, dist+1)
                 }
                 yield Template(tmpl.template, literals)
@@ -115,7 +115,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                         yield Template(template)
                     else:
                         literals = {
-                            KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus)
+                            KnownLiteral(True, offset, SENTENCE, svalue, corpus)
                             for offset in range(1, dist+1)
                         }
                         yield Template(template, literals)

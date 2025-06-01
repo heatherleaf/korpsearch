@@ -10,7 +10,7 @@ import logging
 from disk import IntArray
 
 
-def finalise(tmppath: Path, nr_rows: int, rowsize: int, index_path: Path, **config: Any):
+def finalise(tmppath: Path, nr_rows: int, rowsize: int, index_path: Path):
     with open(tmppath, 'r+b') as file:
         tmpview = memoryview(mmap(file.fileno(), 0))
 
@@ -18,7 +18,7 @@ def finalise(tmppath: Path, nr_rows: int, rowsize: int, index_path: Path, **conf
     sort_index(tmpview, nr_rows, rowsize)
 
     logging.debug(f"Creating index file: {index_path}")
-    with IntArray.create(nr_rows, index_path, **config) as suffix_array:
+    with IntArray.create(nr_rows, index_path) as suffix_array:
         # Turn the byte-view into a view of 4-byte unsigned ints (uint32)
         create_index_array(tmpview.cast('I'), suffix_array, nr_rows, rowsize)
 

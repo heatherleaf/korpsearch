@@ -1,19 +1,22 @@
 
 from pathlib import Path
 from argparse import Namespace
-from typing import BinaryIO, Any
+from typing import BinaryIO
 from mmap import mmap
 from abc import abstractmethod
+import json
 import logging
 
-from disk import IntArray
+from pyroaring import BitMap
+
+from disk import IntArray, Symbol, IntBytesMap
 from corpus import Corpus
-from index import Template, TemplateLiteral, Index, UnaryIndex
+from index import Template, TemplateLiteral, Index, UnaryIndex, Instance
 import sort
-from util import progress_bar, binsearch_first
+from util import progress_bar
 
 # Possible sorting alternatives, the first is the default:
-SORTER_CHOICES = ['tmpfile', 'internal', 'cython']
+SORTER_CHOICES = ['roaring', 'tmpfile', 'internal', 'cython']
 
 # Possible pivot selectors, used by the 'tmpfile' sorter:
 PIVOT_SELECTORS = {
@@ -34,8 +37,7 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
         build_binary_index(corpus, index_path, template, args)
     else:
         raise ValueError(f"Cannot build indexes of length {len(template)}: {template}")
-    with IntArray(index_path) as suffix_array:
-        logging.info(f"Built index for {template}, with {len(suffix_array)} elements")
+    logging.info(f"Built index for {template}")
 
 
 
@@ -52,17 +54,24 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
     collector: Collector
     if args.sorter == 'internal':
         collector = ListCollector(2)
+    elif args.sorter == 'roaring':
+        collector = RoaringCollector()
     elif args.sorter == 'cython':
         collector = CythonCollector(2, index_path.parent / 'cindex.tmp', args)
     else:
         collector = TmpfileCollector(2, index_path.parent / 'index.tmp', args)
 
+    index_size = 0
     for pos, value in enumerate(progress_bar(features, desc="Collecting positions")):
         if value:
             collector.append2(value, pos)
+            index_size += 1
 
     collector.finalise(index_path)
-
+    with open(Index.getconfigpath(index_path), "w") as configfile:
+        print(json.dumps({
+            'size': index_size,
+        }), file=configfile)
 
 
 def build_binary_index(corpus: Corpus, index_path: Path, template: Template, args: Namespace) -> None:
@@ -85,17 +94,17 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     # is much smaller than the corpus size.
     cache1: dict[int, bool] = {}
     cache2: dict[int, bool] = {}
-    def unary_min_frequency(unary: UnaryIndex, unary_key: int, cache: dict[int, bool]) -> bool:
+    def unary_min_frequency(unary: UnaryIndex, unary_key: Symbol, cache: dict[int, bool]) -> bool:
         if unary_key not in cache:
-            search_key = unary.search_key()
-            start = binsearch_first(0, len(unary)-1, unary_key, search_key)
-            end = start + min_freq - 1
-            cache[unary_key] = (end < len(unary) and search_key(end) == unary_key)
+            size = len(unary.search(Instance([unary_key])))
+            cache[unary_key] = size >= min_freq
         return cache[unary_key]
 
     collector: Collector
     if args.sorter == 'internal':
         collector = ListCollector(3)
+    elif args.sorter == 'roaring':
+        collector = RoaringCollector()
     elif args.sorter == 'cython':
         collector = CythonCollector(3, index_path.parent / 'cindex.tmp', args)
     else:
@@ -105,6 +114,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     # and don't bother with looking up symbols - use the ints directly instead.
     test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value) for lit in template.literals]
 
+    index_size = 0
     skipped_instances = 0
     for pos in progress_bar(range(len(corpus) - template.max_offset()), desc="Collecting positions"):
         val1, val2 = features1[pos], features2[pos + tmpl2.offset]
@@ -116,10 +126,17 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
                 skipped_instances += 1
             else:
                 collector.append3(val1, val2, pos)
+                index_size += 1
     if skipped_instances:
         logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
-    collector.finalise(index_path, min_frequency = min_freq, skipped_instances = skipped_instances)
+    collector.finalise(index_path)
+    with open(Index.getconfigpath(index_path), "w") as configfile:
+        print(json.dumps({
+            'size': index_size,
+            'min_frequency': min_freq,
+            'skipped_instances': skipped_instances,
+        }), file=configfile)
 
 
 ###############################################################################
@@ -134,7 +151,36 @@ class Collector:
     @abstractmethod
     def append2(self, a: int, b: int) -> None: ...
     def append3(self, a: int, b: int, c: int) -> None: ...
-    def finalise(self, index_path: Path, **config: Any) -> None: ...
+    def finalise(self, index_path: Path) -> None: ...
+
+
+# How big a set must be to be stored as a serialized BitMap
+# The value has been empirically tested to reduce file sizes
+BIGSET_LIMIT = 1000
+
+class RoaringCollector(Collector):
+    bitmaps: dict[int, BitMap]
+
+    def __init__(self) -> None:
+        self.bitmaps = {}
+
+    def append2(self, a: int, b: int) -> None:
+        self.bitmaps.setdefault(a, BitMap()).add(b)
+
+    def append3(self, a: int, b: int, c: int) -> None:
+        ab = (a << 32) + b
+        self.bitmaps.setdefault(ab, BitMap()).add(c)
+
+    def finalise(self, index_path: Path) -> None:
+        logging.debug(f"Creating index file")
+        bitmaps = sorted(self.bitmaps.items())
+        max_value = max(self.bitmaps)
+        bigset_size = sum(len(bitmap) >= BIGSET_LIMIT for (_, bitmap) in bitmaps)
+        bigset_keys = (key for (key, bitmap) in bitmaps if len(bitmap) >= BIGSET_LIMIT)
+        bigset_values = (bitmap.serialize() for (_, bitmap) in bitmaps if len(bitmap) >= BIGSET_LIMIT)
+        smallsets = (n for (_, bitmap) in bitmaps if len(bitmap) < BIGSET_LIMIT for n in bitmap)
+        IntBytesMap.build(index_path, bigset_keys, bigset_values, size=bigset_size, max_value=max_value)
+        IntArray.build(index_path, smallsets)
 
 
 class ListCollector(Collector):
@@ -155,8 +201,9 @@ class ListCollector(Collector):
         value = ((a << 32) + b << 32) + c
         self.rows.append(value)
 
-    def finalise(self, index_path: Path, **config: Any) -> None:
+    def finalise(self, index_path: Path) -> None:
         nr_rows = len(self.rows)
+        self.size = nr_rows
 
         logging.debug(f"Sorting {nr_rows} rows")
         self.rows.sort()
@@ -164,7 +211,7 @@ class ListCollector(Collector):
         logging.debug(f"Creating index file")
         # Keep the least significant 4 bytes (32-bits)
         positions = (row & 0xFFFFFFFF for row in self.rows)
-        IntArray.build(index_path, positions, nr_rows, **config)
+        IntArray.build(index_path, positions, nr_rows)
 
 
 class TmpfileCollector(Collector):
@@ -189,7 +236,7 @@ class TmpfileCollector(Collector):
         value = ((a << 32) + b << 32) + c
         self.file.write(value.to_bytes(12, 'big'))
 
-    def finalise(self, index_path: Path, **config: Any) -> None:
+    def finalise(self, index_path: Path) -> None:
         rowbytes = self.rowsize * 4
         nr_rows = self.file.tell() // rowbytes
         self.file.close()
@@ -205,7 +252,7 @@ class TmpfileCollector(Collector):
                 )
 
         logging.debug(f"Creating index file")
-        with IntArray.create(nr_rows, index_path, **config) as suffix_array:
+        with IntArray.create(nr_rows, index_path) as suffix_array:
             with open(self.path, 'rb') as file:
                 for i in range(nr_rows):
                     row = file.read(rowbytes)
@@ -216,12 +263,12 @@ class TmpfileCollector(Collector):
 
 
 class CythonCollector(TmpfileCollector):
-    def finalise(self, index_path: Path, **config: Any) -> None:
+    def finalise(self, index_path: Path) -> None:
         nr_rows = self.file.tell() // (self.rowsize * 4)
         self.file.close()
 
         from faster_index_builder import finalise  # type: ignore
-        finalise(self.path, nr_rows, self.rowsize, index_path, **config)
+        finalise(self.path, nr_rows, self.rowsize, index_path)
 
         if not self.args.keep_tmpfiles:
             self.path.unlink()
