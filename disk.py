@@ -8,7 +8,7 @@ from mmap import mmap
 from typing import Optional, Union, Any, NewType
 from collections.abc import Iterator, Iterable
 
-from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range, file_size
+from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range, progress_bar
 
 
 ################################################################################
@@ -16,7 +16,6 @@ from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearc
 
 class IntArray:
     array_suffix = '.ia'
-    config_suffix = '.cfg'
     default_itemsize = 4
 
     array: memoryview
@@ -26,7 +25,7 @@ class IntArray:
     def __init__(self, source: Union[Path, mmap, bytearray], itemsize: int = default_itemsize) -> None:
         assert not isinstance(source, bytes), "bytes is not mutable - use bytearray instead"
         if isinstance(source, Path):
-            with open(self.getconfig(source)) as configfile:
+            with open(self.getconfigpath(source)) as configfile:
                 self.config = json.load(configfile)
             assert self.config['byteorder'] == sys.byteorder, f"Cannot handle byteorder {self.config['byteorder']}"
             itemsize = self.config['itemsize']
@@ -44,6 +43,9 @@ class IntArray:
     def __getitem__(self, i: int) -> int:
         return self.array[i]
 
+    def slice(self, j: int, k: int) -> memoryview:
+        return self.array[j:k]
+
     def __setitem__(self, i: int, value: int) -> None:
         self.array[i] = value
 
@@ -55,6 +57,9 @@ class IntArray:
 
     def __exit__(self, *_: Any) -> None:
         self.close()
+
+    def getconfig(self) -> dict[str, Any]:
+        return self.config
 
     def close(self) -> None:
         obj = self.array.obj
@@ -84,6 +89,12 @@ class IntArray:
             raise ValueError(f"Cannot handle memoryview object {obj}")
         self.array = memoryview(obj).cast(get_typecode(itemsize))
 
+    def sanity_check(self, sorted: bool = False) -> None:
+        if sorted:
+            prev = -1
+            for val in self:
+                assert prev <= val, "Sorted IntArray is not sorted"
+
     @staticmethod
     def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'IntArray':
         assert not (max_value and itemsize), "Only one of 'max_value' and 'itemsize' should be provided."
@@ -92,7 +103,7 @@ class IntArray:
         if not itemsize:
             itemsize = IntArray.default_itemsize
         if path:
-            with open(IntArray.getconfig(path), 'w') as configfile:
+            with open(IntArray.getconfigpath(path), 'w') as configfile:
                 print(json.dumps({
                     'itemsize': itemsize,
                     'byteorder': sys.byteorder,
@@ -109,29 +120,28 @@ class IntArray:
     @staticmethod
     def build(path: Optional[Path], values: Iterable[int], size: int = 0, **config: Any) -> None:
         if isinstance(values, (list, tuple)):
-            assert not size or size == len(values), "Wrong size"
+            if size:
+                assert size == len(values), "Wrong size"
+            else:
+                size = len(values)
         elif not size:
             values = list(values)
             size = len(values)
         with IntArray.create(size, path, **config) as array:
-            for i, val in enumerate(values):
+            for i, val in progress_bar(enumerate(values), total=size, desc="Building IntArray"):
                 array[i] = val
 
-    @classmethod
-    def disksize(cls, path: Path) -> int:
-        return file_size(cls.getpath(path)) + file_size(cls.getconfig(path))
+    @staticmethod
+    def getpath(path: Path) -> Path:
+        return add_suffix(path, IntArray.array_suffix)
 
-    @classmethod
-    def getpath(cls, path: Path) -> Path:
-        return add_suffix(path, cls.array_suffix)
-
-    @classmethod
-    def getconfig(cls, path: Path) -> Path:
-        return add_suffix(cls.getpath(path), cls.config_suffix)
+    @staticmethod
+    def getconfigpath(path: Path) -> Path:
+        return add_suffix(IntArray.getpath(path), '.cfg')
 
 
 ################################################################################
-## On-disk arrays of bytestrings
+## On-disk arrays of bytestrings (that don't contain newline \n)
 
 class BytesArray:
     _starts: IntArray
@@ -149,7 +159,12 @@ class BytesArray:
     def __getitem__(self, i: int) -> bytes:
         arr = self._starts.array
         start, end = arr[i], arr[i+1]
-        return self._rawdata[start : end]
+        return self._rawdata[start:end-1]
+
+    def slice(self, j: int, k: int) -> list[bytes]:
+        arr = self._starts.array
+        raw = self._rawdata
+        return [raw[start:end-1] for i in range(j, k) for start, end in [(arr[i], arr[i+1])]]
 
     def __setitem__(self, i: int, value: bytes) -> None:
         raise TypeError("'BytesArray' does not support item assignment")
@@ -176,9 +191,11 @@ class BytesArray:
 
     def sanity_check(self) -> None:
         starts = self._starts.array
+        rawdata = self._rawdata
         assert starts[0] == 0 and starts[-1] == len(self._rawdata)
         for start, end in zip(starts, starts[1:]):
             assert start <= end, f"'BytesArray' position error: {start} > {end}"
+            assert b'\n' not in rawdata[start:end-1], f"'BytesArray' value contains newline '\n'"
 
     @staticmethod
     def build(path: Path, values: Iterable[bytes]) -> int:
@@ -186,13 +203,11 @@ class BytesArray:
         pos = 0
         starts: list[int] = [pos]
         with open(rawpath, 'wb') as rawfile:
-            for val in values:
-                rawfile.write(val)
-                pos += len(val)
+            for val in progress_bar(values, "Writing BytesArray starts"):
+                rawfile.write(val + b'\n')
+                pos += len(val) + 1
                 starts.append(pos)
-        with IntArray.create(len(starts), startspath, max_value=starts[-1]) as arr:
-            for i, start in enumerate(starts):
-                arr[i] = start
+        IntArray.build(startspath, starts, len(starts), max_value=starts[-1])
         return len(starts) - 1
 
     @staticmethod
@@ -288,8 +303,8 @@ class SymbolArray:
         self.array = IntArray(arrpath)
         self.symbols = SymbolCollection(symspath, preload)
 
-    def raw(self) -> memoryview:
-        return self.array.array
+    def raw(self) -> 'memoryview[Symbol]':
+        return self.array.array  # type: ignore
 
     def __len__(self) -> int:
         return len(self.array)
@@ -342,17 +357,41 @@ class IntBytesMap:
         self._values = BytesArray(valspath)
 
     def __getitem__(self, key: int) -> bytes:
-        pos = binsearch(0, len(self._keys), key, lambda k: self._keys[k])
+        pos = binsearch(0, len(self._keys)-1, key, lambda k: self._keys[k])
         return self._values[pos]
+
+    def slice(self, start_key: int, end_key: int) -> list[bytes]:
+        start, end = binsearch_range(0, len(self._keys)-1, start_key, end_key, lambda k: self._keys[k], error=False)
+        if not (0 <= start <= end < len(self._keys)):
+            raise KeyError(f"No keys found between {start_key}..{end_key}")
+        return self._values.slice(start, end+1)
+
+    def get_key_position(self, key: int) -> int:
+        return binsearch(0, len(self._keys), key, lambda k: self._keys[k])
 
     def __setitem__(self, key: int, value: bytes) -> None:
         raise TypeError("'IntBytesMap' does not support item assignment")
 
+    def __enter__(self) -> 'IntBytesMap':
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._keys.close()
+        self._values.close()
+
+    def sanity_check(self) -> None:
+        self._keys.sanity_check(sorted=True)
+        self._values.sanity_check()
+        assert len(self._keys) == len(self._values), "Different lengths for keys and values"
+
     @staticmethod
-    def build(path: Path, kvpairs: Iterable[tuple[int, bytes]]) -> None:
+    def build(path: Path, keys: Iterable[int], values: Iterable[bytes], **xargs: Any) -> None:
+        # Note: the 'keys' must be sorted!
         keyspath, valspath = IntBytesMap.getpaths(path)
-        keys, values = zip(*sorted(kvpairs))
-        IntArray.build(keyspath, keys, max_value=keys[-1])
+        IntArray.build(keyspath, keys, **xargs)
         BytesArray.build(valspath, values)
 
     @staticmethod
