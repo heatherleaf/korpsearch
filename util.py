@@ -6,7 +6,7 @@ import math
 import logging
 import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional, NewType
+from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, Optional, NewType
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
@@ -73,12 +73,17 @@ def clean_up(path: Path, suffixes: list[str]) -> None:
             pass
 
 
-def file_size(file: Path) -> int:
+def file_size(file: Path|str|IO[Any]) -> int:
     """Return the n:o bytes the file uses up on disk, or 0 if the file doesn't exist."""
-    try:
-        stat = file.stat()
-    except:
-        return 0
+    if isinstance(file, str):
+        file = Path(file)
+    if isinstance(file, Path):
+        try:
+            stat = file.stat()
+        except:
+            return 0
+    else:
+        stat = os.fstat(file.fileno())
     try:
         return stat.st_blocks * 512
     except AttributeError:
@@ -202,7 +207,7 @@ class CompressedFileReader:
         return self.basefile.tell()
 
     def file_size(self) -> int:
-        return os.fstat(self.basefile.fileno()).st_size
+        return file_size(self.basefile)
 
     def close(self) -> None:
         self.reader.close()
