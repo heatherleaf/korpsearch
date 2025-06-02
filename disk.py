@@ -88,12 +88,18 @@ class IntArray:
         else:
             raise ValueError(f"Cannot handle memoryview object {obj}")
         self.array = memoryview(obj).cast(get_typecode(itemsize))
+        if self.path:
+            config = self.getconfig()
+            config['size'] = newsize
+            with open(IntArray.getconfigpath(self.path), 'w') as configfile:
+                print(json.dumps(config), file=configfile)
 
     def sanity_check(self, sorted: bool = False) -> None:
         if sorted:
             prev = -1
             for val in self:
                 assert prev <= val, "Sorted IntArray is not sorted"
+        assert len(self) == self.getconfig()['size'], "Size mismatch"
 
     @staticmethod
     def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'IntArray':
@@ -363,6 +369,9 @@ class IntBytesMap:
         keyspath, valspath = self.getpaths(path)
         self._keys = IntArray(keyspath)
         self._values = BytesArray(valspath)
+
+    def __len__(self) -> int:
+        return len(self._keys)
 
     def __getitem__(self, key: int) -> bytes:
         pos = binsearch(0, len(self._keys)-1, key, lambda k: self._keys[k])
