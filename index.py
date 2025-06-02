@@ -7,7 +7,7 @@ import logging
 
 from pyroaring import BitMap
 
-from disk import IntArray, IntBytesMap
+from disk import IntArray, IntBytesMap, SymbolRange, SymbolList
 from corpus import Corpus
 from literals import Template, Instance
 from util import add_suffix, progress_bar, binsearch_range
@@ -67,17 +67,19 @@ class Index:
 
     def search(self, instance: Instance, offset: int = 0) -> BitMap:
         try:
-            start, end = self.get_instance_range(instance)
+            ranges = self.get_instance_range(instance)
         except ValueError:
             return BitMap()
-        small = self.lookup_smallset(start, end)
-        big = self.lookup_bigset(start, end)
-        result = small | big
+        result = BitMap()
+        for start, end in ranges:
+            small = self.lookup_smallset(start, end)
+            big = self.lookup_bigset(start, end)
+            result |= small | big
         if offset:
             result = result.shift(-offset)
         return result
 
-    def get_instance_range(self, instance: Instance) -> tuple[int, int]:
+    def get_instance_range(self, instance: Instance) -> list[tuple[int, int]]:
         raise NotImplementedError("Must be overridden by a subclass")
 
     def get_search_key(self) -> Callable[[int], int]:
@@ -152,10 +154,13 @@ class UnaryIndex(Index):
         assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
         super().__init__(corpus, template)
 
-    def get_instance_range(self, instance: Instance) -> tuple[int, int]:
+    def get_instance_range(self, instance: Instance) -> list[tuple[int, int]]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
         (value,) = instance
-        return value if isinstance(value, tuple) else (value, value)
+        return [
+            v if isinstance(v, SymbolRange) else (v, v)
+            for v in (value.symbols if isinstance(value, SymbolList) else [value])
+        ]
 
     def get_search_key(self) -> Callable[[int], int]:
         assert self.smallsets
@@ -173,16 +178,20 @@ class BinaryIndex(Index):
         assert len(template) == 2, f"BinaryIndex templates must have length 2: {template}"
         super().__init__(corpus, template)
 
-    def get_instance_range(self, instance: Instance) -> tuple[int, int]:
+    def get_instance_range(self, instance: Instance) -> list[tuple[int, int]]:
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
         (left, right) = instance
-        if isinstance(left, (tuple, list)):
+        if isinstance(left, tuple):
             raise ValueError("BinaryIndex cannot have a range as left value")
-        left <<= 32
-        if isinstance(right, tuple):
-            return (left + right[0], left + right[1])
-        else:
-            return (left + right, left + right)
+        if isinstance(left, list) and isinstance(right, list):
+            raise ValueError("BinaryIndex cannot have lists for both left and right values")
+        return [
+            (l32+r0, l32+r1)
+            for l in (left.symbols if isinstance(left, SymbolList) else [left])
+            for l32 in [l << 32]
+            for r in (right.symbols if isinstance(right, SymbolList) else [right])
+            for (r0, r1) in [(r, r) if isinstance(r, int) else r]
+        ]
 
     def get_search_key(self) -> Callable[[int], int]:
         assert self.smallsets

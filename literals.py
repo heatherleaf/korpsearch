@@ -3,7 +3,7 @@ from typing import NewType
 from collections.abc import Iterator, Collection, Sequence
 from dataclasses import dataclass, field
 
-from disk import Symbol, SymbolRange
+from disk import Symbol, SymbolRange, SymbolList
 from corpus import Corpus
 from util import check_feature, Feature, FValue
 
@@ -11,7 +11,7 @@ from util import check_feature, Feature, FValue
 ################################################################################
 ## Literals, templates and instances
 
-Instance = NewType('Instance', Sequence[Symbol|SymbolRange])
+Instance = NewType('Instance', Sequence[Symbol | SymbolRange | SymbolList])
 
 
 @dataclass(frozen=True, order=True)
@@ -19,17 +19,21 @@ class KnownLiteral:
     negative: bool
     offset: int
     feature: Feature
-    value: Symbol | SymbolRange
+    value: Symbol | SymbolRange | SymbolList
     corpus: Corpus = field(compare=False)
 
     def __post_init__(self) -> None:
         check_feature(self.feature)
 
     def __str__(self) -> str:
-        if isinstance(self.value, tuple):
+        if isinstance(self.value, SymbolRange):
             value0 = self.corpus.lookup_symbol(self.feature, self.value[0]).decode()
             value1 = self.corpus.lookup_symbol(self.feature, self.value[1]).decode()
             return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}-{value1}"
+        elif isinstance(self.value, SymbolList):
+            value0 = self.corpus.lookup_symbol(self.feature, self.value.symbols[0]).decode()
+            value1 = self.corpus.lookup_symbol(self.feature, self.value.symbols[-1]).decode()
+            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}...{value1}"
         else:
             value = self.corpus.lookup_symbol(self.feature, self.value).decode()
             return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
@@ -153,8 +157,8 @@ class Template:
             literal = ','.join(
                 f'{lit.feature.decode()}{"≠" if lit.negative else "="}"{val}"'
                 for lit in self.literals if lit.offset == offset
-                for lval in [lit.value[0] if isinstance(lit.value, tuple) else lit.value]
-                for val in [lit.corpus.lookup_symbol(lit.feature, lval).decode()]
+                if isinstance(lit.value, int)
+                for val in [lit.corpus.lookup_symbol(lit.feature, lit.value).decode()]
             )
             if literal:
                 tokens.append(token + '|' + literal)

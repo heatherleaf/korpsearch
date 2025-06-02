@@ -191,9 +191,7 @@ class Query:
                         query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range, corpus))
                     case _:
                         regex_matches = corpus.get_matches(feature, valstr)
-                        regexed_literals = [KnownLiteral(negative, offset, feature, match, corpus) for match in regex_matches]
-                        last_group = query_list.pop()
-                        query_list.extend(last_group + [lit] for lit in regexed_literals)
+                        query_list[-1].append(KnownLiteral(negative, offset, feature, regex_matches, corpus))
             if len(query_list) > 1:
                 query.extend(DisjunctiveGroup.create(literals) for literals in itertools.product(*query_list))
             elif query_list:

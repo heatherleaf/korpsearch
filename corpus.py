@@ -8,7 +8,7 @@ from contextlib import ExitStack
 from collections.abc import Iterator, Sequence
 
 from corpus_reader import corpus_reader
-from disk import IntArray, SymbolArray, Symbol, SymbolRange, SymbolCollection
+from disk import IntArray, SymbolArray, Symbol, SymbolRange, SymbolList, SymbolCollection
 from util import progress_bar, add_suffix, binsearch_last, Feature, FValue, SENTENCE
 
 ################################################################################
@@ -67,6 +67,10 @@ class Corpus:
 
     def get_symbol_range(self, feature: Feature, prefix: FValue) -> SymbolRange:
         return self.tokens[feature].symbols.to_symbol_range(prefix)
+
+    def get_matches(self, feature: Feature, regex: str) -> SymbolList:
+        symbols = self.symbols(feature)
+        return SymbolList(tuple(symbols.finditer(regex.encode())))
 
     def lookup_symbol(self, feature: Feature, sym: Symbol) -> FValue:
         return FValue(self.tokens[feature].symbols.to_name(sym))
@@ -150,11 +154,6 @@ class Corpus:
                 sentence += 1
         assert sentence == len(sentence_pointers)
         logging.info("Done checking corpus")
-
-
-    def get_matches(self, feature: Feature, regex: str) -> list[Symbol]:
-        symbols = self.symbols(feature)
-        return list(symbols.finditer(regex.encode()))
 
 
     @staticmethod

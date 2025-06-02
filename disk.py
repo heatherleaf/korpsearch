@@ -5,8 +5,9 @@ import re
 import json
 from pathlib import Path
 from mmap import mmap
-from typing import Any, NewType
+from typing import Any, NewType, NamedTuple
 from collections.abc import Iterator, Iterable
+from dataclasses import dataclass
 
 from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range
 
@@ -233,7 +234,14 @@ class BytesArray:
 ## Symbols (interned bytestrings)
 
 Symbol = NewType('Symbol', int)
-SymbolRange = tuple[Symbol, Symbol]
+
+class SymbolRange(NamedTuple):
+    start: Symbol
+    end: Symbol
+
+@dataclass(frozen=True, order=True)
+class SymbolList:
+    symbols: tuple[Symbol, ...]
 
 
 class SymbolCollection:
@@ -273,7 +281,7 @@ class SymbolCollection:
             n = len(prefix)
             ba = self._bytesarray
             start, end = binsearch_range(0, len(self)-1, prefix, prefix, lambda i: ba[i][:n])
-            return (Symbol(start), Symbol(end))
+            return SymbolRange(Symbol(start), Symbol(end))
         except (KeyError, IndexError, ValueError):
             raise ValueError(f"Symbol prefix doesn't exist: {prefix.decode(errors='ignore')}")
 
