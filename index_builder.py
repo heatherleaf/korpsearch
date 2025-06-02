@@ -58,7 +58,7 @@ def build_unary_index(corpus: Corpus, index_path: Path, template: Template, args
             collector.append2(value, pos)
             index_size += 1
 
-    collector.finalise(index_path)
+    collector.finalise(index_path, index_size)
     with open(Index.getconfigpath(index_path), "w") as configfile:
         print(json.dumps({
             'size': index_size,
@@ -121,7 +121,7 @@ def build_binary_index(corpus: Corpus, index_path: Path, template: Template, arg
     if skipped_instances:
         logging.debug(f"Skipped {skipped_instances} low-frequency instances")
 
-    collector.finalise(index_path)
+    collector.finalise(index_path, index_size)
     with open(Index.getconfigpath(index_path), "w") as configfile:
         print(json.dumps({
             'size': index_size,
@@ -142,7 +142,7 @@ class Collector:
     @abstractmethod
     def append2(self, a: int, b: int) -> None: ...
     def append3(self, a: int, b: int, c: int) -> None: ...
-    def finalise(self, index_path: Path) -> None: ...
+    def finalise(self, index_path: Path, index_size: int) -> None: ...
 
 
 # How big a set must be to be stored as a serialized BitMap
@@ -162,16 +162,17 @@ class RoaringCollector(Collector):
         ab = (a << 32) + b
         self.bitmaps.setdefault(ab, BitMap()).add(c)
 
-    def finalise(self, index_path: Path) -> None:
-        logging.debug(f"Creating index file")
-        bitmaps = sorted(self.bitmaps.items())
-        max_value = max(self.bitmaps)
-        bigset_size = sum(len(bitmap) >= BIGSET_LIMIT for (_, bitmap) in bitmaps)
+    def finalise(self, index_path: Path, index_size: int) -> None:
+        logging.debug(f"Sorting bitmap map")
+        bitmaps = sorted(self.bitmaps.items(), key = lambda b:b[0])
+        max_value = bitmaps[-1][0]
+        logging.debug(f"Creating index file for big sets")
         bigset_keys = (key for (key, bitmap) in bitmaps if len(bitmap) >= BIGSET_LIMIT)
         bigset_values = (bitmap.serialize() for (_, bitmap) in bitmaps if len(bitmap) >= BIGSET_LIMIT)
+        IntBytesMap.build(index_path, bigset_keys, bigset_values, size=index_size, max_value=max_value)
+        logging.debug(f"Creating index file for small sets")
         smallsets = (n for (_, bitmap) in bitmaps if len(bitmap) < BIGSET_LIMIT for n in bitmap)
-        IntBytesMap.build(index_path, bigset_keys, bigset_values, size=bigset_size, max_value=max_value)
-        IntArray.build(index_path, smallsets)
+        IntArray.build(index_path, smallsets, size=index_size)
 
 
 class ListCollector(Collector):
@@ -192,17 +193,15 @@ class ListCollector(Collector):
         value = ((a << 32) + b << 32) + c
         self.rows.append(value)
 
-    def finalise(self, index_path: Path) -> None:
-        nr_rows = len(self.rows)
-        self.size = nr_rows
-
-        logging.debug(f"Sorting {nr_rows} rows")
+    def finalise(self, index_path: Path, index_size: int) -> None:
+        assert index_size == len(self.rows)
+        logging.debug(f"Sorting {index_size} rows")
         self.rows.sort()
 
         logging.debug(f"Creating index file")
         # Keep the least significant 4 bytes (32-bits)
         positions = (row & 0xFFFFFFFF for row in self.rows)
-        IntArray.build(index_path, positions, nr_rows)
+        IntArray.build(index_path, positions, size=index_size)
 
 
 class TmpfileCollector(Collector):
@@ -227,20 +226,21 @@ class TmpfileCollector(Collector):
         value = ((a << 32) + b << 32) + c
         self.file.write(value.to_bytes(12, 'big'))
 
-    def finalise(self, index_path: Path) -> None:
+    def finalise(self, index_path: Path, index_size: int) -> None:
         rowbytes = self.rowsize * 4
         nr_rows = self.file.tell() // rowbytes
         self.file.close()
 
-        logging.debug(f"Sorting {nr_rows} rows")
+        assert index_size == nr_rows
+        logging.debug(f"Sorting {index_size} rows")
         with open(self.path, 'r+b') as file:
             with mmap(file.fileno(), 0) as bytes_mmap:
                 sort.quicksort(bytes_mmap, rowbytes, cutoff = self.args.cutoff or 1_000_000)
 
         logging.debug(f"Creating index file")
-        with IntArray.create(nr_rows, index_path) as suffix_array:
+        with IntArray.create(index_size, index_path) as suffix_array:
             with open(self.path, 'rb') as file:
-                for i in range(nr_rows):
+                for i in range(index_size):
                     row = file.read(rowbytes)
                     suffix_array[i] = int.from_bytes(row[-4:], 'big')
 
@@ -249,12 +249,13 @@ class TmpfileCollector(Collector):
 
 
 class CythonCollector(TmpfileCollector):
-    def finalise(self, index_path: Path) -> None:
+    def finalise(self, index_path: Path, index_size: int) -> None:
         nr_rows = self.file.tell() // (self.rowsize * 4)
         self.file.close()
+        assert index_size == nr_rows
 
         from faster_index_builder import finalise  # type: ignore
-        finalise(self.path, nr_rows, self.rowsize, index_path)
+        finalise(self.path, index_size, self.rowsize, index_path)
 
         if not self.args.keep_tmpfiles:
             self.path.unlink()
