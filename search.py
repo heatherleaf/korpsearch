@@ -107,7 +107,8 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> B
         if args.no_binary and len(subq) > 1:
             continue
         try:
-            subqueries.append((subq, subq.index()))
+            assert subq.template
+            subqueries.append((subq, Index.get(subq.corpus, subq.template)))
         except (FileNotFoundError, ValueError):
             continue
 

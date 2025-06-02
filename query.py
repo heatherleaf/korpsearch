@@ -5,7 +5,6 @@ from typing import Literal
 from collections.abc import Iterator, Sequence
 
 from literals import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance
-from index import Index
 from corpus import Corpus
 from util import Feature, FValue, SENTENCE, START
 
@@ -97,10 +96,6 @@ class Query:
             return Instance([lit.value for lit in self.negative_literals()])
         else:
             return Instance([lit.value for lit in self.positive_literals()])
-
-    def index(self) -> Index:
-        assert self.template
-        return Index.get(self.corpus, self.template)
 
     def contains_disjunction(self) -> bool:
         return any(isinstance(lit, DisjunctiveGroup) for lit in self.literals)
