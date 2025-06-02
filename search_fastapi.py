@@ -11,7 +11,7 @@ from typing import Any
 from collections.abc import Callable
 
 from corpus import Corpus
-from index import Template
+from literals import Template
 from util import setup_logger
 from search import main_search
 from search_statistics import main_count

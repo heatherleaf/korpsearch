@@ -5,7 +5,8 @@ from pathlib import Path
 from collections.abc import Iterator
 import logging
 
-from index import KnownLiteral, TemplateLiteral, Template, Index
+from literals import KnownLiteral, TemplateLiteral, Template
+from index import Index
 from index_builder import build_index, SORTER_CHOICES
 from corpus import Corpus
 from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START

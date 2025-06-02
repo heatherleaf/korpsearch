@@ -4,7 +4,8 @@ import itertools
 from typing import Literal
 from collections.abc import Iterator, Sequence
 
-from index import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance, Index
+from literals import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance
+from index import Index
 from corpus import Corpus
 from util import Feature, FValue, SENTENCE, START
 

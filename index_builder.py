@@ -10,7 +10,8 @@ from pyroaring import BitMap
 
 from disk import IntArray, Symbol, BytesArray, IntBytesMap
 from corpus import Corpus
-from index import Template, TemplateLiteral, Index, UnaryIndex, Instance
+from literals import Template, TemplateLiteral
+from index import Index, UnaryIndex, Instance
 import sort
 from util import add_suffix, progress_bar
 
