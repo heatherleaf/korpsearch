@@ -6,7 +6,7 @@ import math
 import logging
 import gzip, bz2, lzma
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, Optional, NewType
+from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, NewType
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
@@ -227,7 +227,7 @@ class ProgressBar(Iterable[T]):
     """A simple progress bar wrapper class, doing nothing at all."""
     n: int = 0
 
-    def __init__(self, iterable: Optional[Iterable[T]] = None, **_: Any) -> None:
+    def __init__(self, iterable: Iterable[T]|None = None, **_: Any) -> None:
         self._iter = iter(()) if iterable is None else iter(iterable)
 
     def __enter__(self) -> 'ProgressBar[T]':
@@ -250,7 +250,7 @@ except ModuleNotFoundError:
 
 _tqdm_bar_format = '{desc:20s} {percentage:3.0f}%|{bar}|{n_fmt:>7s}/{total_fmt} [{elapsed},{rate_fmt:>10s}{postfix}]'
 
-def progress_bar(iterable: Optional[Iterable[T]] = None, desc: str = "", **kwargs: Any) -> ProgressBar[T]:
+def progress_bar(iterable: Iterable[T]|None = None, desc: str = "", **kwargs: Any) -> ProgressBar[T]:
     loglevel = logging.root.getEffectiveLevel()
     if loglevel > logging.INFO:
         return ProgressBar(iterable)
@@ -277,7 +277,7 @@ class RelativeTimeFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(format: str, timedivider: int = 1000, loglevel: int = logging.WARNING, logfile: Optional[Path] = None) -> None:
+def setup_logger(format: str, timedivider: int = 1000, loglevel: int = logging.WARNING, logfile: Path|None = None) -> None:
     formatter = RelativeTimeFormatter(format, style='{', divider=timedivider)
     logging.basicConfig(level=loglevel, filename=logfile)
     logging.root.handlers[0].setFormatter(formatter)

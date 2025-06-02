@@ -1,13 +1,12 @@
 
 import random
 from mmap import mmap
-from typing import Union
 
 from util import progress_bar, ProgressBar
 
 
-BytesArray = Union[mmap, bytearray]
-ArrayValue = Union[bytes, bytearray]
+BytesArray = mmap | bytearray
+ArrayValue = bytes | bytearray
 
 
 ###############################################################################
@@ -22,7 +21,7 @@ def quicksort(array: BytesArray, itemsize: int, cutoff: int = 1000) -> None:
     sys.setrecursionlimit(1000)
     hi = len(array) // itemsize
     logger: ProgressBar[None]
-    with progress_bar(total=hi, desc="Quicksorting") as logger:
+    with progress_bar(total=hi, desc="Quicksorting") as logger:  # type: ignore
         quicksort_subarray(array, itemsize, 0, hi, cutoff, logger)
         logger.update(hi - logger.n)
     sys.setrecursionlimit(lim)

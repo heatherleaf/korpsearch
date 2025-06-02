@@ -1,5 +1,5 @@
 
-from typing import Optional, NewType
+from typing import NewType
 from collections.abc import Iterator, Collection, Sequence
 from dataclasses import dataclass, field
 
@@ -168,7 +168,7 @@ class Template:
     def __len__(self) -> int:
         return self.size
 
-    def instantiate(self, corpus: Corpus, pos: int) -> Optional['Instance']:
+    def instantiate(self, corpus: Corpus, pos: int) -> 'Instance | None':
         if not all(lit.test(pos) for lit in self.literals):
             return None
         return Instance(tuple(corpus.tokens[tmpl.feature][pos + tmpl.offset] for tmpl in self.template))

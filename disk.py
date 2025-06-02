@@ -5,7 +5,7 @@ import re
 import json
 from pathlib import Path
 from mmap import mmap
-from typing import Optional, Union, Any, NewType
+from typing import Any, NewType
 from collections.abc import Iterator, Iterable
 
 from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range
@@ -19,10 +19,10 @@ class IntArray:
     default_itemsize = 4
 
     array: memoryview
-    path: Optional[Path] = None
+    path: Path | None = None
     config: dict[str, Any]
 
-    def __init__(self, source: Union[Path, mmap, bytearray], itemsize: int = default_itemsize) -> None:
+    def __init__(self, source: Path|mmap|bytearray, itemsize: int = default_itemsize) -> None:
         assert not isinstance(source, bytes), "bytes is not mutable - use bytearray instead"
         if isinstance(source, Path):
             with open(self.getconfigpath(source)) as configfile:
@@ -102,7 +102,7 @@ class IntArray:
         assert len(self) == self.getconfig()['size'], "Size mismatch"
 
     @staticmethod
-    def create(size: int, path: Optional[Path] = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'IntArray':
+    def create(size: int, path: Path|None = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'IntArray':
         assert not (max_value and itemsize), "Only one of 'max_value' and 'itemsize' should be provided."
         if max_value > 0:
             itemsize = get_integer_size(max_value)
@@ -124,7 +124,7 @@ class IntArray:
             return IntArray(data, itemsize)
 
     @staticmethod
-    def build(path: Optional[Path], values: Iterable[int], size: int = 0, **config: Any) -> None:
+    def build(path: Path|None, values: Iterable[int], size: int = 0, **config: Any) -> None:
         if isinstance(values, (list, tuple)):
             if size:
                 assert size == len(values), "Wrong size"
