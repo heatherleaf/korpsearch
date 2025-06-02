@@ -55,27 +55,18 @@ The original `.csv` file is not used when searching, so you can remove it if you
 
 ### Building indexes faster
 
-Note that it can take quite some time to build indexes for large corpora.
-But using [PyPy](https://www.pypy.org/) instead of CPython will be around twice as fast.
+The default index builder does everything in-memory, which means that you need a lot of internal memory if you want to build very large corpora (e.g., 10--100 million tokens).
 
-    pypy3 build_indexes.py --corpus ...
+If you notice that the builder stalls and nothing happens, then you can try to use another builder instead (using the `--sorter` option):
 
-Most of the time spent when building indexes are for sorting them.
-There are several possible sorting implementations you can test with (using the `--sorter` option):
-
-- `roaring` (the default) collects Roaring Bitmaps while reading, and then writes them to disk.
+- `bitmap` (the default) collects Roaring Bitmaps while reading, and then writes them to disk.
   This is fast but slows down considerably for very large corpora (depending on your computer's internal memory).
 
 - `tmpfile` uses a temporary file which is sorted.
   The main advantage is that it doesn't use up any internal memory, so it is useful for very large corpora.
 
-- `internal` uses Python's builtin sort function, which is faster than using a `tmpfile`.
-  However, it has to load the whole corpus in memory so it is not very useful for very large corpora
-  (depending on your computer, but can cause problems from 10–100 million tokens).
-
-- `cython` uses a Cython implementation using C's builtin `qsort` function for sorting the index.
-  – this is also up to 5–10 times faster than `tmpfile`, but doesn't have any memory problems
-  because it uses a temporary file.
+- `cython` calls C's builtin `qsort` function for sorting the index.
+  This is up to 5–10 times faster than `tmpfile`, and it doesn't have any memory problems like `bitmap` does.
   Note that you have to compile the Cython module first, by running `make faster-index-builder`.
 
 ## Searching from the command line

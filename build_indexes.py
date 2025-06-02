@@ -146,6 +146,8 @@ parser.add_argument('--max-dist', type=int, default=2, metavar='DIST',
     help='[only with the --features option] max distance between token pairs (default: 2)')
 parser.add_argument('--min-frequency', type=int, default=0, metavar='FREQ',
     help='[only for binary indexes] min unary frequency for all values in a binary instance (default: 0)')
+parser.add_argument('--bigset-limit', type=int, default=1000, metavar='SIZE',
+    help='min size of a "big" index set: big sets are stored differently (default: 1000)')
 parser.add_argument('--no-sentence-breaks', action='store_true',
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 parser.add_argument('--no-sentence-feature', action='store_true',
