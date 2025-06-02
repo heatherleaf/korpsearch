@@ -203,4 +203,4 @@ class Corpus:
                         ctr += 1
                 assert ctr == n_tokens
 
-        logging.info(f"Built corpus index, {n_tokens} tokens, {n_sentences} sentences")
+        logging.info(f"Built corpus index, {n_tokens:,d} tokens, {n_sentences:,d} sentences")

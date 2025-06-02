@@ -48,7 +48,7 @@ def main_count(args: Namespace) -> dict[str, Any]:
                 sampling_step = 1 + len(results) // args.sampling
             sampled_indices = range(0, len(results), sampling_step)
             if sampling_step > 1:
-                logging.info(f"Too many results ({len(results)}): sampling {len(sampled_indices)} results")
+                logging.info(f"Too many results ({len(results):,d}): sampling {len(sampled_indices):,d} results")
             for i in sampled_indices:
                 match_pos = results[i]
                 group = tuple(

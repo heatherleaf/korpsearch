@@ -257,7 +257,6 @@ class Index:
         result = small | big
         if offset:
             result = result.shift(-offset)
-        logging.debug(f"Search: {len(small)} smallsets + {len(big)} bigsets = {len(result)}")
         return result
 
     def get_instance_range(self, instance: Instance) -> tuple[int, int]:
