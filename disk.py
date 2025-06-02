@@ -8,7 +8,7 @@ from mmap import mmap
 from typing import Optional, Union, Any, NewType
 from collections.abc import Iterator, Iterable
 
-from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range, progress_bar
+from util import add_suffix, get_integer_size, get_typecode, binsearch, binsearch_range
 
 
 ################################################################################
@@ -127,9 +127,15 @@ class IntArray:
         elif not size:
             values = list(values)
             size = len(values)
-        with IntArray.create(size, path, **config) as array:
-            for i, val in progress_bar(enumerate(values), total=size, desc="Building IntArray"):
-                array[i] = val
+        array = IntArray.create(size, path, **config)
+        i = -1
+        for i, val in enumerate(values):
+            array[i] = val
+        realsize = i + 1
+        if realsize < size:
+            array.truncate(realsize)
+        array.close()
+
 
     @staticmethod
     def getpath(path: Path) -> Path:
@@ -141,7 +147,8 @@ class IntArray:
 
 
 ################################################################################
-## On-disk arrays of bytestrings (that don't contain newline \n)
+## On-disk arrays of bytestrings
+## Note: if you want to use .finditer(), the strings *must not* contain newlines \n
 
 class BytesArray:
     _starts: IntArray
@@ -189,13 +196,14 @@ class BytesArray:
             if start < end:
                 yield binsearch(pos, len(positions), start, lambda i: positions[i])
 
-    def sanity_check(self) -> None:
+    def sanity_check(self, accept_newlines: bool = False) -> None:
         starts = self._starts.array
         rawdata = self._rawdata
         assert starts[0] == 0 and starts[-1] == len(self._rawdata)
         for start, end in zip(starts, starts[1:]):
             assert start <= end, f"'BytesArray' position error: {start} > {end}"
-            assert b'\n' not in rawdata[start:end-1], f"'BytesArray' value contains newline '\n'"
+            if not accept_newlines:
+                assert b'\n' not in rawdata[start:end-1], f"'BytesArray' value contains newline '\\n'"
 
     @staticmethod
     def build(path: Path, values: Iterable[bytes]) -> int:
@@ -203,7 +211,7 @@ class BytesArray:
         pos = 0
         starts: list[int] = [pos]
         with open(rawpath, 'wb') as rawfile:
-            for val in progress_bar(values, "Writing BytesArray starts"):
+            for val in values:
                 rawfile.write(val + b'\n')
                 pos += len(val) + 1
                 starts.append(pos)
@@ -384,7 +392,7 @@ class IntBytesMap:
 
     def sanity_check(self) -> None:
         self._keys.sanity_check(sorted=True)
-        self._values.sanity_check()
+        self._values.sanity_check(accept_newlines=True)
         assert len(self._keys) == len(self._values), "Different lengths for keys and values"
 
     @staticmethod
