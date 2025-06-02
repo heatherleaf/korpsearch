@@ -6,7 +6,7 @@ from collections.abc import Iterator
 import logging
 
 from index import KnownLiteral, TemplateLiteral, Template, Index
-from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
+from index_builder import build_index, SORTER_CHOICES
 from corpus import Corpus
 from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
 from corpus_reader import CORPUS_READERS
@@ -163,11 +163,8 @@ parser.add_argument('--sanity-check', action='store_true',
 parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
     help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]})')
 parser.add_argument('--cutoff', type=int, default=1_000_000,
-    help="[only for sorters 'tmpfile' and 'java'] "
+    help="[only for sorter 'tmpfile'] "
          "the cutoff when to use the builtin sorting implementation (default: 1 million)")
-parser.add_argument('--pivot-selector', choices=PIVOT_SELECTORS, default=next(iter(PIVOT_SELECTORS)),
-    help="[only for sorters 'tmpfile' and 'java'] "
-         f"pivot selector: one of {', '.join(PIVOT_SELECTORS)} (default: {next(iter(PIVOT_SELECTORS))})")
 parser.add_argument('--keep-tmpfiles', action='store_true',
     help="keep temporary files (default: don't keep)")
 

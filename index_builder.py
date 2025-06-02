@@ -18,15 +18,6 @@ from util import progress_bar
 # Possible sorting alternatives, the first is the default:
 SORTER_CHOICES = ['roaring', 'tmpfile', 'internal', 'cython']
 
-# Possible pivot selectors, used by the 'tmpfile' sorter:
-PIVOT_SELECTORS = {
-    'random': sort.random_pivot,
-    'first': sort.take_first_pivot,
-    'central': sort.take_first_pivot,
-    'median3': sort.median_of_three,
-    'ninther': sort.tukey_ninther,
-}
-
 
 def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     index_path = Index.indexpath(corpus, template)
@@ -244,12 +235,7 @@ class TmpfileCollector(Collector):
         logging.debug(f"Sorting {nr_rows} rows")
         with open(self.path, 'r+b') as file:
             with mmap(file.fileno(), 0) as bytes_mmap:
-                sort.quicksort(
-                    bytes_mmap,
-                    rowbytes,
-                    pivotselector = PIVOT_SELECTORS.get(self.args.pivot_selector, sort.random_pivot),
-                    cutoff = self.args.cutoff or 1_000_000,
-                )
+                sort.quicksort(bytes_mmap, rowbytes, cutoff = self.args.cutoff or 1_000_000)
 
         logging.debug(f"Creating index file")
         with IntArray.create(nr_rows, index_path) as suffix_array:
