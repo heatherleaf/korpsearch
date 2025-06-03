@@ -18,9 +18,10 @@ PYVERSION = 3.10
 
 # F541: Warn about f-strings without placeholders
 RUFFCONFIG = 'lint.ignore = ["F541"]'
+MYPYCONFIG = --strict --no-warn-unused-ignores
 
 lint:
-	mypy --python-version ${PYVERSION} --strict --no-warn-unused-ignores *.py || true
+	mypy --python-version ${PYVERSION} ${MYPYCONFIG} *.py || true
 	@echo
 	pyright --pythonversion ${PYVERSION} *.py || true
 	@echo

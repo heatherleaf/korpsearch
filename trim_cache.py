@@ -21,8 +21,8 @@ def trim_cache(args: argparse.Namespace) -> None:
         logging.info(f"Deleting old cache file: {file} ({size/mb:.1f} MB)")
         excess -= size
         file.unlink(missing_ok=True)
-    for dir, _, filenames in os.walk(cache_dir, topdown=False):
-        dir = Path(dir)
+    for dirstr, _, filenames in os.walk(cache_dir, topdown=False):
+        dir = Path(dirstr)
         if dir != cache_dir:
             if filenames == ["__info__"]:
                 (dir / filenames[0]).unlink()

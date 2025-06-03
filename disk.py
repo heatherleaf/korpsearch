@@ -180,6 +180,14 @@ class BytesArray:
         raw = self._rawdata
         return [raw[start:end-1] for i in range(j, k) for start, end in [(arr[i], arr[i+1])]]
 
+    def __iter__(self) -> Iterator[bytes]:
+        raw = self._rawdata
+        start = -1
+        for end in self._starts:
+            if start >= 0:
+                yield raw[start:end-1]
+            start = end
+
     def __setitem__(self, i: int, value: bytes) -> None:
         raise TypeError("'BytesArray' does not support item assignment")
 

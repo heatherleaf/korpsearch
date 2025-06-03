@@ -10,8 +10,8 @@ from pyroaring import BitMap
 
 from disk import IntArray, Symbol, BytesArray, IntBytesMap
 from corpus import Corpus
-from literals import Template, TemplateLiteral
-from index import Index, UnaryIndex, Instance
+from literals import Template, TemplateLiteral, Instance
+from index import Index, UnaryIndex
 import sort
 from util import add_suffix, progress_bar
 
@@ -34,7 +34,7 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     else:
         size = build_index_via_tmpfile(index_path, collect, arity, args)
 
-    config = {}
+    config: dict[str, int] = {}
     config['arity'] = arity
     config['size'] = size
     if arity > 1 and args.min_frequency:
@@ -132,7 +132,7 @@ def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arit
     tmppath = add_suffix(path, '.tmp')
     rowsize = (arity + 1) * 4
     size = max_value = 0
-    with open(tmppath, 'wb') as file:
+    with open(tmppath, 'w+b') as file:
         for value, pos in collect:
             row = (value << 32) + pos
             file.write(row.to_bytes(rowsize, 'big'))
@@ -159,12 +159,12 @@ def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arit
                 value = row[:-4]
                 if value != prev_value:
                     if bitmap:
-                        yield (int.from_bytes(prev_value), bitmap)
+                        yield (int.from_bytes(prev_value, 'big'), bitmap)
                         bitmap = BitMap()
                     prev_value = value
-                bitmap.add(int.from_bytes(row[-4:]))
+                bitmap.add(int.from_bytes(row[-4:], 'big'))
             if bitmap:
-                yield (int.from_bytes(prev_value), bitmap)
+                yield (int.from_bytes(prev_value, 'big'), bitmap)
 
     logging.debug(f"Building index")
     keyspath, valspath = IntBytesMap.getpaths(path)

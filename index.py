@@ -38,7 +38,7 @@ class Index:
             self.bigsets = IntBytesMap(self.path)
         except FileNotFoundError:
             self.bigsets = None
-        if self.smallsets is self.bigsets is None:
+        if self.smallsets is None and self.bigsets is None:
             raise FileNotFoundError(f"Index does not exist: {self.path}")
 
     def __str__(self) -> str:
@@ -53,17 +53,19 @@ class Index:
     def __exit__(self, *_: Any) -> None:
         self.close()
 
-    def getconfig(self) -> dict[str, Any]:
+    def getconfig(self) -> dict[str, int]:
         try:
             with open(self.getconfigpath(self.path)) as configfile:
-                return json.load(configfile)
+                return json.load(configfile)  # type: ignore
         except FileNotFoundError:
             assert self.smallsets
             return self.smallsets.getconfig()
 
     def close(self) -> None:
-        if self.smallsets: self.smallsets.close()
-        if self.bigsets: self.bigsets.close()
+        if self.smallsets:
+            self.smallsets.close()
+        if self.bigsets:
+            self.bigsets.close()
 
     def search(self, instance: Instance, offset: int = 0) -> BitMap:
         try:
@@ -186,11 +188,11 @@ class BinaryIndex(Index):
         if isinstance(left, list) and isinstance(right, list):
             raise ValueError("BinaryIndex cannot have lists for both left and right values")
         return [
-            (l32+r0, l32+r1)
-            for l in (left.symbols if isinstance(left, SymbolList) else [left])
-            for l32 in [l << 32]
-            for r in (right.symbols if isinstance(right, SymbolList) else [right])
-            for (r0, r1) in [(r, r) if isinstance(r, int) else r]
+            (leftshifted + rightsym1, leftshifted + rightsym2)
+            for leftsym in (left.symbols if isinstance(left, SymbolList) else [left])
+            for leftshifted in [leftsym << 32]
+            for rightrange in (right.symbols if isinstance(right, SymbolList) else [right])
+            for (rightsym1, rightsym2) in [(rightrange, rightrange) if isinstance(rightrange, int) else rightrange]
         ]
 
     def get_search_key(self) -> Callable[[int], int]:

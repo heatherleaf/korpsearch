@@ -4,7 +4,9 @@ import sys
 import re
 import math
 import logging
-import gzip, bz2, lzma
+import gzip
+import bz2
+import lzma
 from pathlib import Path
 from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, NewType
 from collections.abc import Iterable, Iterator, Callable
@@ -80,7 +82,7 @@ def file_size(file: Path|str|IO[Any]) -> int:
     if isinstance(file, Path):
         try:
             stat = file.stat()
-        except:
+        except FileNotFoundError:
             return 0
     else:
         stat = os.fstat(file.fileno())
