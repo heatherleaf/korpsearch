@@ -24,8 +24,10 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     index_path.parent.mkdir(exist_ok=True)
     arity = len(template)
     logging.info(f"Building index {template}, using sorter {args.sorter}")
-    if arity <= 2:
-        collect = collect_from_index(corpus, template, args)
+    if arity == 1:
+        collect = collect_from_unary_template(corpus, template, args)
+    elif arity == 2:
+        collect = collect_from_binary_template(corpus, template, args)
     else:
         raise ValueError(f"Cannot build indexes of length {arity}: {template}")
 
@@ -48,29 +50,31 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
         logging.info(f"Built {template}, size {len(index):,d}: total {smallsize:,d} in small sets, the rest in {nbigsets:,d} big sets, avg. size {avgbigsize:,d}")
 
 
-def collect_from_index(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
-    if len(template) == 1:
-        assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
-        tmpl = template.template[0]
-        assert tmpl.offset == template.min_offset() == template.max_offset() == 0
-        features = progress_bar(corpus.tokens[tmpl.feature].raw(), desc="Collecting positions")
-        return ((value, pos) for (pos, value) in enumerate(features) if value)
+def collect_from_unary_template(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
+    assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
+    (tmpl,) = template.template
+    assert tmpl.offset == template.min_offset() == template.max_offset() == 0
+    features = progress_bar(corpus.tokens[tmpl.feature].raw(), desc="Collecting positions")
+    return ((value, pos) for (pos, value) in enumerate(features) if value)
 
+
+def collect_from_binary_template(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
     assert all(lit.negative for lit in template.literals), f"Cannot handle positive template literals: {template}"
-    tmpl1, tmpl2 = template.template
+    (tmpl1, tmpl2) = template.template
+    offset2 = tmpl2.offset
     assert tmpl1.offset == template.min_offset() == 0
-    assert tmpl2.offset == template.max_offset()
+    assert tmpl2.offset == template.max_offset() == offset2
     features1 = corpus.tokens[tmpl1.feature].raw()
     features2 = corpus.tokens[tmpl2.feature].raw()
-    offset2 = tmpl2.offset
 
     # Optimisation: use the underlying memoryview for each SymbolArray,
     # and don't bother with looking up symbols - use the ints directly instead.
     test_literals = [(corpus.tokens[lit.feature].raw(), lit.offset, lit.value) for lit in template.literals]
 
+    size = len(corpus) - offset2
     min_freq = args.min_frequency
     if not min_freq:
-        size = len(corpus) - offset2
+        # The simple case: --min-frequency is not set, so don't filter our low-frequent features.
         return (
             ((val1 << 32) + val2, pos)
             for pos in progress_bar(range(size), desc="Collecting positions")
@@ -78,31 +82,32 @@ def collect_from_index(corpus: Corpus, template: Template, args: Namespace) -> I
             if val1 and val2 and all(lfeat[pos + loffset] != lval for (lfeat, loffset, lval) in test_literals)
         )
 
+    # The more complicated case: only record a binary instance if both features are common enough.
+    # If --min-frequency is set to M, then both features have to have frequency at least M.
+
+    # Already-compiled unary indexes which we use to look up the respective individual frequencies.
     unary1 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl1.feature)]))
     unary2 = UnaryIndex(corpus, Template([TemplateLiteral(0, tmpl2.feature)]))
 
-    # Optimisation: cache index lookups, because the size of the vocabulary
-    # is much smaller than the corpus size.
+    # If `unary_min_frequency` returns True, then the feature occurs at least `min_freq` times.
+    # Optimisation: Cache lookups, because the vocabulary size is much smaller than the corpus size.
     cache1: dict[int, bool] = {}
     cache2: dict[int, bool] = {}
     def unary_min_frequency(unary: UnaryIndex, unary_key: Symbol, cache: dict[int, bool]) -> bool:
         if unary_key not in cache:
-            size = len(unary.search(Instance([unary_key])))
-            cache[unary_key] = size >= min_freq
+            freq = len(unary.search(Instance([unary_key])))
+            cache[unary_key] = freq >= min_freq
         return cache[unary_key]
 
     def collect() -> Iterator[tuple[int, int]]:
         skipped_instances = 0
-        for pos in progress_bar(range(len(corpus) - template.max_offset()), desc="Collecting positions"):
+        for pos in progress_bar(range(size), desc="Collecting positions"):
             val1, val2 = features1[pos], features2[pos + offset2]
             if val1 and val2 and all(lfeat[pos + loffset] != lval for (lfeat, loffset, lval) in test_literals):
-                if not (
-                            unary_min_frequency(unary1, val1, cache1) and
-                            unary_min_frequency(unary2, val2, cache2)
-                        ):
-                    skipped_instances += 1
-                else:
+                if unary_min_frequency(unary1, val1, cache1) and unary_min_frequency(unary2, val2, cache2):
                     yield ((val1 << 32) + val2, pos)
+                else:
+                    skipped_instances += 1
         if skipped_instances:
             logging.debug(f"Skipped {skipped_instances:,d} low-frequency instances")
     return collect()
@@ -129,6 +134,7 @@ def build_index_via_bitmaps(path: Path, collect: Iterator[tuple[int, int]], arit
 
 
 def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arity: int, args: Namespace) -> int:
+    # First we collect all (value, position) pairs into a temporary binary file.
     tmppath = add_suffix(path, '.tmp')
     rowsize = (arity + 1) * 4
     size = max_value = 0
@@ -139,17 +145,19 @@ def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arit
             size += 1
             max_value = max(max_value, value)
 
+    # Then we sort the temporary file, either using qsort from C (preferred) or a Python sort function.
     if args.sorter == 'cython':
         from faster_index_builder import sort_index  # type: ignore
         logging.debug(f"Sorting {size:,d} rows using C 'qsort'")
         sort_index(tmppath, size, rowsize)
-
     else:
         logging.debug(f"Sorting {size:,d} rows")
         with open(tmppath, 'r+b') as file:
             with mmap(file.fileno(), 0) as bytes_mmap:
                 sort.quicksort(bytes_mmap, rowsize, cutoff = args.cutoff or 1_000_000)
 
+    # Here is an iterator read the sorted file and yields each value together
+    # with the set of positions for that value.
     def yield_bitmaps() -> Iterator[tuple[int, BitMap]]:
         with open(tmppath, 'rb') as file:
             prev_value = b''
@@ -166,6 +174,9 @@ def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arit
             if bitmap:
                 yield (int.from_bytes(prev_value, 'big'), bitmap)
 
+    # We use the iterator above to build two search indexes from the position sets above:
+    #  - an IntArray for storing small sets
+    #  - a IntBytesMap for storing large sets
     logging.debug(f"Building index")
     keyspath, valspath = IntBytesMap.getpaths(path)
     def yield_bigset_values() -> Iterator[bytes]:
