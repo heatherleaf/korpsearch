@@ -120,11 +120,15 @@ def build_index_via_bitmaps(path: Path, collect: Iterator[tuple[int, int]], arit
     max_value = sorted_bitmaps[-1][0]
 
     logging.debug(f"Building index")
-    smallsets = (n for (_, bitmap) in sorted_bitmaps if len(bitmap) < args.bigset_limit for n in bitmap)
-    bigset_keys = (key for (key, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
-    bigset_values = (bitmap.serialize() for (_, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
-    IntArray.build(path, smallsets, size=size, max_value=size)
-    IntBytesMap.build(path, bigset_keys, bigset_values, size=size, max_value=max_value)
+    has_small = any(len(bitmap) < args.bigset_limit for (_, bitmap) in sorted_bitmaps)
+    has_big = any(len(bitmap) >= args.bigset_limit for (key, bitmap) in sorted_bitmaps)
+    if has_small:
+        smallsets = (n for (_, bitmap) in sorted_bitmaps if len(bitmap) < args.bigset_limit for n in bitmap)
+        IntArray.build(path, smallsets, size=size, max_value=size)
+    if has_big:
+        bigset_keys = (key for (key, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
+        bigset_values = (bitmap.serialize() for (_, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
+        IntBytesMap.build(path, bigset_keys, bigset_values, size=size, max_value=max_value)
     return size
 
 
