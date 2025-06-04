@@ -27,9 +27,7 @@ def hash_repr(*objs: object, size: int = 32) -> str:
     return hasher.hexdigest() [:size]
 
 
-def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path | None:
-    if args.no_diskarray:
-        return None
+def get_cache_file(query: Query, **extra_args: object) -> Path | None:
     corpus_hash = hash_repr(query.corpus, size=16)
     query_dir = CACHE_DIR / f"{query.corpus.path.stem}.{corpus_hash}"
     if not query_dir.is_dir():
@@ -71,7 +69,7 @@ def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> B
     if len(partial_queries) <= 1:
         return run_inner_query(query, results_file, args)
 
-    union_files = [get_cache_file(args, q, num=n, outer=query) for n, q in enumerate(partial_queries)]
+    union_files = [get_cache_file(q, num=n, outer=query) for n, q in enumerate(partial_queries)]
     union_files[-1] = results_file
     union = None
     for partial_query, union_file in zip(partial_queries, union_files):
@@ -81,7 +79,7 @@ def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> B
             logging.debug(f"Using cached union: {union}")
             continue
 
-        partial_results_file = get_cache_file(args, partial_query)
+        partial_results_file = get_cache_file(partial_query)
         partial_results = try_open_cache(partial_results_file, args)
         if partial_results is not None:
             logging.debug(f"Using cached partial results: {partial_results}")
@@ -179,7 +177,7 @@ def run_query(query: Query, results_file: Path|None, args: Namespace) -> BitMap:
 
 
 def search_corpus(query: Query, args: Namespace) -> BitMap:
-    final_results_file = get_cache_file(args, query, filtered=args.filter)
+    final_results_file = get_cache_file(query, filtered=args.filter)
     cached_results = try_open_cache(final_results_file, args)
     if cached_results is not None:
         logging.debug(f"Using cached results file: {final_results_file}")
@@ -188,7 +186,7 @@ def search_corpus(query: Query, args: Namespace) -> BitMap:
     if not args.filter:
         return run_query(query, final_results_file, args)
 
-    unfiltered_results_file = get_cache_file(args, query, filtered=False)
+    unfiltered_results_file = get_cache_file(query, filtered=False)
     assert unfiltered_results_file != final_results_file
     unfiltered_results = try_open_cache(unfiltered_results_file, args)
     if unfiltered_results is not None:

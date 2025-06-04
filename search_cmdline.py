@@ -54,10 +54,7 @@ parser.add_argument('--show', '-f', type=str,
     help='comma-separated list of features to show (default: the ones in the query)')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
-parser.add_argument('--no-diskarray', action="store_true", help="don't use on-disk arrays")
 parser.add_argument('--no-binary', action="store_true", help="don't use binary indexes")
-parser.add_argument('--internal-merge', action='store_true',
-    help='use the internal (slow) merge, even if the external Cython "fast-merge" is compiled')
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO,
     help='verbose output')
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING,

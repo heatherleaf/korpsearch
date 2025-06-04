@@ -162,7 +162,6 @@ parser.add_argument('--sampling', '--max', type=int, default=100_000,
     help='max n:o results to sample statistics from (default: 100_000)')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
-parser.add_argument('--no-diskarray', action="store_true", help="don't use on-disk arrays")
 parser.add_argument('--no-binary', action="store_true", help="don't use binary indexes")
 parser.add_argument('--internal-merge', action='store_true',
     help='use the internal (slow) merge, even if the external Cython "fast-merge" is compiled')
