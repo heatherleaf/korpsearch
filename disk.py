@@ -159,13 +159,16 @@ class IntArray:
 
 class BytesArray:
     _starts: IntArray
-    _rawdata: mmap
+    _rawdata: mmap | bytearray
 
     def __init__(self, path: Path) -> None:
         startspath, rawpath = self.getpaths(path)
         self._starts = IntArray(startspath)
         with open(rawpath, 'r+b') as file:
-            self._rawdata = mmap(file.fileno(), 0)
+            try:
+                self._rawdata = mmap(file.fileno(), 0)
+            except ValueError:  # "cannot mmap an empty file"
+                self._rawdata = bytearray(0)
 
     def __len__(self) -> int:
         return len(self._starts) - 1
@@ -198,8 +201,9 @@ class BytesArray:
         self.close()
 
     def close(self) -> None:
-        self._rawdata.close()
         self._starts.close()
+        if isinstance(self._rawdata, mmap):
+            self._rawdata.close()
 
     def finditer(self, regex: bytes, flags: int = 0) -> Iterator[int]:
         regex = b'^(?:' + regex + b')$'
