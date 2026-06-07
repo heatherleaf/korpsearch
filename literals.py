@@ -31,6 +31,8 @@ class KnownLiteral:
             value1 = self.corpus.lookup_symbol(self.feature, self.value[1]).decode()
             return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}-{value1}"
         elif isinstance(self.value, SymbolList):
+            if not self.value.symbols:
+                return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}0"
             value0 = self.corpus.lookup_symbol(self.feature, self.value.symbols[0]).decode()
             value1 = self.corpus.lookup_symbol(self.feature, self.value.symbols[-1]).decode()
             return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}...{value1}"

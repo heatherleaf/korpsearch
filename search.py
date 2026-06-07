@@ -116,16 +116,20 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> B
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"    -- subsumed: {subq}")
             continue
-        if isinstance(index, BinaryIndex) and subq.contains_prefix():
-            if index.getconfig().get("min_frequency", 0) > 0:
-                logging.debug(f"    -- skipping: {subq}, because prefix query and min-frequency binary index")
-                continue
-        results = index.search(subq.instance(), offset=subq.min_offset())
-        if not results:
-            logging.debug(f"    -- not found: {subq}")
+        binary_min_freq = index.getconfig().get("min_frequency", 0) if isinstance(index, BinaryIndex) else 0
+        if binary_min_freq > 0 and subq.contains_prefix():
+            logging.debug(f"    -- skipping: {subq}, because prefix query and min-frequency binary index")
             continue
-        search_results.append((subq, results))
-        logging.info(f"    {subq!s:{maxwidth}} = {show_result(results)}")
+        results = index.search(subq.instance(), offset=subq.min_offset())
+        if results:
+            search_results.append((subq, results))
+            logging.info(f"    {subq!s:{maxwidth}} = {show_result(results)}")
+        elif binary_min_freq > 0:
+            logging.debug(f"    -- skipping: {subq}, not found in min-frequency binary index")
+            continue
+        else:
+            logging.debug(f"    -- aborting: {subq}, not found")
+            return BitMap()
 
     search_results.sort(key=lambda r: len(r[-1]))
     first_query = search_results[0][0]

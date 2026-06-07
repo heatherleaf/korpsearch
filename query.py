@@ -6,6 +6,7 @@ from collections.abc import Iterator, Sequence
 
 from literals import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance
 from corpus import Corpus
+from index import Index
 from util import Feature, FValue, SENTENCE, START
 
 
@@ -173,6 +174,12 @@ class Query:
                 feature = Feature(featstr.lower().encode())
                 negative = (negated == '!')
                 value_type = Query._classify_value(valstr)
+                if value_type == 'suffix':
+                    # Check that there is a reversed index, otherwise backoff to 'regex'
+                    try:
+                        Index.get(corpus, Template.parse(corpus, feature.decode() + "_rev:0"))
+                    except FileNotFoundError:
+                        value_type = 'regex'
                 match value_type:
                     case 'normal':
                         value = FValue(valstr.encode())
