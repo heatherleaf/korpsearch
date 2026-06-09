@@ -9,6 +9,7 @@ from argparse import Namespace
 
 from pyroaring import BitMap
 
+from disk import SymbolList, SymbolRange
 from index import Index, BinaryIndex
 from corpus import Corpus
 from query import Query
@@ -116,10 +117,15 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> B
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"    -- subsumed: {subq}")
             continue
-        binary_min_freq = index.getconfig().get("min_frequency", 0) if isinstance(index, BinaryIndex) else 0
-        if binary_min_freq > 0 and subq.contains_prefix():
-            logging.debug(f"    -- skipping: {subq}, because prefix query and min-frequency binary index")
-            continue
+        binary_min_freq = 0
+        if isinstance(index, BinaryIndex):
+            binary_min_freq = index.getconfig().get("min_frequency", 0)
+            if binary_min_freq > 0 and subq.contains_prefix():
+                logging.debug(f"    -- skipping: {subq}, because prefix query and min-frequency binary index")
+                continue
+            if all(isinstance(sym, (SymbolRange, SymbolList)) for sym in subq.instance()):
+                logging.debug(f"    -- skipping: {subq}, because binary index and only symbol ranges/lists")
+                continue
         results = index.search(subq.instance(), offset=subq.min_offset())
         if results:
             search_results.append((subq, results))
