@@ -8,7 +8,7 @@ import gzip
 import bz2
 import lzma
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, NewType
+from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, NewType, NoReturn, overload
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
@@ -259,7 +259,12 @@ except ModuleNotFoundError:
 
 _tqdm_bar_format = '{desc:20s} {percentage:3.0f}%|{bar}|{n_fmt:>7s}/{total_fmt} [{elapsed},{rate_fmt:>10s}{postfix}]'
 
-def progress_bar(iterable: Iterable[T]|None = None, desc: str = "", **kwargs: Any) -> ProgressBar[T]:
+@overload
+def progress_bar(iterable: Iterable[T], desc: str = "", **kwargs: Any) -> ProgressBar[T]: ...
+@overload
+def progress_bar(iterable: None = None, desc: str = "", **kwargs: Any) -> ProgressBar[NoReturn]: ...
+
+def progress_bar(iterable: Iterable[T]|None = None, desc: str = "", **kwargs: Any) -> ProgressBar[T|NoReturn]:
     loglevel = logging.root.getEffectiveLevel()
     if loglevel > logging.INFO:
         return ProgressBar(iterable)
