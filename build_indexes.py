@@ -61,6 +61,8 @@ def main(args: argparse.Namespace) -> None:
 
     if args.features or args.templates:
         with Corpus(corpus_id, base_dir=args.base_dir) as corpus:
+            if args.sorter != 'cython' and len(corpus) >= 10_000_000:
+                logging.warning(f"Your corpus is very large ({len(corpus)/(1<<20):.0f}M tokens), consider using --sorter cython")
             index_dir.mkdir(exist_ok=True)
             templates = list(yield_templates(corpus, args))
             logging.debug(f"Creating {len(templates)} indexes: {', '.join(map(str, templates))}")
