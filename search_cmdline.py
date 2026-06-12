@@ -56,9 +56,9 @@ parser.add_argument('--show', '-f', type=str,
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
 parser.add_argument('--no-binary', action="store_true", help="don't use binary indexes")
 parser.add_argument('--verbose', '-v', action="store_const", dest="loglevel", const=logging.INFO,
-    help='verbose output')
+    help='verbose output (default: quiet)')
 parser.add_argument('--debug', action="store_const", dest="loglevel", const=logging.DEBUG, default=logging.WARNING,
-    help='debugging output')
+    help='debugging output (defaul: quiet)')
 
 parser.add_argument('--no-sentence-breaks', action='store_true',
     help="don't care about sentence breaks (default: do care)")

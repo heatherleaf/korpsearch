@@ -109,7 +109,7 @@ def collect_from_binary_template(corpus: Corpus, template: Template, args: Names
                 else:
                     skipped_instances += 1
         if skipped_instances:
-            logging.debug(f"Skipped {skipped_instances:,d} low-frequency instances")
+            logging.info(f"Skipped {skipped_instances:,d} low-frequency instances")
     return collect()
 
 
@@ -126,7 +126,7 @@ def build_index_via_bitmaps(path: Path, collect: Iterator[tuple[int, int]], arit
 
     logging.debug(f"Building index")
     # We create iterators to not use up more of the internal memory.
-    smallsets = (n for (_, bitmap) in sorted_bitmaps if len(bitmap) < args.bigset_limit for n in bitmap)
+    smallsets = (pos for (_, bitmap) in sorted_bitmaps if len(bitmap) < args.bigset_limit for pos in bitmap)
     bigset_keys = (key for (key, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
     bigset_values = (bitmap.serialize() for (_, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
     IntArray.build(path, smallsets, size=size, max_value=size)

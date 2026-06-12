@@ -156,10 +156,10 @@ parser.add_argument('--no-sentence-feature', action='store_true',
 parser.add_argument('--reversed-features', action='store_true',
     help="build reversed features for suffix search (default: do not build them)")
 
-parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
-    help='verbose output')
+parser.add_argument('--debug', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
+    help='debugging output (default: verbose)')
 parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
-    help='silent (no output)')
+    help='silent, no output (default: verbose))')
 parser.add_argument('--sanity-check', action='store_true',
     help="check that the created indexes are correct (default: don't check)")
 
