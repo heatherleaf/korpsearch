@@ -4,9 +4,11 @@ import sys
 import re
 import math
 import logging
-import gzip, bz2, lzma
+import gzip
+import bz2
+import lzma
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, Literal, BinaryIO, Optional, NewType
+from typing import Any, Protocol, TypeVar, Literal, IO, BinaryIO, NewType
 from collections.abc import Iterable, Iterator, Callable
 from abc import abstractmethod
 
@@ -22,6 +24,12 @@ SENTENCE = Feature(b's')
 
 EMPTY = FValue(b'')
 START = FValue(b's')
+
+def is_reversed_feature(feature: Feature) -> bool:
+    return feature.endswith(b'_reversed')
+
+def reverse_feature(feature: Feature) -> Feature:
+    return Feature(feature + b'_reversed')
 
 
 def check_feature(feature: Feature) -> None:
@@ -50,6 +58,7 @@ CT = TypeVar('CT', bound=ComparableProtocol)
 
 def add_suffix(path: Path, suffix: str) -> Path:
     """Add the suffix to the path, unless it's already there."""
+    path = Path(path)
     if path.suffix != suffix:
         path = Path(str(path) + suffix)
         # Alternatively: Path(path).with_suffix(path.suffix + suffix)
@@ -72,12 +81,17 @@ def clean_up(path: Path, suffixes: list[str]) -> None:
             pass
 
 
-def file_size(file: Path) -> int:
+def file_size(file: Path|str|IO[Any]) -> int:
     """Return the n:o bytes the file uses up on disk, or 0 if the file doesn't exist."""
-    try:
-        stat = file.stat()
-    except:
-        return 0
+    if isinstance(file, str):
+        file = Path(file)
+    if isinstance(file, Path):
+        try:
+            stat = file.stat()
+        except FileNotFoundError:
+            return 0
+    else:
+        stat = os.fstat(file.fileno())
     try:
         return stat.st_blocks * 512
     except AttributeError:
@@ -141,8 +155,7 @@ def binsearch_first(start: int, end: int, key: CT, lookup: Callable[[int], CT], 
         else:
             end = mid - 1
     if error and lookup(start) != key:
-        keystr = key.decode(errors='ignore') if isinstance(key, bytes) else str(key)
-        raise KeyError(f'Key "{keystr}" not found')
+        raise KeyError(f'Key "{key}" not found')
     return start
 
 
@@ -159,8 +172,10 @@ def binsearch_last(start: int, end: int, key: CT, lookup: Callable[[int], CT], e
 
 
 def binsearch_range(start: int, end: int, start_key: CT, end_key: CT, lookup: Callable[[int], CT], error: bool = True) -> tuple[int, int]:
-    start = binsearch_first(start, end, start_key, lookup, error)
-    end = binsearch_last(start, end, end_key, lookup, error)
+    start = binsearch_first(start, end, start_key, lookup, error=False)
+    end = binsearch_last(start, end, end_key, lookup, error=False)
+    if error and end < start:
+        raise KeyError(f'No keys found between "{start_key}"..."{end_key}"')
     return start, end
 
 
@@ -201,7 +216,7 @@ class CompressedFileReader:
         return self.basefile.tell()
 
     def file_size(self) -> int:
-        return os.fstat(self.basefile.fileno()).st_size
+        return file_size(self.basefile)
 
     def close(self) -> None:
         self.reader.close()
@@ -221,7 +236,7 @@ class ProgressBar(Iterable[T]):
     """A simple progress bar wrapper class, doing nothing at all."""
     n: int = 0
 
-    def __init__(self, iterable: Optional[Iterable[T]] = None, **_: Any) -> None:
+    def __init__(self, iterable: Iterable[T]|None = None, **_: Any) -> None:
         self._iter = iter(()) if iterable is None else iter(iterable)
 
     def __enter__(self) -> 'ProgressBar[T]':
@@ -244,7 +259,7 @@ except ModuleNotFoundError:
 
 _tqdm_bar_format = '{desc:20s} {percentage:3.0f}%|{bar}|{n_fmt:>7s}/{total_fmt} [{elapsed},{rate_fmt:>10s}{postfix}]'
 
-def progress_bar(iterable: Optional[Iterable[T]] = None, desc: str = "", **kwargs: Any) -> ProgressBar[T]:
+def progress_bar(iterable: Iterable[T]|None = None, desc: str = "", **kwargs: Any) -> ProgressBar[T]:
     loglevel = logging.root.getEffectiveLevel()
     if loglevel > logging.INFO:
         return ProgressBar(iterable)
@@ -271,7 +286,7 @@ class RelativeTimeFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(format: str, timedivider: int = 1000, loglevel: int = logging.WARNING, logfile: Optional[Path] = None) -> None:
+def setup_logger(format: str, timedivider: int = 1000, loglevel: int = logging.WARNING, logfile: Path|None = None) -> None:
     formatter = RelativeTimeFormatter(format, style='{', divider=timedivider)
     logging.basicConfig(level=loglevel, filename=logfile)
     logging.root.handlers[0].setFormatter(formatter)

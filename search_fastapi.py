@@ -11,7 +11,7 @@ from typing import Any
 from collections.abc import Callable
 
 from corpus import Corpus
-from index import Template
+from literals import Template
 from util import setup_logger
 from search import main_search
 from search_statistics import main_count
@@ -31,7 +31,6 @@ SETTINGS = Namespace(
     log_config = None,
     filter = False,
     no_cache = False,
-    no_diskarray = False,
     no_binary = False,
     no_sentence_breaks = False,
     internal_merge = False,
@@ -139,7 +138,6 @@ async def query(
         show: str = "",
         filter: bool|None = None,
         no_cache: bool|None = None,
-        no_diskarray: bool|None = None,
         no_binary: bool|None = None,
         no_sentence_breaks: bool|None = None,
         internal_merge: bool|None = None,
@@ -154,7 +152,6 @@ async def query(
         show = show,
         filter = filter,
         no_cache = no_cache,
-        no_diskarray = no_diskarray,
         no_binary = no_binary,
         no_sentence_breaks = no_sentence_breaks,
         internal_merge = internal_merge,
@@ -178,7 +175,6 @@ async def count(
         sampling: int = 100_000,
         filter: bool|None = None,
         no_cache: bool|None = None,
-        no_diskarray: bool|None = None,
         no_binary: bool|None = None,
         no_sentence_breaks: bool|None = None,
         internal_merge: bool|None = None,
@@ -192,7 +188,6 @@ async def count(
         sampling = sampling,
         filter = filter,
         no_cache = no_cache,
-        no_diskarray = no_diskarray,
         no_binary = no_binary,
         no_sentence_breaks = no_sentence_breaks,
         internal_merge = internal_merge,
@@ -221,7 +216,6 @@ parser.add_argument('--ssl-keyfile', type=str, help=f'SSL key file')
 parser.add_argument('--ssl-certfile', type=str, help=f'SS certificate file')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
-parser.add_argument('--no-diskarray', action="store_true", help="don't use on-disk arrays")
 parser.add_argument('--no-binary', action="store_true", help="don't use binary indexes")
 parser.add_argument('--internal-merge', action='store_true', help='use the internal (slow) merge')
 parser.add_argument('--no-sentence-breaks', action='store_true', help="don't care about sentence breaks")

@@ -48,11 +48,11 @@ def main_count(args: Namespace) -> dict[str, Any]:
                 sampling_step = 1 + len(results) // args.sampling
             sampled_indices = range(0, len(results), sampling_step)
             if sampling_step > 1:
-                logging.info(f"Too many results ({len(results)}): sampling {len(sampled_indices)} results")
+                logging.info(f"Too many results ({len(results):,d}): sampling {len(sampled_indices):,d} results")
             for i in sampled_indices:
                 match_pos = results[i]
                 group = tuple(
-                    strings.interned_string(strings[p])
+                    strings.symbols.to_name(strings[p]).decode()
                     for p in range(match_pos, match_pos + query_offset)
                 )
                 stats[group] += 1
@@ -162,7 +162,6 @@ parser.add_argument('--sampling', '--max', type=int, default=100_000,
     help='max n:o results to sample statistics from (default: 100_000)')
 
 parser.add_argument('--no-cache', action="store_true", help="don't use cached queries")
-parser.add_argument('--no-diskarray', action="store_true", help="don't use on-disk arrays")
 parser.add_argument('--no-binary', action="store_true", help="don't use binary indexes")
 parser.add_argument('--internal-merge', action='store_true',
     help='use the internal (slow) merge, even if the external Cython "fast-merge" is compiled')

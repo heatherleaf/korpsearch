@@ -18,17 +18,18 @@ In *KONVENS 2024, 20th Conference on Natural Language Processing*, pages 149–1
 
 You need Python version 3.10 or later, but we recommend at least version 3.11 because it is so much faster than 3.10.
 
-There are no required libraries, you should be able to run things without installing anything extra.
-However, we recommend that you install the following:
+We use Roaring Bitmaps for storing the search indexes, and the search results.
+Therefore you have to install the following library from PyPi:
+
+- [pyroaring](https://pypi.org/project/pyroaring/)
+
+In addition we recommend the following libraries, even though you should be able to run things without them:
 
 - [tqdm](https://pypi.org/project/tqdm/) for a better progress bar
 
-- [Cython](https://pypi.org/project/cython/) if you want to use the fast merging algorithm (see below)
+- [Cython](https://pypi.org/project/cython/) if you want to build indexes faster (see below)
 
 - [FastAPI](https://pypi.org/project/fastapi/) if you want to run the web demo (see below)
-
-- [PyPy](https://www.pypy.org/) if you want building the indexes to be around twice as fast
-  (Note: using PyPy doesn't seem to improve the search efficiency)
 
 ## Building inverted indexes
 
@@ -54,25 +55,18 @@ The original `.csv` file is not used when searching, so you can remove it if you
 
 ### Building indexes faster
 
-Note that it can take quite some time to build indexes for large corpora.
-But using [PyPy](https://www.pypy.org/) instead of CPython will be around twice as fast.
+The default index builder does everything in-memory, which means that you need a lot of internal memory if you want to build very large corpora (e.g., 10--100 million tokens).
 
-    pypy3 build_indexes.py --corpus ...
+If you notice that the builder stalls and nothing happens, then you can try to use another builder instead (using the `--sorter` option):
 
-Most of the time spent when building indexes are for sorting them.
-There are several possible sorting implementations you can test with (using the `--sorter` option):
+- `bitmap` (the default) collects Roaring Bitmaps while reading, and then writes them to disk.
+  This is fast but slows down considerably for very large corpora (depending on your computer's internal memory).
 
-- `tmpfile` (the default) uses a temporary file which is sorted.
+- `tmpfile` uses a temporary file which is sorted.
   The main advantage is that it doesn't use up any internal memory, so it is useful for very large corpora.
 
-- `internal` uses Python's builtin sort function, which is extremely fast
-  (up to 5–10 times faster than `tmpfile`).
-  However, it has to load the whole corpus in memory so it is not very useful for very large corpora
-  (depending on your computer, but can cause problems from 10–100 million tokens).
-
-- `cython` uses a Cython implementation using C's builtin `qsort` function for sorting the index.
-  – this is also up to 5–10 times faster than `tmpfile`, but doesn't have any memory problems
-  because it uses a temporary file.
+- `cython` calls C's builtin `qsort` function for sorting the index.
+  This is up to 5–10 times faster than `tmpfile`, and it doesn't have any memory problems like `bitmap` does.
   Note that you have to compile the Cython module first, by running `make faster-index-builder`.
 
 ## Searching from the command line
@@ -90,16 +84,6 @@ Use the following for more help:
 
 Note that this can take a couple of seconds for some very general searches on large corpora.
 If you use the fast intersection (see below) some searches can be up to 10 times faster.
-
-### Fast merging of search results
-
-When searching the part that takes the most time is to merge two search results (e.g., calculating the intersection).
-The default implementation is in pure Python (in `merge.py`), but there is a faster version implemented in Cython.
-To use this you first have to install [Cython](https://cython.readthedocs.io/en/stable/src/quickstart/install.html).
-Then you can compile the `fast_merge` module:
-
-    make fast-merge
-
 
 ## Using the web demo locally
 

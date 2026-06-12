@@ -5,10 +5,11 @@ from pathlib import Path
 from collections.abc import Iterator
 import logging
 
-from index import KnownLiteral, TemplateLiteral, Template, Index
-from index_builder import build_index, SORTER_CHOICES, PIVOT_SELECTORS
+from literals import KnownLiteral, TemplateLiteral, Template
+from index import Index
+from index_builder import build_index, SORTER_CHOICES
 from corpus import Corpus
-from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
+from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START, is_reversed_feature
 from corpus_reader import CORPUS_READERS
 
 # All supported file suffixes.
@@ -82,7 +83,7 @@ def main(args: argparse.Namespace) -> None:
 
 
 def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
-    svalue = corpus.intern(SENTENCE, START)
+    svalue = corpus.get_symbol(SENTENCE, START)
     if args.templates:
         for tmplstr in args.templates:
             tmpl = Template.parse(corpus, tmplstr)
@@ -91,7 +92,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             else:
                 dist = tmpl.max_offset()
                 literals = set(tmpl.literals) | {
-                    KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus)
+                    KnownLiteral(True, offset, SENTENCE, svalue, corpus)
                     for offset in range(1, dist+1)
                 }
                 yield Template(tmpl.template, literals)
@@ -104,10 +105,10 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             yield Template([TemplateLiteral(0, feat)])
         # Binary indexes depend on unary indexes, so we build them afterwards.
         for feat1 in features:
-            if feat1.endswith(b'_rev'):
+            if is_reversed_feature(feat1):
                 continue
             for feat2 in features:
-                if feat2.endswith(b'_rev'):
+                if is_reversed_feature(feat2):
                     continue
                 for dist in range(1, args.max_dist+1):
                     template = [TemplateLiteral(0, feat1), TemplateLiteral(dist, feat2)]
@@ -115,7 +116,7 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
                         yield Template(template)
                     else:
                         literals = {
-                            KnownLiteral(True, offset, SENTENCE, svalue, svalue, corpus)
+                            KnownLiteral(True, offset, SENTENCE, svalue, corpus)
                             for offset in range(1, dist+1)
                         }
                         yield Template(template, literals)
@@ -146,28 +147,27 @@ parser.add_argument('--max-dist', type=int, default=2, metavar='DIST',
     help='[only with the --features option] max distance between token pairs (default: 2)')
 parser.add_argument('--min-frequency', type=int, default=0, metavar='FREQ',
     help='[only for binary indexes] min unary frequency for all values in a binary instance (default: 0)')
+parser.add_argument('--bigset-limit', type=int, default=1000, metavar='SIZE',
+    help='min size of a "big" index set: big sets are stored differently (default: 1000)')
 parser.add_argument('--no-sentence-breaks', action='store_true',
     help="[only for binary indexes] don't care about sentence breaks (default: do care)")
 parser.add_argument('--no-sentence-feature', action='store_true',
     help="don't build the 's' feature for sentence breaks (default: do build it)")
-parser.add_argument('--no-reversed-features', action='store_true',
-    help="don't build reversed features for suffix search (default: do build them)")
+parser.add_argument('--reversed-features', action='store_true',
+    help="build reversed features for suffix search (default: do not build them)")
 
-parser.add_argument('--verbose', '-v', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
-    help='verbose output')
+parser.add_argument('--debug', action='store_const', dest='loglevel', const=logging.DEBUG, default=logging.INFO,
+    help='debugging output (default: verbose)')
 parser.add_argument('--silent', action="store_const", dest='loglevel', const=logging.WARNING, default=logging.INFO,
-    help='silent (no output)')
+    help='silent, no output (default: verbose))')
 parser.add_argument('--sanity-check', action='store_true',
     help="check that the created indexes are correct (default: don't check)")
 
 parser.add_argument('--sorter', '-s', choices=SORTER_CHOICES, default=SORTER_CHOICES[0],
     help=f'sorter to use: one of {", ".join(SORTER_CHOICES)} (default: {SORTER_CHOICES[0]})')
 parser.add_argument('--cutoff', type=int, default=1_000_000,
-    help="[only for sorters 'tmpfile' and 'java'] "
+    help="[only for sorter 'tmpfile'] "
          "the cutoff when to use the builtin sorting implementation (default: 1 million)")
-parser.add_argument('--pivot-selector', choices=PIVOT_SELECTORS, default=next(iter(PIVOT_SELECTORS)),
-    help="[only for sorters 'tmpfile' and 'java'] "
-         f"pivot selector: one of {', '.join(PIVOT_SELECTORS)} (default: {next(iter(PIVOT_SELECTORS))})")
 parser.add_argument('--keep-tmpfiles', action='store_true',
     help="keep temporary files (default: don't keep)")
 

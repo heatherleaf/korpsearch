@@ -7,12 +7,12 @@ import time
 from typing import Any
 from argparse import Namespace
 
-from index import Index, BinaryIndex
-from indexset import IndexSet, MergeType
+from pyroaring import BitMap
+
+from index import Index
 from corpus import Corpus
 from query import Query
-from util import Feature, SENTENCE, WORD
-from disk import DiskIntArray
+from util import add_suffix, Feature, SENTENCE, WORD, is_reversed_feature
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -27,9 +27,7 @@ def hash_repr(*objs: object, size: int = 32) -> str:
     return hasher.hexdigest() [:size]
 
 
-def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path | None:
-    if args.no_diskarray:
-        return None
+def get_cache_file(query: Query, **extra_args: object) -> Path | None:
     corpus_hash = hash_repr(query.corpus, size=16)
     query_dir = CACHE_DIR / f"{query.corpus.path.stem}.{corpus_hash}"
     if not query_dir.is_dir():
@@ -42,41 +40,36 @@ def get_cache_file(args: Namespace, query: Query, **extra_args: object) -> Path 
                 'id': query.corpus.id,
             }), file=INFO)
     query_hash = hash_repr(query, extra_args, size=32)
-    return DiskIntArray.getpath(query_dir / query_hash)
+    return add_suffix(query_dir / query_hash, '.bitmap')
 
 
 def is_cache_file(cache_file: Path|None) -> bool:
     return isinstance(cache_file, Path) and cache_file.is_relative_to(CACHE_DIR)
 
 
-def try_open_cache(cache_file: Path|None, args: Namespace) -> IndexSet | None:
+def try_open_cache(cache_file: Path|None, args: Namespace) -> BitMap | None:
     try:
         assert cache_file and not args.no_cache
-        result = IndexSet.open(cache_file)
+        with open(cache_file, "rb") as file:
+            result = BitMap.deserialize(file.read())
         cache_file.touch()
-        DiskIntArray.getconfig(cache_file).touch()
         return result
     except (FileNotFoundError, AssertionError):
         return None
 
 
-def collect_and_sort_prefix(index_view: IndexSet, sorted_file: Path|None, args: Namespace) -> IndexSet:
-    try:
-        assert not args.internal_merge
-        from fast_merge import sort  # type: ignore
-    except (ModuleNotFoundError, AssertionError):
-        from merge import sort
-    result = DiskIntArray.create(index_view.size, sorted_file)
-    sort(index_view.values.array, index_view.start, index_view.size, result.array)
-    return IndexSet(result, path = sorted_file, offset = index_view.offset)
+def save_to_cache(cache_file: Path|None, bmap: BitMap) -> None:
+    if cache_file:
+        with open(cache_file, "wb") as file:
+            file.write(bmap.serialize())
 
 
-def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSet:
+def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> BitMap:
     partial_queries = list(query.expand())
     if len(partial_queries) <= 1:
         return run_inner_query(query, results_file, args)
 
-    union_files = [get_cache_file(args, q, num=n, outer=query) for n, q in enumerate(partial_queries)]
+    union_files = [get_cache_file(q, num=n, outer=query) for n, q in enumerate(partial_queries)]
     union_files[-1] = results_file
     union = None
     for partial_query, union_file in zip(partial_queries, union_files):
@@ -86,7 +79,7 @@ def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> I
             logging.debug(f"Using cached union: {union}")
             continue
 
-        partial_results_file = get_cache_file(args, partial_query)
+        partial_results_file = get_cache_file(partial_query)
         partial_results = try_open_cache(partial_results_file, args)
         if partial_results is not None:
             logging.debug(f"Using cached partial results: {partial_results}")
@@ -96,29 +89,24 @@ def run_outer_query(query: Query, results_file: Path|None, args: Namespace) -> I
         if union is None:
             union = partial_results
         else:
-            logging.info(f"Union: {union} \\/ {partial_results}")
-            union_type = union.merge_update(
-                partial_results,
-                union_file,
-                use_internal = args.internal_merge,
-                merge_type = MergeType.UNION,
-            )
-            logging.info(f"  \\/{union_type[0].upper()}  = {union}")
-            if partial_results.path != union.path:
-                partial_results.values.close()
+            logging.info(f"Union: {show_result(union)} \\/ {show_result(partial_results)}")
+            union |= partial_results
+            save_to_cache(union_file, union)
+            logging.info(f"  \\/ = {show_result(union)}")
 
     assert union is not None
     return union
 
 
-def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSet:
-    search_results: list[tuple[Query, IndexSet]] = []
+def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> BitMap:
+    search_results: list[tuple[Query, BitMap]] = []
     subqueries: list[tuple[Query, Index]] = []
     for subq in query.subqueries():
         if args.no_binary and len(subq) > 1:
             continue
         try:
-            subqueries.append((subq, subq.index()))
+            assert subq.template
+            subqueries.append((subq, Index.get(subq.corpus, subq.template)))
         except (FileNotFoundError, ValueError):
             continue
 
@@ -126,19 +114,22 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> I
     maxwidth = max(len(str(subq)) for subq, _ in subqueries)
     for subq, index in subqueries:
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
-            logging.debug(f"     -- subsumed: {subq}")
+            logging.debug(f"    -- subsumed: {subq}")
             continue
-        if isinstance(index, BinaryIndex) and subq.contains_prefix():
-            if index.getconfig().get("min_frequency", 0) > 0:
-                logging.debug(f"     -- skipping: {subq}, because prefix query and min-frequency binary index")
-                continue
         try:
             results = index.search(subq.instance(), offset=subq.min_offset())
-        except KeyError:
-            logging.debug(f"     -- not found: {subq}")
+        except ValueError as err:
+            logging.debug(f"    -- skipping: {subq}, because {err}")
             continue
-        search_results.append((subq, results))
-        logging.info(f"     {subq!s:{maxwidth}} = {results}")
+        if results:
+            search_results.append((subq, results))
+            logging.info(f"    {subq!s:{maxwidth}} = {show_result(results)}")
+        elif subq.is_negative():
+            logging.debug(f"    -- skipping: {subq}, because negative query without results")
+            continue
+        else:
+            logging.debug(f"    -- aborting: {subq}, not found")
+            return BitMap()
 
     search_results.sort(key=lambda r: len(r[-1]))
     first_query = search_results[0][0]
@@ -155,62 +146,42 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> I
     if len(search_results) > 1:
         logging.debug("Intersection order:")
         for i, (subq, results) in enumerate(search_results, 1):
-            logging.debug(f"{i}     {subq!s:{maxwidth}} : {len(results)} elements")
+            logging.debug(f"{i:3d} {subq!s:{maxwidth}} : {len(results)} elements")
         logging.info(f"Intersecting {len(search_results)} search results:")
 
     used_queries: list[Query] = []
     intersection = None
     for subq, results in search_results:
         if subq.subsumed_by(used_queries):
-            logging.debug(f"     -- subsumed: {subq}")
+            logging.debug(f"   -- subsumed: {subq}")
             continue
-        if subq.contains_prefix():
-            sorted_file = get_cache_file(args, subq, sorted_prefix=True)
-            sorted_results = try_open_cache(sorted_file, args)
-            if sorted_results is not None:
-                spec = "cached sorted"
-            else:
-                sorted_results = collect_and_sort_prefix(results, sorted_file, args)
-                spec = "sorted"
-            results = sorted_results
-            logging.debug(f"     -- {spec} prefix query: {subq} = {results}")
 
         if intersection is None:
             intersection = results
-            logging.info(f"     {subq!s:{maxwidth}} = {intersection}")
+            logging.info(f"    {subq!s:{maxwidth}} = {show_result(intersection)}")
+        elif subq.is_negative():
+            intersection -= results
+            logging.info(f" -- {subq!s:{maxwidth}} = {show_result(intersection)}")
         else:
-            intersection_type = intersection.merge_update(
-                results,
-                results_file,
-                use_internal = args.internal_merge,
-                merge_type = MergeType.DIFFERENCE if subq.is_negative() else MergeType.INTERSECTION
-            )
-            logging.info(f" /\\{intersection_type[0].upper()} {subq!s:{maxwidth}} = {intersection}")
+            intersection &= results
+            logging.info(f" /\\ {subq!s:{maxwidth}} = {show_result(intersection)}")
 
         used_queries.append(subq)
         if len(intersection) == 0:
-            logging.debug(f"Empty intersection, quitting early {intersection}")
+            logging.debug(f"Empty intersection, quitting early {show_result(intersection)}")
             break
 
     assert intersection is not None
-    for _, results in search_results:
-        if results.path != intersection.path:
-            results.values.close()
+    save_to_cache(results_file, intersection)
     return intersection
 
 
-def run_query(query: Query, results_file: Path|None, args: Namespace) -> IndexSet:
-    result = run_outer_query(query, results_file, args)
-    if is_cache_file(result.path) and result.path != results_file:
-        assert result.path is not None and results_file is not None
-        DiskIntArray.getconfig(result.path).replace(DiskIntArray.getconfig(results_file))
-        result.path.replace(results_file)
-        result.path = results_file
-    return result
+def run_query(query: Query, results_file: Path|None, args: Namespace) -> BitMap:
+    return run_outer_query(query, results_file, args)
 
 
-def search_corpus(query: Query, args: Namespace) -> IndexSet:
-    final_results_file = get_cache_file(args, query, filtered=args.filter)
+def search_corpus(query: Query, args: Namespace) -> BitMap:
+    final_results_file = get_cache_file(query, filtered=args.filter)
     cached_results = try_open_cache(final_results_file, args)
     if cached_results is not None:
         logging.debug(f"Using cached results file: {final_results_file}")
@@ -219,17 +190,27 @@ def search_corpus(query: Query, args: Namespace) -> IndexSet:
     if not args.filter:
         return run_query(query, final_results_file, args)
 
-    unfiltered_results_file = get_cache_file(args, query, filtered=False)
+    unfiltered_results_file = get_cache_file(query, filtered=False)
     assert unfiltered_results_file != final_results_file
     unfiltered_results = try_open_cache(unfiltered_results_file, args)
     if unfiltered_results is not None:
         logging.debug(f"Using cached unfiltered results file: {unfiltered_results_file}")
     else:
         unfiltered_results = run_query(query, unfiltered_results_file, args)
-        logging.debug(f"Unfiltered results: {unfiltered_results}")
+        logging.debug(f"Unfiltered results: {show_result(unfiltered_results)}")
 
-    unfiltered_results.filter_update(query.check_position, final_results_file)
-    return unfiltered_results
+    filtered_results = BitMap(val for val in unfiltered_results if query.check_position(val))
+    save_to_cache(final_results_file, filtered_results)
+    return filtered_results
+
+
+def show_result(bmap: BitMap) -> str:
+    if not bmap:
+        return "{}#0"
+    elif len(bmap) < 5:
+        return f"{set(bmap)}#{len(bmap)}"
+    else:
+        return f"{{{bmap[0]}, {bmap[1]}, ..., {bmap[-1]}}}#{len(bmap)}"
 
 
 def main_search(args: Namespace) -> dict[str, Any]:
@@ -264,7 +245,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                     feat for feat in corpus.features()
                     if feat in query.features
                     if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
-                    if not feat.endswith(b'_rev')  # don't show reversed features
+                    if not is_reversed_feature(feat)  # don't show reversed features
                 ]
 
             # Always include the 'word' feature, and put it first
@@ -275,19 +256,19 @@ def main_search(args: Namespace) -> dict[str, Any]:
 
             results = search_corpus(query, args)
             corpus_hits[corpus.name] = len(results)
-            logging.info(f"Results: {results}")
+            logging.info(f"Results: {show_result(results)}")
 
             if start < len(results) and end >= 0:
                 query_offset = query.max_offset() + 1
                 try:
-                    for match_pos in results.slice(max(0, start), end+1):
+                    for match_pos in results[max(0, start) : end+1]:
                         sentence = corpus.get_sentence_from_position(match_pos)
                         match_start = match_pos - corpus.sentence_pointers.array[sentence]
                         tokens = [
                             {
-                                feat.decode(): strings.interned_string(strings[p])
+                                feat.decode(): symbol_array.symbols.to_name(symbol_array[p]).decode()
                                 for feat in features_to_show
-                                for strings in [corpus.tokens[feat]]
+                                for symbol_array in [corpus.tokens[feat]]
                             }
                             for p in corpus.sentence_positions(sentence)
                         ]

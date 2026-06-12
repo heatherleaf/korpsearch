@@ -6,7 +6,7 @@ from typing import Iterable, Any
 from argparse import Namespace
 
 from util import CompressedFileReader, uncompressed_suffix
-from util import Feature, FValue, EMPTY, SENTENCE, START, check_feature
+from util import Feature, FValue, EMPTY, SENTENCE, START, check_feature, reverse_feature
 from util import progress_bar, ProgressBar
 
 Header = list[Feature]
@@ -53,11 +53,10 @@ class AugmentedReader(CorpusReader):
         self.args = args
 
         self._header = reader.header()
-        if not self.args.no_reversed_features:
-            revd = [Feature(feature + b'_rev') for feature in self._header]
-            self._header.extend(revd)
+        if self.args.reversed_features:
+            self._header += [reverse_feature(feature) for feature in self._header]
         if not self.args.no_sentence_feature:
-            self._header.append(SENTENCE)
+            self._header += [SENTENCE]
 
     def header(self) -> Header:
         return self._header
@@ -65,7 +64,7 @@ class AugmentedReader(CorpusReader):
     def sentences(self) -> Iterator[Sentence]:
         for sentence in self.wrapped.sentences():
             for token in sentence:
-                if not self.args.no_reversed_features:
+                if self.args.reversed_features:
                     token += [FValue(val.decode()[::-1].encode()) for val in token]
                 if not self.args.no_sentence_feature:
                     token.append(EMPTY)
