@@ -398,9 +398,7 @@ class IntBytesMap:
         return self._values[pos]
 
     def slice(self, start_key: int, end_key: int) -> list[bytes]:
-        start, end = binsearch_range(0, len(self._keys)-1, start_key, end_key, lambda k: self._keys[k], error=False)
-        if not (0 <= start <= end < len(self._keys)):
-            raise KeyError(f"No keys found between {start_key}..{end_key}")
+        start, end = binsearch_range(0, len(self._keys)-1, start_key, end_key, lambda k: self._keys[k])
         return self._values.slice(start, end+1)
 
     def get_key_position(self, key: int) -> int:

@@ -149,8 +149,7 @@ def binsearch_first(start: int, end: int, key: CT, lookup: Callable[[int], CT], 
         else:
             end = mid - 1
     if error and lookup(start) != key:
-        keystr = key.decode(errors='ignore') if isinstance(key, bytes) else str(key)
-        raise KeyError(f'Key "{keystr}" not found')
+        raise KeyError(f'Key "{key}" not found')
     return start
 
 
@@ -167,8 +166,10 @@ def binsearch_last(start: int, end: int, key: CT, lookup: Callable[[int], CT], e
 
 
 def binsearch_range(start: int, end: int, start_key: CT, end_key: CT, lookup: Callable[[int], CT], error: bool = True) -> tuple[int, int]:
-    start = binsearch_first(start, end, start_key, lookup, error)
-    end = binsearch_last(start, end, end_key, lookup, error)
+    start = binsearch_first(start, end, start_key, lookup, error=False)
+    end = binsearch_last(start, end, end_key, lookup, error=False)
+    if error and end < start:
+        raise KeyError(f'No keys found between "{start_key}"..."{end_key}"')
     return start, end
 
 
