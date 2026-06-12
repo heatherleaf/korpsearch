@@ -1,7 +1,7 @@
 
 from pathlib import Path
 from argparse import Namespace
-from collections.abc import Iterator
+from collections.abc import Iterator, Iterable
 from mmap import mmap
 import json
 import logging
@@ -24,18 +24,34 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     index_path.parent.mkdir(exist_ok=True)
     arity = len(template)
     logging.info(f"Building index {template}, using sorter {args.sorter}")
-    if arity == 1:
-        collect = collect_from_unary_template(corpus, template, args)
-    elif arity == 2:
-        collect = collect_from_binary_template(corpus, template, args)
-    else:
-        raise ValueError(f"Cannot build indexes of length {arity}: {template}")
+    collect = collect_from_template(corpus, template, args)
+    size, max_value, bitmaps = yield_bitmaps(corpus, index_path, collect, arity, args)
 
-    if args.sorter == 'bitmap':
-        size = build_index_via_bitmaps(index_path, collect, arity, args)
-    else:
-        size = build_index_via_tmpfile(index_path, collect, arity, args)
+    # We use the 'bitmaps' iterator to build two search indexes:
+    #  - an IntArray for storing small sets
+    #  - an IntBytesMap for storing large sets
+    logging.debug(f"Building index")
+    keyspath, valspath = IntBytesMap.getpaths(index_path)
+    def yield_bigset_values() -> Iterator[bytes]:
+        smallsets = IntArray.create(size, index_path, max_value=size)
+        bigset_keys = IntArray.create(size, keyspath, max_value=max_value)
+        smallsets_ctr = bigsets_ctr = 0
+        for value, bitmap in bitmaps:
+            if len(bitmap) < args.bigset_limit:
+                for n in bitmap:
+                    smallsets[smallsets_ctr] = n
+                    smallsets_ctr += 1
+            else:
+                bigset_keys[bigsets_ctr] = value
+                bigsets_ctr += 1
+                yield bitmap.serialize()
+        smallsets.truncate(smallsets_ctr)
+        smallsets.close()
+        bigset_keys.truncate(bigsets_ctr)
+        bigset_keys.close()
+    BytesArray.build(valspath, yield_bigset_values())
 
+    # Update the config file, and report.
     config: dict[str, int] = {}
     config['arity'] = arity
     config['size'] = size
@@ -50,15 +66,21 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
         logging.info(f"Built {template}, size {len(index):,d}: total {smallsize:,d} in small sets, the rest in {nbigsets:,d} big sets, avg. size {avgbigsize:,d}")
 
 
-def collect_from_unary_template(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
-    assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
-    (tmpl,) = template.template
-    assert tmpl.offset == template.min_offset() == template.max_offset() == 0
-    features = progress_bar(corpus.tokens[tmpl.feature].raw(), desc="Collecting positions")
-    return filter(lambda x:x[1], enumerate(features))
+def collect_from_template(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
+    arity = len(template)
+    if arity > 2:
+        raise ValueError(f"Cannot build indexes of length {arity}: {template}")
 
+    ## Unary template.
+    if arity == 1:
+        assert not template.literals, f"Cannot build UnaryIndex from templates with literals: {template}"
+        (tmpl,) = template.template
+        assert tmpl.offset == template.min_offset() == template.max_offset() == 0
+        return (
+            (pos, val) for (pos, val) in enumerate(corpus.tokens[tmpl.feature].raw()) if val
+        )
 
-def collect_from_binary_template(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
+    ## Binary template.
     assert all(lit.negative for lit in template.literals), f"Cannot handle positive template literals: {template}"
     (tmpl1, tmpl2) = template.template
     offset2 = tmpl2.offset
@@ -77,7 +99,7 @@ def collect_from_binary_template(corpus: Corpus, template: Template, args: Names
         # The simple case: --min-frequency is not set, so don't filter our low-frequent features.
         return (
             (pos, (val1 << 32) + val2)
-            for pos in progress_bar(range(size), desc="Collecting positions")
+            for pos in range(size)
             for (val1, val2) in [(features1[pos], features2[pos + offset2])]
             if val1 and val2 and all(lfeat[pos + loffset] != lval for (lfeat, loffset, lval) in test_literals)
         )
@@ -101,7 +123,7 @@ def collect_from_binary_template(corpus: Corpus, template: Template, args: Names
 
     def collect() -> Iterator[tuple[int, int]]:
         skipped_instances = 0
-        for pos in progress_bar(range(size), desc="Collecting positions"):
+        for pos in range(size):
             val1, val2 = features1[pos], features2[pos + offset2]
             if val1 and val2 and all(lfeat[pos + loffset] != lval for (lfeat, loffset, lval) in test_literals):
                 if unary_min_frequency(unary1, val1, cache1) and unary_min_frequency(unary2, val2, cache2):
@@ -113,33 +135,28 @@ def collect_from_binary_template(corpus: Corpus, template: Template, args: Names
     return collect()
 
 
-def build_index_via_bitmaps(path: Path, collect: Iterator[tuple[int, int]], arity: int, args: Namespace) -> int:
-    bitmaps: dict[int, BitMap] = {}
-    size = 0
-    for pos, value in collect:
-        bitmaps.setdefault(value, BitMap()).add(pos)
-        size += 1
+def yield_bitmaps(
+            corpus: Corpus, path: Path, collect: Iterator[tuple[int, int]], arity: int, args: Namespace,
+        ) -> tuple[int, int, Iterable[tuple[int, BitMap]]]:
 
-    logging.debug(f"Sorting {len(bitmaps):,d} bitmaps, {size:,d} values")
-    sorted_bitmaps = sorted(bitmaps.items(), key = lambda b:b[0])
-    max_value = sorted_bitmaps[-1][0]
+    ## The 'bitmap' sorter works in-memory, so it is not good for very large corpora.
+    if args.sorter == 'bitmap':
+        bitmaps: dict[int, BitMap] = {}
+        size = 0
+        for pos, value in progress_bar(collect, total=len(corpus)):
+            bitmaps.setdefault(value, BitMap()).add(pos)
+            size += 1
+        logging.debug(f"Sorting {len(bitmaps):,d} bitmaps, {size:,d} values")
+        sorted_bitmaps = sorted(bitmaps.items(), key = lambda b:b[0])
+        max_value = sorted_bitmaps[-1][0]
+        return (size, max_value, progress_bar(sorted_bitmaps, "Building index"))
 
-    logging.debug(f"Building index")
-    # We create iterators to not use up more of the internal memory.
-    smallsets = (pos for (_, bitmap) in sorted_bitmaps if len(bitmap) < args.bigset_limit for pos in bitmap)
-    bigset_keys = (key for (key, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
-    bigset_values = (bitmap.serialize() for (_, bitmap) in sorted_bitmaps if len(bitmap) >= args.bigset_limit)
-    IntArray.build(path, smallsets, size=size, max_value=size)
-    IntBytesMap.build(path, bigset_keys, bigset_values, size=size, max_value=max_value)
-    return size
-
-
-def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arity: int, args: Namespace) -> int:
+    ## The 'cython' and 'tmpfile' sorters uses a temporary file, so they have no memory issues.
     # First we collect all (value, position) pairs into a temporary binary file.
     tmppath = add_suffix(path, '.tmp')
     rowsize = (arity + 1) * 4
     with open(tmppath, 'w+b') as file:
-        for pos, value in collect:
+        for pos, value in progress_bar(collect, total=len(corpus)):
             row = (value << 32) + pos
             file.write(row.to_bytes(rowsize, 'big'))
         # The number of rows can be calculated from the final file size in bytes.
@@ -163,7 +180,7 @@ def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arit
 
     # Here is an iterator read the sorted file and yields each value together
     # with the set of positions for that value.
-    def yield_bitmaps() -> Iterator[tuple[int, BitMap]]:
+    def yield_bitmaps_from_tmpfile() -> Iterator[tuple[int, BitMap]]:
         with open(tmppath, 'rb') as file:
             prev_value = b''
             bitmap = BitMap()
@@ -177,31 +194,7 @@ def build_index_via_tmpfile(path: Path, collect: Iterator[tuple[int, int]], arit
                 bitmap.add(int.from_bytes(pos, 'big'))
             if bitmap:
                 yield (int.from_bytes(prev_value, 'big'), bitmap)
+        if not args.keep_tmpfiles:
+            tmppath.unlink()
 
-    # We use the iterator above to build two search indexes from the position sets above:
-    #  - an IntArray for storing small sets
-    #  - an IntBytesMap for storing large sets
-    logging.debug(f"Building index")
-    keyspath, valspath = IntBytesMap.getpaths(path)
-    def yield_bigset_values() -> Iterator[bytes]:
-        smallsets = IntArray.create(size, path, max_value=size)
-        bigset_keys = IntArray.create(size, keyspath, max_value=max_value)
-        smallsets_ctr = bigsets_ctr = 0
-        for value, bitmap in yield_bitmaps():
-            if len(bitmap) < args.bigset_limit:
-                for n in bitmap:
-                    smallsets[smallsets_ctr] = n
-                    smallsets_ctr += 1
-            else:
-                bigset_keys[bigsets_ctr] = value
-                bigsets_ctr += 1
-                yield bitmap.serialize()
-        smallsets.truncate(smallsets_ctr)
-        smallsets.close()
-        bigset_keys.truncate(bigsets_ctr)
-        bigset_keys.close()
-    BytesArray.build(valspath, yield_bigset_values())
-
-    if not args.keep_tmpfiles:
-        tmppath.unlink()
-    return size
+    return (size, max_value, yield_bitmaps_from_tmpfile())
