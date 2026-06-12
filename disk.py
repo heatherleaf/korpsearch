@@ -205,7 +205,7 @@ class BytesArray:
         if isinstance(self._rawdata, mmap):
             self._rawdata.close()
 
-    def finditer(self, regex: bytes, flags: int = 0) -> Iterator[int]:
+    def finditer(self, regex: bytes, flags: int = 0) -> Iterable[int]:
         regex = b'^(?:' + regex + b')$'
         flags |= re.MULTILINE
         positions = self._starts.array

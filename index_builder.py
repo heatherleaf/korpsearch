@@ -1,7 +1,7 @@
 
 from pathlib import Path
 from argparse import Namespace
-from collections.abc import Iterator, Iterable
+from collections.abc import Iterable
 from mmap import mmap
 import json
 import logging
@@ -32,7 +32,7 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     #  - an IntBytesMap for storing large sets
     logging.debug(f"Building index")
     keyspath, valspath = IntBytesMap.getpaths(index_path)
-    def yield_bigset_values() -> Iterator[bytes]:
+    def yield_bigset_values() -> Iterable[bytes]:
         smallsets = IntArray.create(size, index_path, max_value=size)
         bigset_keys = IntArray.create(size, keyspath, max_value=max_value)
         smallsets_ctr = bigsets_ctr = 0
@@ -66,7 +66,7 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
         logging.info(f"Built {template}, size {len(index):,d}: total {smallsize:,d} in small sets, the rest in {nbigsets:,d} big sets, avg. size {avgbigsize:,d}")
 
 
-def collect_from_template(corpus: Corpus, template: Template, args: Namespace) -> Iterator[tuple[int, int]]:
+def collect_from_template(corpus: Corpus, template: Template, args: Namespace) -> Iterable[tuple[int, int]]:
     arity = len(template)
     if arity > 2:
         raise ValueError(f"Cannot build indexes of length {arity}: {template}")
@@ -121,7 +121,7 @@ def collect_from_template(corpus: Corpus, template: Template, args: Namespace) -
             cache[unary_key] = freq >= min_freq
         return cache[unary_key]
 
-    def collect() -> Iterator[tuple[int, int]]:
+    def collect() -> Iterable[tuple[int, int]]:
         skipped_instances = 0
         for pos in range(size):
             val1, val2 = features1[pos], features2[pos + offset2]
@@ -136,7 +136,7 @@ def collect_from_template(corpus: Corpus, template: Template, args: Namespace) -
 
 
 def yield_bitmaps(
-            corpus: Corpus, path: Path, collect: Iterator[tuple[int, int]], arity: int, args: Namespace,
+            corpus: Corpus, path: Path, collect: Iterable[tuple[int, int]], arity: int, args: Namespace,
         ) -> tuple[int, int, Iterable[tuple[int, BitMap]]]:
 
     ## The 'bitmap' sorter works in-memory, so it is not good for very large corpora.
@@ -180,7 +180,7 @@ def yield_bitmaps(
 
     # Here is an iterator read the sorted file and yields each value together
     # with the set of positions for that value.
-    def yield_bitmaps_from_tmpfile() -> Iterator[tuple[int, BitMap]]:
+    def yield_bitmaps_from_tmpfile() -> Iterable[tuple[int, BitMap]]:
         with open(tmppath, 'rb') as file:
             prev_value = b''
             bitmap = BitMap()

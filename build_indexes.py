@@ -2,7 +2,7 @@
 import shutil
 import argparse
 from pathlib import Path
-from collections.abc import Iterator
+from collections.abc import Iterable
 import logging
 
 from literals import KnownLiteral, TemplateLiteral, Template
@@ -84,7 +84,7 @@ def main(args: argparse.Namespace) -> None:
                              f"skipped {len(templates)-built} existing")
 
 
-def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Template]:
+def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterable[Template]:
     svalue = corpus.get_symbol(SENTENCE, START)
     if args.templates:
         for tmplstr in args.templates:

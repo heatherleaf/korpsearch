@@ -1,8 +1,8 @@
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Iterator, Callable
+from collections.abc import Iterable, Callable
 from pathlib import Path
-from typing import Iterable, Any
+from typing import Any
 from argparse import Namespace
 
 from util import CompressedFileReader, uncompressed_suffix
@@ -20,7 +20,7 @@ class CorpusReader(ABC):
         pass
 
     @abstractmethod
-    def sentences(self) -> Iterator[Sentence]:
+    def sentences(self) -> Iterable[Sentence]:
         pass
 
     @abstractmethod
@@ -61,7 +61,7 @@ class AugmentedReader(CorpusReader):
     def header(self) -> Header:
         return self._header
 
-    def sentences(self) -> Iterator[Sentence]:
+    def sentences(self) -> Iterable[Sentence]:
         for sentence in self.wrapped.sentences():
             for token in sentence:
                 if self.args.reversed_features:
@@ -99,7 +99,7 @@ class CSVReader(CorpusReader):
     def header(self) -> Header:
         return self._header
 
-    def sentences(self) -> Iterator[Sentence]:
+    def sentences(self) -> Iterable[Sentence]:
         pbar: ProgressBar[None]
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
             sentence: Sentence = []
@@ -160,7 +160,7 @@ class CoNLLReader(CorpusReader):
         self._id_column = header.index("ID") if "ID" in header else None
         self._n_feats = len(header)
 
-    def wordlines(self) -> Iterator[list[bytes] | None]:
+    def wordlines(self) -> Iterable[list[bytes] | None]:
         def next_wordline() -> list[bytes] | None:
             if self._next_line is None:
                 self._line_num += 1
@@ -194,7 +194,7 @@ class CoNLLReader(CorpusReader):
     def header(self) -> Header:
         return self._header
 
-    def sentences(self) -> Iterator[Sentence]:
+    def sentences(self) -> Iterable[Sentence]:
         pbar: ProgressBar[None]
         with progress_bar(total=self._corpus.file_size(), desc=self._description) as pbar:
             sentence: Sentence = []

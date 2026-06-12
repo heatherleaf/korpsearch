@@ -1,6 +1,6 @@
 
 from typing import NewType
-from collections.abc import Iterator, Collection, Sequence
+from collections.abc import Iterable, Collection, Sequence
 from dataclasses import dataclass, field
 
 from disk import Symbols, Symbol, SymbolRange
@@ -165,7 +165,7 @@ class Template:
                 tokens.append(token)
         return ''.join('[' + tok + ']' for tok in tokens)
 
-    def __iter__(self) -> Iterator[TemplateLiteral]:
+    def __iter__(self) -> Iterable[TemplateLiteral]:
         return iter(self.template)
 
     def __len__(self) -> int:

@@ -2,7 +2,7 @@
 import re
 import itertools
 from typing import Literal
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Sequence
 
 from literals import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance
 from corpus import Corpus
@@ -91,13 +91,13 @@ class Query:
     def contains_prefix(self) -> bool:
         return any(lit.is_prefix() for lit in self.literals)
 
-    def expand(self) -> Iterator['Query']:
+    def expand(self) -> Iterable['Query']:
         groups = [group.literals for group in self.literals if isinstance(group, DisjunctiveGroup)]
         singles = [lit for lit in self.literals if isinstance(lit, KnownLiteral)]
         for group in itertools.product(*groups):
             yield Query(self.corpus, singles + list(group))
 
-    def subqueries(self) -> Iterator['Query']:
+    def subqueries(self) -> Iterable['Query']:
         # Subqueries are generated in decreasing order of complexity
         for n in reversed(range(len(self))):
             for literals in itertools.combinations(self.literals, n+1):

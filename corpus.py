@@ -5,7 +5,7 @@ import logging
 from typing import Any
 from argparse import Namespace
 from contextlib import ExitStack
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Sequence
 
 from corpus_reader import corpus_reader
 from disk import IntArray, SymbolArray, Symbols, Symbol, SymbolList, SymbolCollection
@@ -81,7 +81,7 @@ class Corpus:
     def num_sentences(self) -> int:
         return len(self.sentence_pointers)-1
 
-    def sentences(self) -> Iterator[range]:
+    def sentences(self) -> Iterable[range]:
         sents = self.sentence_pointers.array
         for start, end in zip(sents[1:], sents[2:]):
             yield range(start, end)
