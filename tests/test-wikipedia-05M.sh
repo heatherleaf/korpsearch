@@ -1,4 +1,14 @@
 
+# This script runs a lot of test cases to make sure
+# that the number of results are correct.
+#
+# Arguments:
+#  - no argument: run tests
+#  - "verbose": run tests with --verbose flag
+#  - "debug": run tests with --verbose flag
+#  - "build": build the corpus indexes
+
+
 corpus=wikipedia-sv-05M
 
 build=""
@@ -35,8 +45,13 @@ fi
 search() {
     gold="$1"
     shift
-    python search_cmdline.py --corpus $corpus --no-cache $args --num 0 --query "$@"
-    echo "$gold  GOLD  RESULTS  <---  $@"
+    out=`python search_cmdline.py --corpus $corpus --no-cache $args --num 0 --query "$@"`
+    echo $out
+    results=`echo $out | perl -ne 'print $1 if /^(\d+) search results/'`
+    if [ "$results" == "$gold" ]
+    then echo "--> ok  [$@]"
+    else echo "--> MISMATCH:  $results =/= $gold  [$@]"
+    fi
     echo
 }
 
