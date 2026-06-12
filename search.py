@@ -110,6 +110,10 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> B
         except (FileNotFoundError, ValueError):
             continue
 
+    if not subqueries:
+        logging.info(f"    -- aborting: no indexes to search in")
+        return BitMap()
+
     logging.info(f"Searching {len(subqueries)} indexes:")
     maxwidth = max(len(str(subq)) for subq, _ in subqueries)
     for subq, index in subqueries:
@@ -130,6 +134,10 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> B
         else:
             logging.debug(f"    -- aborting: {subq}, not found")
             return BitMap()
+
+    if all(res[0].is_negative() for res in search_results):
+        logging.info(f"    -- aborting: only negative results remaining")
+        return BitMap()
 
     search_results.sort(key=lambda r: len(r[-1]))
     first_query = search_results[0][0]
