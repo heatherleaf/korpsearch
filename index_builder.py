@@ -174,7 +174,7 @@ def yield_bitmaps(
                 sort.quicksort(bytes_mmap, rowsize, cutoff = args.cutoff or 1_000_000)
 
     # Since the file is now sorted, the maximum value is the very last row.
-    with open(tmppath, 'rb') as file:
+    with open(tmppath, 'r+b') as file:
         file.seek(-rowsize, 2)
         max_value = int.from_bytes(file.read(rowsize-4), 'big')
 

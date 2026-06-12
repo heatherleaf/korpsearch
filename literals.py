@@ -35,7 +35,8 @@ class KnownLiteral:
             return prefix + "-".join(map(lookup, self.value))
         else:
             syms = [lookup(s) for s in self.value.symbols]
-            if len(syms) >= 5: syms[2:len(syms)-1] = ["..."]
+            if len(syms) >= 5:
+                syms[2:len(syms)-1] = ["..."]
             return f"{prefix}{{{','.join(syms)}}}#{len(self.value.symbols)}"
 
     def is_prefix(self) -> bool:

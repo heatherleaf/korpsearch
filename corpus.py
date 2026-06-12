@@ -66,8 +66,10 @@ class Corpus:
         return self.symbols(feature).to_symbol(value)
 
     def find_symbol(self, feature: Feature, value: FValue) -> Symbols:
-        try: return self.symbols(feature).to_symbol(value)
-        except ValueError: return SymbolList([])
+        try:
+            return self.symbols(feature).to_symbol(value)
+        except ValueError:
+            return SymbolList([])
 
     def find_symbols_by_prefix(self, feature: Feature, prefix: FValue) -> Symbols:
         return self.symbols(feature).find_prefix(prefix)

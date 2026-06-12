@@ -159,7 +159,7 @@ class IntArray:
 
 class BytesArray:
     _starts: IntArray
-    _rawdata: mmap | bytearray
+    _rawdata: mmap | bytes
 
     def __init__(self, path: Path) -> None:
         startspath, rawpath = self.getpaths(path)
@@ -168,7 +168,7 @@ class BytesArray:
             try:
                 self._rawdata = mmap(file.fileno(), 0)
             except ValueError:  # "cannot mmap an empty file"
-                self._rawdata = bytearray(0)
+                self._rawdata = b""
 
     def __len__(self) -> int:
         return len(self._starts) - 1

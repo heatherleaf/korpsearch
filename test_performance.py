@@ -6,7 +6,7 @@ import sys
 
 from search import main_search
 
-def test_all_queries(args: Namespace):
+def test_all_queries(args: Namespace) -> None:
     args.no_cache = True
     args.num = args.start = args.end = 0
     args.show = args.no_sentence_breaks = args.filter = args.loglevel = None
