@@ -15,9 +15,9 @@ from util import Feature, FValue, SENTENCE, START, reverse_feature
 
 QueryElement = KnownLiteral | DisjunctiveGroup
 
-def get_query_literals(query_element: QueryElement) -> tuple[KnownLiteral, ...]:
+def get_query_literals(query_element: QueryElement) -> Sequence[KnownLiteral]:
     if isinstance(query_element, KnownLiteral):
-        return (query_element,)
+        return [query_element]
     else: # isinstance(query_element, DisjunctiveGroup):
         return query_element.literals
 
@@ -31,28 +31,15 @@ class Query:
     corpus: Corpus
     literals: list[QueryElement]
     features: set[Feature]
-    # featured_query: dict[Feature, list[tuple[bool, int, Symbol, Symbol]]]
     template: Template | None
 
     def __init__(self, corpus: Corpus, literals: Sequence[QueryElement]) -> None:
         self.corpus = corpus
-        self.literals = sorted(set(literals), key=get_query_literals)
+        self.literals = list(literals)
         self.features = {
             lit.feature for query_element in self.literals
             for lit in get_query_literals(query_element)
         }
-
-        # We cannot handle non-atomic querues with only negative literals
-        # -A & -B == -(A v B), since we cannot handle union (yet)
-        if len(self) > 1 and self.is_negative():
-            raise ValueError(f"Cannot handle non-atomic queries with no positive literals: {self}")
-
-        # # This is a variant of self.query, optimised for checking a query at a corpus position:
-        # self.featured_query = {f: [] for f in self.features}
-        # for lit in self.literals:
-        #     self.featured_query[lit.feature].append(
-        #         (lit.negative, lit.offset, lit.value, lit.value2)
-        #     )
 
         # We precompute the associated query template. It raises a ValueError if it's not valid.
         if self.contains_disjunction():
@@ -132,21 +119,11 @@ class Query:
             for pos in range(positions.start - min_offset, positions.stop - max_offset)
         )
 
-    # Right now this function is not optimized and can not give false for cases such as [a&b|c&d]
+    # This function is not optimized
     def check_position(self, pos: int) -> bool:
         return all(
             lit.check_position(self.corpus, pos) for lit in self.literals
         )
-        # return all(
-        #     (self.corpus.tokens[lit.feature][pos + lit.offset] == lit.value) != lit.negative
-        #     for lit in self.literals
-        # )
-        # This is an optimised (but less readable) version of the code above:
-        # for feature, values in self.featured_query.items():
-        #     lookup = self.corpus.tokens[feature]
-        #     if any((lookup[pos+offset] >= value and lookup[pos+offset] <= value2) == negative for (negative, offset, value, value2) in values):
-        #         return False
-        # return True
 
     @staticmethod
     def _classify_value(value: str) -> Literal['normal'] | Literal['prefix'] | Literal['suffix'] | Literal['regex']:
