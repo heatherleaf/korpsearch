@@ -9,8 +9,7 @@ from argparse import Namespace
 
 from pyroaring import BitMap
 
-from disk import SymbolList, SymbolRange
-from index import Index, BinaryIndex
+from index import Index
 from corpus import Corpus
 from query import Query
 from util import add_suffix, Feature, SENTENCE, WORD, is_reversed_feature
@@ -117,21 +116,16 @@ def run_inner_query(query: Query, results_file: Path|None, args: Namespace) -> B
         if any(subq.subsumed_by([superq]) for superq, _ in search_results):
             logging.debug(f"    -- subsumed: {subq}")
             continue
-        binary_min_freq = 0
-        if isinstance(index, BinaryIndex):
-            binary_min_freq = index.getconfig().get("min_frequency", 0)
-            if binary_min_freq > 0 and subq.contains_prefix():
-                logging.debug(f"    -- skipping: {subq}, because prefix query and min-frequency binary index")
-                continue
-            if all(isinstance(sym, (SymbolRange, SymbolList)) for sym in subq.instance()):
-                logging.debug(f"    -- skipping: {subq}, because binary index and only symbol ranges/lists")
-                continue
-        results = index.search(subq.instance(), offset=subq.min_offset())
+        try:
+            results = index.search(subq.instance(), offset=subq.min_offset())
+        except ValueError as err:
+            logging.debug(f"    -- skipping: {subq}, because {err}")
+            continue
         if results:
             search_results.append((subq, results))
             logging.info(f"    {subq!s:{maxwidth}} = {show_result(results)}")
-        elif binary_min_freq > 0:
-            logging.debug(f"    -- skipping: {subq}, not found in min-frequency binary index")
+        elif subq.is_negative():
+            logging.debug(f"    -- skipping: {subq}, because negative query without results")
             continue
         else:
             logging.debug(f"    -- aborting: {subq}, not found")

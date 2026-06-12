@@ -8,7 +8,7 @@ from contextlib import ExitStack
 from collections.abc import Iterator, Sequence
 
 from corpus_reader import corpus_reader
-from disk import IntArray, SymbolArray, Symbol, SymbolRange, SymbolList, SymbolCollection
+from disk import IntArray, SymbolArray, Symbols, Symbol, SymbolList, SymbolCollection
 from util import progress_bar, add_suffix, binsearch_last, Feature, FValue, SENTENCE
 
 ################################################################################
@@ -60,17 +60,20 @@ class Corpus:
             return [feat.encode() for feat in json.load(IN)]
 
     def symbols(self, feature: Feature) -> SymbolCollection:
-        return self.tokens[feature].symbols  # type: ignore
+        return self.tokens[feature].symbols
 
     def get_symbol(self, feature: Feature, value: FValue) -> Symbol:
-        return self.tokens[feature].symbols.to_symbol(value)
+        return self.symbols(feature).to_symbol(value)
 
-    def get_symbol_range(self, feature: Feature, prefix: FValue) -> SymbolRange:
-        return self.tokens[feature].symbols.to_symbol_range(prefix)
+    def find_symbol(self, feature: Feature, value: FValue) -> Symbols:
+        try: return self.symbols(feature).to_symbol(value)
+        except ValueError: return SymbolList([])
 
-    def get_matches(self, feature: Feature, regex: str) -> SymbolList:
-        symbols = self.symbols(feature)
-        return SymbolList(tuple(symbols.finditer(regex.encode())))
+    def find_symbols_by_prefix(self, feature: Feature, prefix: FValue) -> Symbols:
+        return self.symbols(feature).find_prefix(prefix)
+
+    def find_symbols_by_regex(self, feature: Feature, regex: str) -> Symbols:
+        return self.symbols(feature).find_regex(regex.encode())
 
     def lookup_symbol(self, feature: Feature, sym: Symbol) -> FValue:
         return FValue(self.tokens[feature].symbols.to_name(sym))

@@ -1,13 +1,13 @@
 
 from typing import Any
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 import json
 import logging
 
 from pyroaring import BitMap
 
-from disk import IntArray, IntBytesMap, SymbolRange, SymbolList
+from disk import IntArray, IntBytesMap, Symbol, SymbolRange, SymbolList
 from corpus import Corpus
 from literals import Template, Instance
 from util import add_suffix, progress_bar, binsearch_range
@@ -68,50 +68,45 @@ class Index:
             self.bigsets.close()
 
     def search(self, instance: Instance, offset: int = 0) -> BitMap:
-        try:
-            ranges = self.get_instance_range(instance)
-        except ValueError:
-            return BitMap()
+        min_frequency = self.getconfig().get("min_frequency", 0)
+        symbols = self.encode_instance(instance, min_frequency)
+        smallsets_ctr = bigsets_ctr = 0
         result = BitMap()
-        for start, end in ranges:
-            small = self.lookup_smallset(start, end)
-            big = self.lookup_bigset(start, end)
-            result |= small | big
+        if self.smallsets:
+            N = len(self.smallsets) - 1
+            search_key = self.get_search_key()
+            for sym in symbols:
+                (start_key, end_key) = (sym, sym) if isinstance(sym, Symbol) else sym
+                try:
+                    start, end = binsearch_range(0, N, start_key, end_key, search_key)
+                    result |= BitMap(self.smallsets.slice(start, end+1))
+                    smallsets_ctr += end+1 - start
+                except KeyError:
+                    pass
+        if self.bigsets:
+            for sym in symbols:
+                try:
+                    if isinstance(sym, Symbol):
+                        result |= BitMap.deserialize(self.bigsets[sym])
+                        bigsets_ctr += 1
+                    else:
+                        bmaps = self.bigsets.slice(sym.start, sym.end)
+                        result |= BitMap.union(*(BitMap.deserialize(bm) for bm in bmaps))
+                        bigsets_ctr += len(bmaps)
+                except KeyError:
+                    pass
+        if not result and min_frequency > 0:
+            raise ValueError(f"not found in min-frequency {self.__class__.__name__}")
         if offset:
             result = result.shift(-offset)
+        logging.debug(f"Lookup {len(symbols)} keys: {len(result)-smallsets_ctr} elements from {bigsets_ctr} bigsets, plus {smallsets_ctr} smallset elements")
         return result
 
-    def get_instance_range(self, instance: Instance) -> list[tuple[int, int]]:
+    def encode_instance(self, instance: Instance, min_frequency: int) -> Sequence[Symbol | SymbolRange]:
         raise NotImplementedError("Must be overridden by a subclass")
 
     def get_search_key(self) -> Callable[[int], int]:
         raise NotImplementedError("Must be overridden by a subclass")
-
-    def lookup_smallset(self, start_key: int, end_key: int) -> BitMap:
-        if self.smallsets:
-            try:
-                search_key = self.get_search_key()
-                error = (start_key == end_key)
-                start, end = binsearch_range(0, len(self.smallsets)-1, start_key, end_key, search_key, error=error)
-                if 0 <= start <= end < len(self.smallsets):
-                    return BitMap(self.smallsets.slice(start, end+1))
-            except (KeyError, IndexError):
-                pass
-        return BitMap()
-
-    def lookup_bigset(self, start_key: int, end_key: int) -> BitMap:
-        if self.bigsets:
-            try:
-                if start_key == end_key:
-                    bmap = self.bigsets[start_key]
-                    return BitMap.deserialize(bmap)
-                else:
-                    bmaps = self.bigsets.slice(start_key, end_key)
-                    logging.debug(f"Found {len(bmaps)} bitmaps between {start_key}..{end_key}")
-                    return BitMap.union(*(BitMap.deserialize(bm) for bm in bmaps))
-            except (KeyError, IndexError):
-                pass
-        return BitMap()
 
     def sanity_check(self) -> None:
         logging.info(f"Checking search index: {self.template}")
@@ -156,13 +151,10 @@ class UnaryIndex(Index):
         assert len(template) == 1, f"UnaryIndex templates must have length 1: {template}"
         super().__init__(corpus, template)
 
-    def get_instance_range(self, instance: Instance) -> list[tuple[int, int]]:
+    def encode_instance(self, instance: Instance, min_frequency: int) -> Sequence[Symbol | SymbolRange]:
         assert len(instance) == 1, f"UnaryIndex instance must have length 1: {instance}"
         (value,) = instance
-        return [
-            v if isinstance(v, SymbolRange) else (v, v)
-            for v in (value.symbols if isinstance(value, SymbolList) else [value])
-        ]
+        return value.symbols if isinstance(value, SymbolList) else [value]
 
     def get_search_key(self) -> Callable[[int], int]:
         assert self.smallsets
@@ -180,20 +172,20 @@ class BinaryIndex(Index):
         assert len(template) == 2, f"BinaryIndex templates must have length 2: {template}"
         super().__init__(corpus, template)
 
-    def get_instance_range(self, instance: Instance) -> list[tuple[int, int]]:
+    def encode_instance(self, instance: Instance, min_frequency: int) -> Sequence[Symbol | SymbolRange]:
         assert len(instance) == 2, f"BinaryIndex instance must have length 2: {instance}"
         (left, right) = instance
-        if isinstance(left, tuple):
+        if isinstance(left, SymbolList) or isinstance(right, SymbolList):
+            raise ValueError("BinaryIndex cannot contain symbol lists")
+        if isinstance(left, SymbolRange):
             raise ValueError("BinaryIndex cannot have a range as left value")
-        if isinstance(left, list) and isinstance(right, list):
-            raise ValueError("BinaryIndex cannot have lists for both left and right values")
-        return [
-            (leftshifted + rightsym1, leftshifted + rightsym2)
-            for leftsym in (left.symbols if isinstance(left, SymbolList) else [left])
-            for leftshifted in [leftsym << 32]
-            for rightrange in (right.symbols if isinstance(right, SymbolList) else [right])
-            for (rightsym1, rightsym2) in [(rightrange, rightrange) if isinstance(rightrange, int) else rightrange]
-        ]
+        if min_frequency > 0 and isinstance(right, SymbolRange):
+            raise ValueError("min-frequency BinaryIndex have a range as right value")
+        leftshifted = left << 32
+        if isinstance(right, SymbolRange):
+            return [SymbolRange(leftshifted + right[0], leftshifted + right[1])]
+        else:
+            return [leftshifted + right]
 
     def get_search_key(self) -> Callable[[int], int]:
         assert self.smallsets

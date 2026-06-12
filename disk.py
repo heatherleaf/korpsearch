@@ -5,7 +5,7 @@ import re
 import json
 from pathlib import Path
 from mmap import mmap
-from typing import Any, NewType, NamedTuple
+from typing import Any, NamedTuple
 from collections.abc import Iterator, Iterable
 from dataclasses import dataclass
 
@@ -245,15 +245,20 @@ class BytesArray:
 ################################################################################
 ## Symbols (interned bytestrings)
 
-Symbol = NewType('Symbol', int)
+Symbol = int
 
 class SymbolRange(NamedTuple):
     start: Symbol
     end: Symbol
 
-@dataclass(frozen=True, order=True)
+@dataclass(frozen=True, order=True, init=False)
 class SymbolList:
     symbols: tuple[Symbol, ...]
+    def __init__(self, symbols: Iterable[Symbol]):
+        # We need to use __setattr__ because the class is frozen:
+        object.__setattr__(self, 'symbols', tuple(symbols))
+
+Symbols = Symbol | SymbolRange | SymbolList
 
 
 class SymbolCollection:
@@ -269,14 +274,14 @@ class SymbolCollection:
     def __len__(self) -> int:
         return len(self._bytesarray)
 
-    def to_name(self, index: Symbol|int) -> bytes:
-        return self._bytesarray[index]
-
     def preload(self) -> None:
         if not self._preload:
             self._preload = {}
             for i in range(len(self)):
-                self._preload[self._bytesarray[i]] = Symbol(i)
+                self._preload[self._bytesarray[i]] = i
+
+    def to_name(self, index: Symbol) -> bytes:
+        return self._bytesarray[index]
 
     def to_symbol(self, name: bytes) -> Symbol:
         try:
@@ -284,18 +289,21 @@ class SymbolCollection:
                 return self._preload[name]
             else:
                 ba = self._bytesarray
-                return Symbol(binsearch(0, len(self)-1, name, lambda i: ba[i]))
+                return binsearch(0, len(self)-1, name, lambda i: ba[i])
         except (KeyError, IndexError, ValueError):
             raise ValueError(f"Symbol doesn't exist: {name.decode(errors='ignore')}")
 
-    def to_symbol_range(self, prefix: bytes) -> SymbolRange:
+    def find_prefix(self, prefix: bytes) -> Symbols:
         try:
             n = len(prefix)
             ba = self._bytesarray
             start, end = binsearch_range(0, len(self)-1, prefix, prefix, lambda i: ba[i][:n])
-            return SymbolRange(Symbol(start), Symbol(end))
+            return SymbolRange(start, end)
         except (KeyError, IndexError, ValueError):
-            raise ValueError(f"Symbol prefix doesn't exist: {prefix.decode(errors='ignore')}")
+            return SymbolList([])
+
+    def find_regex(self, regex: bytes, flags: int = 0) -> Symbols:
+        return SymbolList(self._bytesarray.finditer(regex, flags))
 
     def __enter__(self) -> 'SymbolCollection':
         return self
@@ -313,10 +321,6 @@ class SymbolCollection:
             if old is not None:
                 assert old < name, f"'SymbolCollection' order error: {old!r} >= {name!r}"
             old = name
-
-    def finditer(self, regex: bytes, flags: int = 0) -> Iterator[Symbol]:
-        for pos in self._bytesarray.finditer(regex, flags):
-            yield Symbol(pos)
 
     @staticmethod
     def build(path: Path, names: Iterable[bytes]) -> int:
@@ -338,20 +342,19 @@ class SymbolArray:
         self.symbols = SymbolCollection(symspath, preload)
 
     def raw(self) -> 'memoryview[Symbol]':
-        return self.array.array  # type: ignore
+        return self.array.array
 
     def __len__(self) -> int:
         return len(self.array)
 
     def __getitem__(self, i: int) -> Symbol:
-        return Symbol(self.array.array[i])
+        return self.array.array[i]
 
     def __setitem__(self, i: int, value: Symbol) -> None:
         self.array[i] = value
 
     def __iter__(self) -> Iterator[Symbol]:
-        for i in self.array:
-            yield Symbol(i)
+        yield from self.array
 
     def __enter__(self) -> 'SymbolArray':
         return self

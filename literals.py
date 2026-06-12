@@ -3,7 +3,7 @@ from typing import NewType
 from collections.abc import Iterator, Collection, Sequence
 from dataclasses import dataclass, field
 
-from disk import Symbol, SymbolRange, SymbolList
+from disk import Symbols, Symbol, SymbolRange
 from corpus import Corpus
 from util import check_feature, Feature, FValue
 
@@ -11,7 +11,7 @@ from util import check_feature, Feature, FValue
 ################################################################################
 ## Literals, templates and instances
 
-Instance = NewType('Instance', Sequence[Symbol | SymbolRange | SymbolList])
+Instance = NewType('Instance', Sequence[Symbols])
 
 
 @dataclass(frozen=True, order=True)
@@ -19,41 +19,40 @@ class KnownLiteral:
     negative: bool
     offset: int
     feature: Feature
-    value: Symbol | SymbolRange | SymbolList
+    value: Symbols
     corpus: Corpus = field(compare=False)
 
     def __post_init__(self) -> None:
         check_feature(self.feature)
 
     def __str__(self) -> str:
-        if isinstance(self.value, SymbolRange):
-            value0 = self.corpus.lookup_symbol(self.feature, self.value[0]).decode()
-            value1 = self.corpus.lookup_symbol(self.feature, self.value[1]).decode()
-            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}-{value1}"
-        elif isinstance(self.value, SymbolList):
-            if not self.value.symbols:
-                return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}0"
-            value0 = self.corpus.lookup_symbol(self.feature, self.value.symbols[0]).decode()
-            value1 = self.corpus.lookup_symbol(self.feature, self.value.symbols[-1]).decode()
-            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value0}...{value1}"
+        prefix = f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}"
+        def lookup(sym: Symbol) -> str:
+            return self.corpus.lookup_symbol(self.feature, sym).decode()
+        if isinstance(self.value, Symbol):
+            return prefix + lookup(self.value)
+        elif isinstance(self.value, SymbolRange):
+            return prefix + "-".join(map(lookup, self.value))
         else:
-            value = self.corpus.lookup_symbol(self.feature, self.value).decode()
-            return f"{self.feature.decode()}:{self.offset}{'#' if self.negative else '='}{value}"
+            syms = [lookup(s) for s in self.value.symbols]
+            if len(syms) >= 5: syms[2:len(syms)-1] = ["..."]
+            return f"{prefix}{{{','.join(syms)}}}#{len(self.value.symbols)}"
 
     def is_prefix(self) -> bool:
-        return isinstance(self.value, tuple)
+        return isinstance(self.value, SymbolRange)
 
     # unoptimized version for use with Query.check_position
     def check_position(self, corpus: Corpus, pos: int) -> bool:
         value = corpus.tokens[self.feature][pos + self.offset]
-        if isinstance(self.value, tuple):
-            return self.negative != (self.value[0] <= value <= self.value[1])
-        else:
+        if isinstance(self.value, Symbol):
             return self.negative != (self.value == value)
+        elif isinstance(self.value, SymbolRange):
+            return self.negative != (self.value[0] <= value <= self.value[1])
+        else: # isinstance(self.value, SymbolList)
+            return self.negative != (value in self.value.symbols)
 
     def test(self, pos: int) -> bool:
-        value = self.corpus.tokens[self.feature][pos + self.offset]
-        return (value == self.value) != self.negative
+        return self.check_position(self.corpus, pos)
 
     @staticmethod
     def parse(corpus: Corpus, litstr: str) -> 'KnownLiteral':
@@ -129,11 +128,9 @@ class Template:
     def __init__(self, template: Sequence[TemplateLiteral], literals: Collection[KnownLiteral] = []) -> None:
         # We need to use __setattr__ because the class is frozen:
         object.__setattr__(self, 'template', tuple(template))
-        object.__setattr__(self, 'literals', tuple(sorted(set(literals))))
+        object.__setattr__(self, 'literals', tuple(literals))
         object.__setattr__(self, 'size', len(self.template))
         try:
-            assert self.template == tuple(sorted(set(self.template))), f"Unsorted template"
-            assert self.literals == tuple(sorted(self.literals)),      f"Duplicate literal(s)"
             assert len(self.template) > 0,                             f"Empty template"
             assert self.min_offset() == 0,                             f"Minimum offset must be 0"
             assert all(lit.negative for lit in self.literals),         f"Positive template literal(s)"

@@ -183,21 +183,21 @@ class Query:
                 match value_type:
                     case 'normal':
                         value = FValue(valstr.encode())
-                        symbol = corpus.get_symbol(feature, value)
+                        symbol = corpus.find_symbol(feature, value)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, symbol, corpus))
                     case 'prefix':
                         valstr = valstr.split('.*')[0]
                         value = FValue(valstr.encode())
-                        symbol_range = corpus.get_symbol_range(feature, value)
+                        symbol_range = corpus.find_symbols_by_prefix(feature, value)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range, corpus))
                     case 'suffix':
                         valstr = valstr.split('.*')[-1][::-1]
                         value = FValue(valstr.encode())
                         feature = reverse_feature(feature)
-                        symbol_range = corpus.get_symbol_range(feature, value)
+                        symbol_range = corpus.find_symbols_by_prefix(feature, value)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range, corpus))
                     case _:
-                        regex_matches = corpus.get_matches(feature, valstr)
+                        regex_matches = corpus.find_symbols_by_regex(feature, valstr)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, regex_matches, corpus))
             if len(query_list) > 1:
                 query.extend(DisjunctiveGroup.create(literals) for literals in itertools.product(*query_list))
