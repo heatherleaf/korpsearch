@@ -143,7 +143,7 @@ def yield_bitmaps(
     if args.sorter == 'bitmap':
         bitmaps: dict[int, BitMap] = {}
         size = 0
-        for pos, value in progress_bar(collect, total=len(corpus)):
+        for pos, value in progress_bar(collect, "Collecting tokens", total=len(corpus)):
             bitmaps.setdefault(value, BitMap()).add(pos)
             size += 1
         logging.debug(f"Sorting {len(bitmaps):,d} bitmaps, {size:,d} values")
@@ -156,7 +156,7 @@ def yield_bitmaps(
     tmppath = add_suffix(path, '.tmp')
     rowsize = (arity + 1) * 4
     with open(tmppath, 'w+b') as file:
-        for pos, value in progress_bar(collect, total=len(corpus)):
+        for pos, value in progress_bar(collect, "Collecting tokens", total=len(corpus)):
             row = (value << 32) + pos
             file.write(row.to_bytes(rowsize, 'big'))
         # The number of rows can be calculated from the final file size in bytes.
