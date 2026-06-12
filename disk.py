@@ -102,6 +102,9 @@ class IntArray:
                 assert prev <= val, "Sorted IntArray is not sorted"
         assert len(self) == self.getconfig()['size'], "Size mismatch"
 
+    def get_sample_item(self, i: int) -> tuple[int, int]:
+        return (i, self[i])
+
     @staticmethod
     def create(size: int, path: Path|None = None, max_value: int = 0, itemsize: int = 0, **config: Any) -> 'IntArray':
         assert not (max_value and itemsize), "Only one of 'max_value' and 'itemsize' should be provided."
@@ -224,6 +227,9 @@ class BytesArray:
             if not accept_newlines:
                 assert b'\n' not in rawdata[start:end-1], f"'BytesArray' value contains newline '\\n'"
 
+    def get_sample_item(self, i: int) -> tuple[int, bytes]:
+        return (i, self[i])
+
     @staticmethod
     def build(path: Path, values: Iterable[bytes]) -> int:
         startspath, rawpath = BytesArray.getpaths(path)
@@ -322,6 +328,9 @@ class SymbolCollection:
                 assert old < name, f"'SymbolCollection' order error: {old!r} >= {name!r}"
             old = name
 
+    def get_sample_item(self, i: int) -> tuple[int, bytes]:
+        return self._bytesarray.get_sample_item(i)
+
     @staticmethod
     def build(path: Path, names: Iterable[bytes]) -> int:
         names = sorted({b''} | set(names))
@@ -368,6 +377,9 @@ class SymbolArray:
 
     def sanity_check(self) -> None:
         self.symbols.sanity_check()
+
+    def get_sample_item(self, i: int) -> tuple[int, str]:
+        return (i, f"{self[i]:8d} --> {self.symbols.to_name(self[i]).decode(errors='ignore')}")
 
     @staticmethod
     def create(path: Path, names: Iterable[bytes], max_size: int) -> 'SymbolArray':
@@ -425,6 +437,9 @@ class IntBytesMap:
         self._values.sanity_check(accept_newlines=True)
         assert len(self._keys) == len(self._values), "Different lengths for keys and values"
 
+    def get_sample_item(self, i: int) -> tuple[int, bytes]:
+        return (self._keys[i], self._values[i])
+
     @staticmethod
     def build(path: Path, keys: Iterable[int], values: Iterable[bytes], **xargs: Any) -> None:
         # Note: the 'keys' must be sorted!
@@ -435,3 +450,79 @@ class IntBytesMap:
     @staticmethod
     def getpaths(path: Path) -> tuple[Path, Path]:
         return (add_suffix(path, '.keys'), add_suffix(path, '.values'))
+
+
+################################################################################
+## Show the contents of a collection from the command line
+
+from typing import Any
+from argparse import Namespace, ArgumentParser
+
+_CLASSES = "IntArray BytesArray SymbolCollection SymbolArray IntBytesMap".split()
+
+def print_sample(args: Namespace) -> None:
+    classname, path = args.collection
+    collection = globals()[classname](Path(path))
+    keyfn = valfn = None
+    if args.key:
+        classname, path = args.key
+        keyclass = globals()[classname](Path(path))
+        keyfn = lambda k: keyclass[k]  # type: ignore
+    if args.val:
+        classname, path = args.val
+        valclass = globals()[args.val[0]](Path(args.val[1]))
+        valfn = lambda v: valclass[v]  # type: ignore
+    elif args.roaring:
+        from pyroaring import BitMap
+        valfn = lambda v: "".join(str(BitMap.deserialize(v)).split())  # type: ignore
+
+    def tostr(val: object) -> str:
+        s = str(val)
+        if isinstance(val, bytes):
+            try:
+                s = val.decode()
+            except UnicodeDecodeError:
+                pass
+        if len(s) >= args.width:
+            s = s[:args.width//2] + "..." + s[-args.width//2:]
+        return s
+
+    N = len(collection)
+    print(f"{collection.__class__.__name__} of size {N}")
+    indices = (
+        list(range(N)) if args.num >= N - 10 else
+        list(range(args.num//4)) + [...] + list(range(N//2-args.num//4, N//2+args.num//4)) + [...] + list(range(N-args.num//4, N))
+    )
+    rows: list[list[str]] = []
+    widths: dict[int, int] = {}
+    for i in indices:
+        line: list[str] = []
+        if i is ...:
+            line += ["..."]
+        else:
+            key, val = collection.get_sample_item(i)
+            line += [tostr(key)]
+            if keyfn:
+                line += ["-->", tostr(keyfn(key))]
+            line += [":", tostr(val)]
+            if valfn:
+                line += ["-->", tostr(valfn(val))]
+        rows.append(line)
+        for i, cell in enumerate(line):
+            if len(cell) > widths.get(i,0):
+                widths[i] = len(cell)
+    for line in rows:
+        print(" ".join(f"{cell:{widths[k]}}" for k, cell in enumerate(line)))
+
+
+parser = ArgumentParser(description='Show contents of a disk collection')
+parser.add_argument('--collection', '-c', required=True, type=str, nargs=2, metavar=('CLASS', 'PATH'), help='collection class, and path')
+parser.add_argument('--key', '-k', type=str, nargs=2, metavar=('CLASS', 'PATH'), help='class and path to key collection')
+parser.add_argument('--val', '-v', type=str, nargs=2, metavar=('CLASS', 'PATH'), help='class and path to value collection')
+parser.add_argument('--roaring', action='store_true', help='assume values are roaring bitmaps')
+parser.add_argument('--num', '-n', type=int, default=20, help='n:o of elements to show (default: 20)')
+parser.add_argument('--width', '-w', type=int, default=40, help='max width of strings (default: 40)')
+
+
+if __name__ == '__main__':
+    print_sample(parser.parse_args())

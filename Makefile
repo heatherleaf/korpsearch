@@ -17,7 +17,9 @@ clean:
 PYVERSION = 3.10
 
 # F541: Warn about f-strings without placeholders
-RUFFCONFIG = 'lint.ignore = ["F541"]'
+# E402: Module level import not at top of file
+# E731: Do not assign a `lambda` expression, use a `def`
+RUFFCONFIG = 'lint.ignore = ["F541", "E402", "E731"]'
 MYPYCONFIG = --strict --no-warn-unused-ignores
 
 lint:
