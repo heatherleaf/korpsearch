@@ -13,7 +13,7 @@ from disk import SymbolList, SymbolRange
 from index import Index, BinaryIndex
 from corpus import Corpus
 from query import Query
-from util import add_suffix, Feature, SENTENCE, WORD
+from util import add_suffix, Feature, SENTENCE, WORD, is_reversed_feature
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -251,7 +251,7 @@ def main_search(args: Namespace) -> dict[str, Any]:
                     feat for feat in corpus.features()
                     if feat in query.features
                     if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
-                    if not feat.endswith(b'_rev')  # don't show reversed features
+                    if not is_reversed_feature(feat)  # don't show reversed features
                 ]
 
             # Always include the 'word' feature, and put it first

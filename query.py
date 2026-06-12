@@ -7,7 +7,7 @@ from collections.abc import Iterator, Sequence
 from literals import KnownLiteral, DisjunctiveGroup, TemplateLiteral, Template, Instance
 from corpus import Corpus
 from index import Index
-from util import Feature, FValue, SENTENCE, START
+from util import Feature, FValue, SENTENCE, START, reverse_feature
 
 
 ################################################################################
@@ -175,9 +175,9 @@ class Query:
                 negative = (negated == '!')
                 value_type = Query._classify_value(valstr)
                 if value_type == 'suffix':
-                    # Check that there is a reversed index, otherwise backoff to 'regex'
                     try:
-                        Index.get(corpus, Template.parse(corpus, feature.decode() + "_rev:0"))
+                        # Check that there is a reversed index, otherwise backoff to 'regex'
+                        Index.get(corpus, Template([TemplateLiteral(0, reverse_feature(feature))]))
                     except FileNotFoundError:
                         value_type = 'regex'
                 match value_type:
@@ -193,7 +193,7 @@ class Query:
                     case 'suffix':
                         valstr = valstr.split('.*')[-1][::-1]
                         value = FValue(valstr.encode())
-                        feature = Feature(feature + b'_rev')
+                        feature = reverse_feature(feature)
                         symbol_range = corpus.get_symbol_range(feature, value)
                         query_list[-1].append(KnownLiteral(negative, offset, feature, symbol_range, corpus))
                     case _:

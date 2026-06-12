@@ -25,6 +25,12 @@ SENTENCE = Feature(b's')
 EMPTY = FValue(b'')
 START = FValue(b's')
 
+def is_reversed_feature(feature: Feature) -> bool:
+    return feature.endswith(b'_reversed')
+
+def reverse_feature(feature: Feature) -> Feature:
+    return Feature(feature + b'_reversed')
+
 
 def check_feature(feature: Feature) -> None:
     assert isinstance(feature, bytes), f"Feature must be a bytestring: {feature!r}"

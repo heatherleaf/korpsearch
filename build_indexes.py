@@ -9,7 +9,7 @@ from literals import KnownLiteral, TemplateLiteral, Template
 from index import Index
 from index_builder import build_index, SORTER_CHOICES
 from corpus import Corpus
-from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START
+from util import setup_logger, add_suffix, CompressedFileReader, Feature, SENTENCE, START, is_reversed_feature
 from corpus_reader import CORPUS_READERS
 
 # All supported file suffixes.
@@ -105,10 +105,10 @@ def yield_templates(corpus: Corpus, args: argparse.Namespace) -> Iterator[Templa
             yield Template([TemplateLiteral(0, feat)])
         # Binary indexes depend on unary indexes, so we build them afterwards.
         for feat1 in features:
-            if feat1.endswith(b'_rev'):
+            if is_reversed_feature(feat1):
                 continue
             for feat2 in features:
-                if feat2.endswith(b'_rev'):
+                if is_reversed_feature(feat2):
                     continue
                 for dist in range(1, args.max_dist+1):
                     template = [TemplateLiteral(0, feat1), TemplateLiteral(dist, feat2)]
