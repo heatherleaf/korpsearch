@@ -12,7 +12,7 @@ from pyroaring import BitMap
 from index import Index
 from corpus import Corpus
 from query import Query
-from util import add_suffix, Feature, SENTENCE, WORD, is_reversed_feature
+from util import add_suffix, Feature, SENTENCE, WORD, is_reversed_feature, get_base_feature
 
 CACHE_DIR = Path('cache')
 CACHE_DIR.mkdir(exist_ok=True)
@@ -249,9 +249,12 @@ def main_search(args: Namespace) -> dict[str, Any]:
                     if f not in corpus.features():
                         raise ValueError(f"Unknown feature: {f!r}")
             else:
+                # A suffix-search literal is stored against "feat_reversed" (see query.py),
+                # so map it back to "feat" here to find the right column to display.
+                query_base_features = {get_base_feature(f) for f in query.features}
                 features_to_show = [
                     feat for feat in corpus.features()
-                    if feat in query.features
+                    if feat in query_base_features
                     if args.no_sentence_breaks or feat != SENTENCE  # don't show the sentence feature
                     if not is_reversed_feature(feat)  # don't show reversed features
                 ]

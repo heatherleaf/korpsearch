@@ -31,6 +31,9 @@ def is_reversed_feature(feature: Feature) -> bool:
 def reverse_feature(feature: Feature) -> Feature:
     return Feature(feature + b'_reversed')
 
+def get_base_feature(feature: Feature) -> Feature:
+    if is_reversed_feature(feature): return Feature(feature[:-len(b'_reversed')])
+    return feature
 
 def check_feature(feature: Feature) -> None:
     assert isinstance(feature, bytes), f"Feature must be a bytestring: {feature!r}"
