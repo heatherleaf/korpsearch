@@ -35,16 +35,19 @@ def build_index(corpus: Corpus, template: Template, args: Namespace) -> None:
     def yield_bigset_values() -> Iterable[bytes]:
         smallsets = IntArray.create(size, index_path, max_value=size)
         bigset_keys = IntArray.create(size, keyspath, max_value=max_value)
+        smallset_itemsize = smallsets.config['itemsize']
+        bigset_itemsize = 3 * bigset_keys.config['itemsize']
         smallsets_ctr = bigsets_ctr = 0
         for value, bitmap in bitmaps:
-            if len(bitmap) < args.bigset_limit:
+            bigset = bitmap.serialize()
+            if len(bitmap) * smallset_itemsize < len(bigset) + bigset_itemsize:
                 for n in bitmap:
                     smallsets[smallsets_ctr] = n
                     smallsets_ctr += 1
             else:
                 bigset_keys[bigsets_ctr] = value
                 bigsets_ctr += 1
-                yield bitmap.serialize()
+                yield bigset
         smallsets.truncate(smallsets_ctr)
         smallsets.close()
         bigset_keys.truncate(bigsets_ctr)
